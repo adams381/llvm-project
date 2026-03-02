@@ -1,0 +1,28 @@
+// RUN: cir-opt %s -cir-call-conv-lowering -o - | FileCheck %s
+
+// Verify that the CallConvLowering pass runs without error on simple
+// functions.  The stub classifier passes all scalars as Direct, so the
+// pass should preserve function signatures unchanged.
+
+!s32i = !cir.int<s, 32>
+
+module {
+  // A simple function with scalar arguments should be unchanged.
+  cir.func @add(%a : !s32i, %b : !s32i) -> !s32i {
+    %r = cir.binop(add, %a, %b) : !s32i
+    cir.return %r : !s32i
+  }
+  // CHECK: cir.func @add(%arg0: !s32i, %arg1: !s32i) -> !s32i
+
+  // A void function should be unchanged.
+  cir.func @noop() {
+    cir.return
+  }
+  // CHECK: cir.func @noop()
+
+  // A function with a single argument should be unchanged.
+  cir.func @identity(%x : !s32i) -> !s32i {
+    cir.return %x : !s32i
+  }
+  // CHECK: cir.func @identity(%arg0: !s32i) -> !s32i
+}

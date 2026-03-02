@@ -1,6 +1,7 @@
 add_subdirectory(TargetLowering)
 
 add_clang_library(MLIRCIRTransforms
+  CallConvLowering.cpp
   CIRCanonicalize.cpp
   CIRSimplify.cpp
   CXXABILowering.cpp
@@ -17,7 +18,10 @@ add_clang_library(MLIRCIRTransforms
   clangAST
   clangBasic
 
+  MLIRABI
   MLIRAnalysis
+  MLIRDataLayoutInterfaces
+  MLIRFunctionInterfaces
   MLIRIR
   MLIRPass
   MLIRTransformUtils

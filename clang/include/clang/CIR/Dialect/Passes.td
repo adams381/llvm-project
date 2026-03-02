@@ -150,6 +150,21 @@ def TargetLowering : Pass<"cir-target-lowering", "mlir::ModuleOp"> {
   let dependentDialects = ["cir::CIRDialect"];
 }
 
+def CallConvLowering : Pass<"cir-call-conv-lowering", "mlir::ModuleOp"> {
+  let summary = "Lower CIR calling conventions to ABI-specific form";
+  let description = [{
+    This pass rewrites CIR function signatures and call sites to match
+    the target ABI calling conventions.  It maps CIR types to the LLVM
+    ABI type system, classifies arguments and return values, and drives
+    dialect-specific rewrites through the ABIRewriteContext interface.
+
+    See the description of the `TargetLowering` pass for how this pass
+    relates to the other target-lowering passes in the CIR pipeline.
+  }];
+  let constructor = "mlir::createCallConvLoweringPass()";
+  let dependentDialects = ["cir::CIRDialect"];
+}
+
 def LoweringPrepare : Pass<"cir-lowering-prepare"> {
   let summary = "Lower to more fine-grained CIR operations before lowering to "
     "other dialects";
