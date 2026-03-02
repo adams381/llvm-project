@@ -1,13 +1,14 @@
 // RUN: cir-opt %s -cir-call-conv-lowering -o - | FileCheck %s
 
-// Verify that the CallConvLowering pass runs without error on simple
-// functions.  The stub classifier passes all scalars as Direct, so the
-// pass should preserve function signatures unchanged.
+// Verify that the CallConvLowering pass correctly handles ABI lowering
+// using the mock X86_64 classifier.
 
 !s32i = !cir.int<s, 32>
+!u64i = !cir.int<u, 64>
+!rec_div_t = !cir.record<struct "div_t" {!s32i, !s32i}>
 
 module {
-  // A simple function with scalar arguments should be unchanged.
+  // Scalar arguments should be unchanged.
   cir.func @add(%a : !s32i, %b : !s32i) -> !s32i {
     %r = cir.binop(add, %a, %b) : !s32i
     cir.return %r : !s32i
@@ -20,9 +21,16 @@ module {
   }
   // CHECK: cir.func @noop()
 
-  // A function with a single argument should be unchanged.
-  cir.func @identity(%x : !s32i) -> !s32i {
-    cir.return %x : !s32i
+  // div_t proof of concept: a function returning a struct with two i32
+  // fields (8 bytes total) should have its return type coerced to u64
+  // on x86_64, with a bitcast inserted before the return.
+  cir.func @mock_div(%n : !s32i, %d : !s32i) -> !rec_div_t {
+    %result = cir.alloca !rec_div_t, !cir.ptr<!rec_div_t>, ["result"] {alignment = 4 : i64}
+    %val = cir.load %result : !cir.ptr<!rec_div_t>, !rec_div_t
+    cir.return %val : !rec_div_t
   }
-  // CHECK: cir.func @identity(%arg0: !s32i) -> !s32i
+  // CHECK: cir.func @mock_div(%arg0: !s32i, %arg1: !s32i) -> !u64i
+  // CHECK:   %[[VAL:.*]] = cir.load
+  // CHECK:   %[[CAST:.*]] = cir.cast bitcast %[[VAL]] : !rec_div_t -> !u64i
+  // CHECK:   cir.return %[[CAST]] : !u64i
 }

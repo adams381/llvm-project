@@ -11,9 +11,9 @@
 // (ABITypeMapper + ABIRewriteContext) to map types, classify arguments,
 // and drive dialect-specific rewrites.
 //
-// Until the LLVM ABI Lowering Library provides target-specific classifiers,
-// this pass uses a stub classifier that passes scalars directly and returns
-// Ignore for void.
+// A mock X86_64 classifier handles common patterns (struct coercion,
+// integer extension, indirect returns) until the LLVM ABI Lowering Library
+// provides real target-specific classifiers.
 //
 //===----------------------------------------------------------------------===//
 
@@ -40,16 +40,61 @@ namespace mlir {
 
 namespace {
 
-/// Stub ABI classifier used until the LLVM ABI Lowering Library provides
-/// real target-specific classifiers (X86_64, AArch64, etc.).
+/// Classify a single type for the x86_64 System V ABI.
 ///
-/// Rules:
-///  - Void/NoneType returns  -> Ignore
-///  - Scalar types           -> Direct (pass as-is)
-///  - Everything else        -> Direct (placeholder)
+/// This is a mock that covers common patterns.  It will be replaced by
+/// the real LLVM ABI library classifier when it lands upstream.
+ArgClassification classifyTypeX86_64(Type ty, const DataLayout &dl,
+                                     bool isReturnType) {
+  // Records: inspect size and decide coercion vs indirect.
+  if (auto recTy = dyn_cast<cir::RecordType>(ty)) {
+    if (!recTy.isComplete())
+      return ArgClassification::getDirect();
+
+    uint64_t sizeInBytes = dl.getTypeSize(recTy);
+
+    // Structs > 16 bytes: pass/return indirectly.
+    if (sizeInBytes > 16)
+      return ArgClassification::getIndirect(
+          llvm::Align(dl.getTypeABIAlignment(recTy)));
+
+    // Structs <= 8 bytes with all-integer fields: coerce to a single
+    // integer register.  This covers div_t {int, int} -> i64.
+    if (sizeInBytes <= 8) {
+      bool allInteger = true;
+      for (Type member : recTy.getMembers()) {
+        if (!isa<cir::IntType>(member)) {
+          allInteger = false;
+          break;
+        }
+      }
+      if (allInteger) {
+        unsigned coerceBits = sizeInBytes * 8;
+        auto coerceTy =
+            cir::IntType::get(ty.getContext(), coerceBits, /*isSigned=*/false);
+        return ArgClassification::getDirect(coerceTy);
+      }
+    }
+
+    // Other small structs: pass directly for now.
+    return ArgClassification::getDirect();
+  }
+
+  // Small integers (i8, i16): extend when passed as arguments.
+  if (auto intTy = dyn_cast<cir::IntType>(ty)) {
+    if (!isReturnType && intTy.getWidth() < 32) {
+      auto i32Ty =
+          cir::IntType::get(ty.getContext(), 32, intTy.isSigned());
+      return ArgClassification::getExtend(i32Ty, intTy.isSigned());
+    }
+  }
+
+  return ArgClassification::getDirect();
+}
+
+/// Mock X86_64 System V ABI classifier.
 FunctionClassification
-stubClassify(FunctionOpInterface funcOp,
-             ABITypeMapper &typeMapper) {
+mockClassifyX86_64(FunctionOpInterface funcOp, const DataLayout &dl) {
   FunctionClassification fc;
 
   // Classify the return type.
@@ -57,11 +102,13 @@ stubClassify(FunctionOpInterface funcOp,
   if (resultTypes.empty())
     fc.ReturnInfo = ArgClassification::getIgnore();
   else
-    fc.ReturnInfo = ArgClassification::getDirect();
+    fc.ReturnInfo = classifyTypeX86_64(resultTypes[0], dl,
+                                       /*isReturnType=*/true);
 
   // Classify each argument.
-  for (unsigned i = 0, e = funcOp.getNumArguments(); i < e; ++i)
-    fc.ArgInfos.push_back(ArgClassification::getDirect());
+  for (Type argTy : funcOp.getArgumentTypes())
+    fc.ArgInfos.push_back(
+        classifyTypeX86_64(argTy, dl, /*isReturnType=*/false));
 
   return fc;
 }
@@ -77,11 +124,10 @@ struct CallConvLoweringPass
     cir::CIRABIRewriteContext rewriteCtx(module);
 
     module.walk([&](FunctionOpInterface funcOp) {
-      // Skip declarations (no body to rewrite).
       if (funcOp.isDeclaration())
         return;
 
-      FunctionClassification fc = stubClassify(funcOp, typeMapper);
+      FunctionClassification fc = mockClassifyX86_64(funcOp, dataLayout);
 
       OpBuilder builder(funcOp);
       if (failed(rewriteCtx.rewriteFunctionDefinition(funcOp, fc, builder)))
