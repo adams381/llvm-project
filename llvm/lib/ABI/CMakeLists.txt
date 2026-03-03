@@ -1,5 +1,10 @@
 add_llvm_component_library(LLVMABI
+  ABIFunctionInfo.cpp
+  ABIInfo.cpp
+  ABITypeMapper.cpp
   Types.cpp
+  Targets/BPF.cpp
+  Targets/X86.cpp
 
   ADDITIONAL_HEADER_DIRS
   ${LLVM_MAIN_INCLUDE_DIR}/llvm/ABI
@@ -11,4 +16,3 @@ add_llvm_component_library(LLVMABI
   Core
   Support
 )
-

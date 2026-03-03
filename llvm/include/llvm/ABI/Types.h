@@ -7,8 +7,9 @@
 //===----------------------------------------------------------------------===//
 ///
 /// \file
-/// This file defines the type system for the LLVMABI library, which mirrors
-/// ABI-relevant aspects of frontend types.
+/// This file defines the Types and related helper methods concerned to the
+/// LLVMABI library which mirrors ABI related type information from
+/// the LLVM frontend.
 ///
 //===----------------------------------------------------------------------===//
 #ifndef LLVM_ABI_TYPES_H
@@ -16,12 +17,13 @@
 
 #include "llvm/ADT/APFloat.h"
 #include "llvm/ADT/ArrayRef.h"
-#include "llvm/ADT/BitmaskEnum.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/Support/Alignment.h"
 #include "llvm/Support/Allocator.h"
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/TypeSize.h"
+#include <algorithm>
+#include <cstdint>
 
 namespace llvm {
 namespace abi {
@@ -38,10 +40,6 @@ enum class TypeKind {
   Record,
 };
 
-/// Represents the ABI-specific view of a type in LLVM.
-///
-/// This abstracts platform and language-specific ABI details from the
-/// frontend, providing a consistent interface for the ABI Library.
 class Type {
 private:
   TypeSize getTypeStoreSize() const {
@@ -248,76 +246,144 @@ struct FieldInfo {
 
 enum class StructPacking { Default, Packed, ExplicitPacking };
 
-enum RecordFlags : unsigned {
-  None = 0,
-  CanPassInRegisters = 1 << 0,
-  IsUnion = 1 << 1,
-  IsTransparent = 1 << 2,
-  IsCXXRecord = 1 << 3,
-  IsPolymorphic = 1 << 4,
-  HasFlexibleArrayMember = 1 << 5,
-  LLVM_MARK_AS_BITMASK_ENUM(/* LargestValue = */ HasFlexibleArrayMember),
-};
-
 class RecordType : public Type {
 private:
   ArrayRef<FieldInfo> Fields;
   ArrayRef<FieldInfo> BaseClasses;
   ArrayRef<FieldInfo> VirtualBaseClasses;
   StructPacking Packing;
-  RecordFlags Flags;
+  bool CanPassInRegisters;
+  bool IsCoercedRecord;
+  bool IsUnion;
+  bool IsTransparent;
+
+  bool IsCXXRecord;
+  bool IsPolymorphic;
+  bool HasNonTrivialCopyConstructor;
+  bool HasNonTrivialDestructor;
+  bool HasFlexibleArrayMember;
+  bool HasUnalignedFields;
 
 public:
   RecordType(ArrayRef<FieldInfo> StructFields, ArrayRef<FieldInfo> Bases,
              ArrayRef<FieldInfo> VBases, TypeSize Size, Align Align,
-             StructPacking Pack = StructPacking::Default,
-             RecordFlags RecFlags = RecordFlags::None)
+             StructPacking Pack = StructPacking::Default, bool Union = false,
+             bool CXXRecord = false, bool Polymorphic = false,
+             bool NonTrivialCopy = false, bool NonTrivialDtor = false,
+             bool FlexibleArray = false, bool UnalignedFields = false,
+             bool CanPassInRegs = false, bool IsCoercedRec = false,
+             bool Transparent = false)
       : Type(TypeKind::Record, Size, Align), Fields(StructFields),
         BaseClasses(Bases), VirtualBaseClasses(VBases), Packing(Pack),
-        Flags(RecFlags) {}
+        CanPassInRegisters(CanPassInRegs), IsCoercedRecord(IsCoercedRec),
+        IsUnion(Union), IsTransparent(Transparent), IsCXXRecord(CXXRecord),
+        IsPolymorphic(Polymorphic),
+        HasNonTrivialCopyConstructor(NonTrivialCopy),
+        HasNonTrivialDestructor(NonTrivialDtor),
+        HasFlexibleArrayMember(FlexibleArray),
+        HasUnalignedFields(UnalignedFields) {}
+
   uint32_t getNumFields() const { return Fields.size(); }
   StructPacking getPacking() const { return Packing; }
 
-  bool isUnion() const {
-    return static_cast<unsigned>(Flags & RecordFlags::IsUnion) != 0;
+  bool isUnion() const { return IsUnion; }
+  bool isCXXRecord() const { return IsCXXRecord; }
+  bool isPolymorphic() const { return IsPolymorphic; }
+  bool hasNonTrivialCopyConstructor() const {
+    return HasNonTrivialCopyConstructor;
   }
-  bool isCXXRecord() const {
-    return static_cast<unsigned>(Flags & RecordFlags::IsCXXRecord) != 0;
-  }
-  bool isPolymorphic() const {
-    return static_cast<unsigned>(Flags & RecordFlags::IsPolymorphic) != 0;
-  }
-  bool canPassInRegisters() const {
-    return static_cast<unsigned>(Flags & RecordFlags::CanPassInRegisters) != 0;
-  }
-  bool hasFlexibleArrayMember() const {
-    return static_cast<unsigned>(Flags & RecordFlags::HasFlexibleArrayMember) !=
-           0;
-  }
+  bool isCoercedRecord() const { return IsCoercedRecord; }
+  bool canPassInRegisters() const { return CanPassInRegisters; }
+  bool hasNonTrivialDestructor() const { return HasNonTrivialDestructor; }
+  bool hasFlexibleArrayMember() const { return HasFlexibleArrayMember; }
+  bool hasUnalignedFields() const { return HasUnalignedFields; }
+
   uint32_t getNumBaseClasses() const { return BaseClasses.size(); }
   uint32_t getNumVirtualBaseClasses() const {
     return VirtualBaseClasses.size();
   }
-  bool isTransparentUnion() const {
-    return static_cast<unsigned>(Flags & RecordFlags::IsTransparent) != 0;
-  }
+  bool isTransparentUnion() const { return IsTransparent; }
   ArrayRef<FieldInfo> getFields() const { return Fields; }
   ArrayRef<FieldInfo> getBaseClasses() const { return BaseClasses; }
   ArrayRef<FieldInfo> getVirtualBaseClasses() const {
     return VirtualBaseClasses;
   }
+
+  static bool isEmptyForABI(const llvm::abi::Type *Ty) {
+    const auto *RT = dyn_cast<RecordType>(Ty);
+    if (!RT)
+      return false;
+
+    for (const auto &Field : RT->getFields()) {
+      if (!Field.IsUnnamedBitfield)
+        return false;
+    }
+
+    if (RT->isCXXRecord()) {
+      for (const auto &Base : RT->getBaseClasses()) {
+        if (!isEmptyForABI(Base.FieldType))
+          return false;
+      }
+
+      for (const auto &VBase : RT->getVirtualBaseClasses()) {
+        if (!isEmptyForABI(VBase.FieldType))
+          return false;
+      }
+    }
+
+    return true;
+  }
+
+  const FieldInfo *getElementContainingOffset(unsigned OffsetInBits) const {
+    SmallVector<std::pair<unsigned, const FieldInfo *>> AllElements;
+
+    for (const auto &Base : BaseClasses) {
+      if (!isEmptyForABI(Base.FieldType))
+        AllElements.emplace_back(Base.OffsetInBits, &Base);
+    }
+
+    for (const auto &VBase : VirtualBaseClasses) {
+      if (!isEmptyForABI(VBase.FieldType))
+        AllElements.emplace_back(VBase.OffsetInBits, &VBase);
+    }
+
+    for (const auto &Field : Fields) {
+      if (Field.IsUnnamedBitfield)
+        continue;
+      AllElements.emplace_back(Field.OffsetInBits, &Field);
+    }
+
+    llvm::stable_sort(AllElements, [](const auto &A, const auto &B) {
+      return A.first < B.first;
+    });
+
+    auto *It = llvm::upper_bound(AllElements, OffsetInBits,
+                                 [](unsigned Offset, const auto &Element) {
+                                   return Offset < Element.first;
+                                 });
+
+    if (It == AllElements.begin())
+      return nullptr;
+
+    --It;
+
+    const FieldInfo *Candidate = It->second;
+    unsigned ElementStart = It->first;
+    unsigned ElementSize =
+        Candidate->FieldType->getSizeInBits().getFixedValue();
+
+    if (OffsetInBits >= ElementStart &&
+        OffsetInBits < ElementStart + ElementSize)
+      return Candidate;
+
+    return nullptr;
+  }
+  static bool classof(const Type *T) {
+    return T->getKind() == TypeKind::Record;
+  }
 };
 
-/// TypeBuilder manages the lifecycle of ABI types using bump pointer
-/// allocation. Types created by a TypeBuilder are valid for the lifetime of the
-/// allocator.
-///
-/// Example usage:
-/// \code
-///   BumpPtrAllocator Alloc;
-///   TypeBuilder Builder(Alloc);
-///   const auto *IntTy = Builder.getIntegerType(32, Align(4), true);
-/// \endcode
+/// API for creating ABI Types
 class TypeBuilder {
 private:
   BumpPtrAllocator &Allocator;
@@ -358,12 +424,16 @@ public:
         VectorType(ElementType, NumElements, Align);
   }
 
-  const RecordType *getRecordType(ArrayRef<FieldInfo> Fields, TypeSize Size,
-                                  Align Align,
-                                  StructPacking Pack = StructPacking::Default,
-                                  ArrayRef<FieldInfo> BaseClasses = {},
-                                  ArrayRef<FieldInfo> VirtualBaseClasses = {},
-                                  RecordFlags RecFlags = RecordFlags::None) {
+  // TODO: clean up this function
+  const RecordType *
+  getRecordType(ArrayRef<FieldInfo> Fields, TypeSize Size, Align Align,
+                StructPacking Pack = StructPacking::Default,
+                ArrayRef<FieldInfo> BaseClasses = {},
+                ArrayRef<FieldInfo> VirtualBaseClasses = {},
+                bool CXXRecord = false, bool Polymorphic = false,
+                bool NonTrivialCopy = false, bool NonTrivialDtor = false,
+                bool FlexibleArray = false, bool UnalignedFields = false,
+                bool CanPassInRegister = false) {
     FieldInfo *FieldArray = Allocator.Allocate<FieldInfo>(Fields.size());
     std::copy(Fields.begin(), Fields.end(), FieldArray);
 
@@ -385,16 +455,45 @@ public:
     ArrayRef<FieldInfo> VBasesRef(VBaseArray, VirtualBaseClasses.size());
 
     return new (Allocator.Allocate<RecordType>())
-        RecordType(FieldsRef, BasesRef, VBasesRef, Size, Align, Pack, RecFlags);
+        RecordType(FieldsRef, BasesRef, VBasesRef, Size, Align, Pack, false,
+                   CXXRecord, Polymorphic, NonTrivialCopy, NonTrivialDtor,
+                   FlexibleArray, UnalignedFields, CanPassInRegister);
+  }
+
+  /// Creates a coerced record type for ABI purposes.
+  ///
+  /// Coerced record types are artificial struct representations used internally
+  /// by the ABI layer to represent non-aggregate types in a convenient way.
+  /// For example, a function argument that needs to be passed in two registers
+  /// might be coerced into a struct with two fields: {i64, i32}.
+  ///
+  /// @param Fields The fields of the coerced struct
+  /// @param Size Total size in bits
+  /// @param Align Alignment requirements
+  /// @param Pack Struct packing mode (usually Default)
+  /// @return A RecordType marked as coerced for ABI purposes
+  const RecordType *
+  getCoercedRecordType(ArrayRef<FieldInfo> Fields, TypeSize Size, Align Align,
+                       StructPacking Pack = StructPacking::Default) {
+    FieldInfo *FieldArray = Allocator.Allocate<FieldInfo>(Fields.size());
+    std::copy(Fields.begin(), Fields.end(), FieldArray);
+
+    ArrayRef<FieldInfo> FieldsRef(FieldArray, Fields.size());
+
+    return new (Allocator.Allocate<RecordType>()) RecordType(
+        FieldsRef, ArrayRef<FieldInfo>(), ArrayRef<FieldInfo>(), Size, Align,
+        Pack, false, false, false, false, false, false, false, true, true);
   }
 
   const RecordType *getUnionType(ArrayRef<FieldInfo> Fields, TypeSize Size,
                                  Align Align,
                                  StructPacking Pack = StructPacking::Default,
-                                 RecordFlags RecFlags = RecordFlags::None) {
+                                 bool IsTransparent = false,
+                                 bool CanPassInRegs = false,
+                                 bool CXXRecord = false) {
     FieldInfo *FieldArray = Allocator.Allocate<FieldInfo>(Fields.size());
 
-    for (size_t I = 0, E = Fields.size(); I != E; ++I) {
+    for (size_t I = 0; I < Fields.size(); ++I) {
       const FieldInfo &Field = Fields[I];
       new (&FieldArray[I])
           FieldInfo(Field.FieldType, 0, Field.IsBitField, Field.BitFieldWidth,
@@ -405,16 +504,17 @@ public:
 
     return new (Allocator.Allocate<RecordType>())
         RecordType(FieldsRef, ArrayRef<FieldInfo>(), ArrayRef<FieldInfo>(),
-                   Size, Align, Pack, RecFlags | RecordFlags::IsUnion);
+                   Size, Align, Pack, true, CXXRecord, false, false, false,
+                   false, false, CanPassInRegs, false, IsTransparent);
   }
 
   const ComplexType *getComplexType(const Type *ElementType, Align Align) {
     // Complex types have two elements (real and imaginary parts)
-    uint64_t ElementSizeInBits = ElementType->getSizeInBits().getFixedValue();
-    uint64_t ComplexSizeInBits = ElementSizeInBits * 2;
+    uint64_t ElementSize = ElementType->getSizeInBits().getFixedValue();
+    uint64_t ComplexSize = ElementSize * 2;
 
     return new (Allocator.Allocate<ComplexType>())
-        ComplexType(ElementType, ComplexSizeInBits, Align);
+        ComplexType(ElementType, ComplexSize, Align);
   }
 
   const MemberPointerType *getMemberPointerType(bool IsFunctionPointer,
