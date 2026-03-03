@@ -80,14 +80,9 @@ ArgClassification classifyTypeX86_64(Type ty, const DataLayout &dl,
     return ArgClassification::getDirect();
   }
 
-  // Small integers (i8, i16): extend when passed as arguments.
-  if (auto intTy = dyn_cast<cir::IntType>(ty)) {
-    if (!isReturnType && intTy.getWidth() < 32) {
-      auto i32Ty =
-          cir::IntType::get(ty.getContext(), 32, intTy.isSigned());
-      return ArgClassification::getExtend(i32Ty, intTy.isSigned());
-    }
-  }
+  // TODO: Small integers (i8, i16) should be extended to i32 when
+  // passed as arguments.  Disabled until argument body adaptation
+  // (truncate at function entry) is implemented.
 
   return ArgClassification::getDirect();
 }
@@ -123,14 +118,36 @@ struct CallConvLoweringPass
     ABITypeMapper typeMapper(dataLayout);
     cir::CIRABIRewriteContext rewriteCtx(module);
 
+    // Phase 1: Classify and rewrite all function definitions.
+    // Store classifications for use during call-site rewriting.
+    llvm::DenseMap<StringRef, FunctionClassification> classificationMap;
+
     module.walk([&](FunctionOpInterface funcOp) {
       if (funcOp.isDeclaration())
         return;
 
       FunctionClassification fc = mockClassifyX86_64(funcOp, dataLayout);
 
+      if (auto nameAttr = funcOp->getAttrOfType<StringAttr>("sym_name"))
+        classificationMap[nameAttr.getValue()] = fc;
+
       OpBuilder builder(funcOp);
       if (failed(rewriteCtx.rewriteFunctionDefinition(funcOp, fc, builder)))
+        return signalPassFailure();
+    });
+
+    // Phase 2: Rewrite call sites to match rewritten callees.
+    module.walk([&](cir::CallOp callOp) {
+      auto callee = callOp.getCalleeAttr();
+      if (!callee)
+        return;
+
+      auto it = classificationMap.find(callee.getValue());
+      if (it == classificationMap.end())
+        return;
+
+      OpBuilder builder(callOp);
+      if (failed(rewriteCtx.rewriteCallSite(callOp, it->second, builder)))
         return signalPassFailure();
     });
   }

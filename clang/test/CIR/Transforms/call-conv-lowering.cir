@@ -4,8 +4,10 @@
 // using the mock X86_64 classifier.
 
 !s32i = !cir.int<s, 32>
+!s64i = !cir.int<s, 64>
 !u64i = !cir.int<u, 64>
 !rec_div_t = !cir.record<struct "div_t" {!s32i, !s32i}>
+!rec_big = !cir.record<struct "Big" {!s64i, !s64i, !s64i, !s64i, !s64i}>
 
 module {
   // Scalar arguments should be unchanged.
@@ -33,4 +35,46 @@ module {
   // CHECK:   %[[VAL:.*]] = cir.load
   // CHECK:   %[[CAST:.*]] = cir.cast bitcast %[[VAL]] : !rec_div_t -> !u64i
   // CHECK:   cir.return %[[CAST]] : !u64i
+
+  // Call-site rewriting: caller of mock_div gets the u64 result
+  // bitcasted back to the original struct type.
+  cir.func @call_div() -> !rec_div_t {
+    %n = cir.const #cir.int<10> : !s32i
+    %d = cir.const #cir.int<3> : !s32i
+    %result = cir.call @mock_div(%n, %d) : (!s32i, !s32i) -> !rec_div_t
+    cir.return %result : !rec_div_t
+  }
+  // call_div also returns div_t, so it is also coerced to u64i.
+  // The call to mock_div returns u64i and is bitcasted back to
+  // rec_div_t, then the return coercion bitcasts it back to u64i.
+  // CHECK: cir.func @call_div() -> !u64i
+  // CHECK:   %[[N:.*]] = cir.const #cir.int<10>
+  // CHECK:   %[[D:.*]] = cir.const #cir.int<3>
+  // CHECK:   %[[RAW:.*]] = cir.call @mock_div(%[[N]], %[[D]]) : (!s32i, !s32i) -> !u64i
+  // CHECK:   %[[BACK:.*]] = cir.cast bitcast %[[RAW]] : !u64i -> !rec_div_t
+  // CHECK:   %[[RET:.*]] = cir.cast bitcast %[[BACK]] : !rec_div_t -> !u64i
+  // CHECK:   cir.return %[[RET]] : !u64i
+
+  // Indirect return (sret): struct > 16 bytes gets returned via pointer.
+  // Callee: return type becomes void, sret pointer prepended.
+  cir.func @make_big() -> !rec_big {
+    %tmp = cir.alloca !rec_big, !cir.ptr<!rec_big>, ["tmp"] {alignment = 8 : i64}
+    %val = cir.load %tmp : !cir.ptr<!rec_big>, !rec_big
+    cir.return %val : !rec_big
+  }
+  // CHECK: cir.func @make_big(%arg0: !cir.ptr<!rec_Big>)
+  // CHECK-NOT: -> !rec_Big
+  // CHECK:   %[[V:.*]] = cir.load
+  // CHECK:   cir.store %[[V]], %arg0
+  // CHECK:   cir.return{{$}}
+
+  // Caller of sret function: alloca + pass pointer + load result.
+  cir.func @use_big() {
+    %big = cir.call @make_big() : () -> !rec_big
+    cir.return
+  }
+  // CHECK: cir.func @use_big()
+  // CHECK:   %[[SRET:.*]] = cir.alloca !rec_Big, !cir.ptr<!rec_Big>
+  // CHECK:   cir.call @make_big(%[[SRET]])
+  // CHECK:   %[[LOADED:.*]] = cir.load %[[SRET]]
 }
