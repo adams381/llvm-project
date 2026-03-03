@@ -3,6 +3,7 @@
 // Verify that the CallConvLowering pass correctly handles ABI lowering
 // using the mock X86_64 classifier.
 
+!s8i = !cir.int<s, 8>
 !s32i = !cir.int<s, 32>
 !s64i = !cir.int<s, 64>
 !u64i = !cir.int<u, 64>
@@ -77,4 +78,30 @@ module {
   // CHECK:   %[[SRET:.*]] = cir.alloca !rec_Big, !cir.ptr<!rec_Big>
   // CHECK:   cir.call @make_big(%[[SRET]])
   // CHECK:   %[[LOADED:.*]] = cir.load %[[SRET]]
+
+  // Argument extension: i8 argument extended to i32, with truncation
+  // cast inserted at function entry.
+  cir.func @takes_char(%c : !s8i) -> !s32i {
+    %ext = cir.cast integral %c : !s8i -> !s32i
+    cir.return %ext : !s32i
+  }
+  // CHECK: cir.func @takes_char(%arg0: !s32i) -> !s32i
+  // CHECK:   %[[TRUNC:.*]] = cir.cast integral %arg0 : !s32i -> !s8i
+  // CHECK:   %[[EXT:.*]] = cir.cast integral %[[TRUNC]] : !s8i -> !s32i
+  // CHECK:   cir.return %[[EXT]] : !s32i
+
+  // Declaration rewriting: external function declarations also get
+  // their types updated.
+  cir.func private @extern_div(!s32i, !s32i) -> !rec_div_t
+
+  // CHECK: cir.func private @extern_div(!s32i, !s32i) -> !u64i
+
+  // Call to an external declaration: call site rewritten.
+  cir.func @call_extern(%a : !s32i, %b : !s32i) -> !rec_div_t {
+    %r = cir.call @extern_div(%a, %b) : (!s32i, !s32i) -> !rec_div_t
+    cir.return %r : !rec_div_t
+  }
+  // CHECK: cir.func @call_extern(%arg0: !s32i, %arg1: !s32i) -> !u64i
+  // CHECK:   %[[R:.*]] = cir.call @extern_div(%arg0, %arg1) : (!s32i, !s32i) -> !u64i
+  // CHECK:   %[[BC:.*]] = cir.cast bitcast %[[R]] : !u64i -> !rec_div_t
 }

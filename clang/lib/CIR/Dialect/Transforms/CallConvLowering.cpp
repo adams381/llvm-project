@@ -80,9 +80,17 @@ ArgClassification classifyTypeX86_64(Type ty, const DataLayout &dl,
     return ArgClassification::getDirect();
   }
 
-  // TODO: Small integers (i8, i16) should be extended to i32 when
-  // passed as arguments.  Disabled until argument body adaptation
-  // (truncate at function entry) is implemented.
+  // Standard small C integer arguments (i8, i16): extend to i32.
+  // Only for widths 8 and 16 (standard C types), not arbitrary
+  // widths like _BitInt(31).
+  if (auto intTy = dyn_cast<cir::IntType>(ty)) {
+    unsigned width = intTy.getWidth();
+    if (!isReturnType && (width == 8 || width == 16)) {
+      auto i32Ty =
+          cir::IntType::get(ty.getContext(), 32, intTy.isSigned());
+      return ArgClassification::getExtend(i32Ty, intTy.isSigned());
+    }
+  }
 
   return ArgClassification::getDirect();
 }
@@ -118,14 +126,12 @@ struct CallConvLoweringPass
     ABITypeMapper typeMapper(dataLayout);
     cir::CIRABIRewriteContext rewriteCtx(module);
 
-    // Phase 1: Classify and rewrite all function definitions.
-    // Store classifications for use during call-site rewriting.
+    // Phase 1: Classify and rewrite all functions (both definitions
+    // and declarations).  Declarations only get their type updated;
+    // definitions also get body adaptations.
     llvm::DenseMap<StringRef, FunctionClassification> classificationMap;
 
     module.walk([&](FunctionOpInterface funcOp) {
-      if (funcOp.isDeclaration())
-        return;
-
       FunctionClassification fc = mockClassifyX86_64(funcOp, dataLayout);
 
       if (auto nameAttr = funcOp->getAttrOfType<StringAttr>("sym_name"))

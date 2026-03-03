@@ -33,9 +33,11 @@ mlir::LogicalResult runCIRToCIRPasses(mlir::ModuleOp theModule,
 
   pm.addPass(mlir::createTargetLoweringPass());
   pm.addPass(mlir::createCXXABILoweringPass());
-  // TODO: Add createCallConvLoweringPass() here once call-site rewriting
-  // and argument body adaptation are implemented.  Without those, enabling
-  // the pass in the pipeline breaks callers of rewritten functions.
+  // CallConvLowering is functional (tested via cir-opt) but not yet
+  // enabled in the pipeline.  The mock classifier's struct coercion and
+  // argument extension change function signatures in ways that existing
+  // tests (which check LLVM IR output) don't expect.  Enable once the
+  // mock is replaced by the real LLVM ABI library classifier.
   pm.addPass(mlir::createLoweringPreparePass(&astContext));
 
   pm.enableVerifier(enableVerifier);

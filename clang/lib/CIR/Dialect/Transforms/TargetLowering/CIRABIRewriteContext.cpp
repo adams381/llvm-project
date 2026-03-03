@@ -57,20 +57,63 @@ static void insertSRetStores(FunctionOpInterface funcOp, Type origRetTy,
   });
 }
 
+/// For each extended argument, insert a truncation cast at the function
+/// entry and replace all uses of the block argument with the truncated
+/// value.
+static void insertArgAdaptation(FunctionOpInterface funcOp,
+                                const FunctionClassification &fc,
+                                unsigned sretOffset, OpBuilder &rewriter) {
+  Region &body = funcOp->getRegion(0);
+  if (body.empty())
+    return;
+
+  Block &entryBlock = body.front();
+  rewriter.setInsertionPointToStart(&entryBlock);
+
+  for (auto [idx, argClass] : llvm::enumerate(fc.ArgInfos)) {
+    if (argClass.Kind != ArgKind::Extend || !argClass.CoercedType)
+      continue;
+
+    unsigned blockIdx = idx + sretOffset;
+    BlockArgument blockArg = entryBlock.getArgument(blockIdx);
+
+    Type oldArgTy = blockArg.getType();
+    Type newArgTy = argClass.CoercedType;
+
+    if (oldArgTy == newArgTy)
+      continue;
+
+    // Change the block argument type to the coerced type.
+    blockArg.setType(newArgTy);
+
+    // Insert a truncation cast from the coerced type back to the
+    // original type at the start of the entry block.
+    rewriter.setInsertionPointToStart(&entryBlock);
+    auto truncCast = cir::CastOp::create(rewriter, funcOp.getLoc(),
+                                          oldArgTy, cir::CastKind::integral,
+                                          blockArg);
+
+    // Replace all uses of the block argument (except the cast itself)
+    // with the truncated value.
+    blockArg.replaceAllUsesExcept(truncCast, truncCast.getOperation());
+  }
+}
+
 LogicalResult CIRABIRewriteContext::rewriteFunctionDefinition(
     FunctionOpInterface funcOp, const FunctionClassification &fc,
     OpBuilder &rewriter) {
   ArrayRef<Type> oldArgTypes = funcOp.getArgumentTypes();
   ArrayRef<Type> oldResultTypes = funcOp.getResultTypes();
+  bool isDecl = funcOp.isDeclaration();
 
   bool hasSRet = fc.ReturnInfo.Kind == ArgKind::Indirect &&
                  !oldResultTypes.empty();
   bool returnCoerced = false;
+  bool hasArgChanges = false;
 
   // Compute new argument types.
   SmallVector<Type> newArgTypes;
 
-  // Prepend sret pointer argument if return is indirect.
   if (hasSRet) {
     auto ptrTy = cir::PointerType::get(oldResultTypes[0]);
     newArgTypes.push_back(ptrTy);
@@ -80,9 +123,16 @@ LogicalResult CIRABIRewriteContext::rewriteFunctionDefinition(
     Type origTy = oldArgTypes[idx];
     switch (argClass.Kind) {
     case ArgKind::Direct:
+      newArgTypes.push_back(argClass.CoercedType ? argClass.CoercedType
+                                                 : origTy);
+      if (argClass.CoercedType && argClass.CoercedType != origTy)
+        hasArgChanges = true;
+      break;
     case ArgKind::Extend:
       newArgTypes.push_back(argClass.CoercedType ? argClass.CoercedType
                                                  : origTy);
+      if (argClass.CoercedType && argClass.CoercedType != origTy)
+        hasArgChanges = true;
       break;
     case ArgKind::Indirect:
     case ArgKind::Expand:
@@ -96,7 +146,6 @@ LogicalResult CIRABIRewriteContext::rewriteFunctionDefinition(
   // Compute new result types.
   SmallVector<Type> newResultTypes;
   if (hasSRet) {
-    // Indirect return: CIR uses explicit VoidType (not empty results).
     newResultTypes.push_back(cir::VoidType::get(funcOp->getContext()));
   } else if (fc.ReturnInfo.Kind == ArgKind::Direct ||
              fc.ReturnInfo.Kind == ArgKind::Extend) {
@@ -110,22 +159,27 @@ LogicalResult CIRABIRewriteContext::rewriteFunctionDefinition(
   }
 
   // If nothing changed, skip the rewrite.
-  if (!hasSRet &&
+  if (!hasSRet && !hasArgChanges &&
       newArgTypes == SmallVector<Type>(oldArgTypes) &&
       newResultTypes == SmallVector<Type>(oldResultTypes))
     return success();
 
-  // Insert body adaptations before changing the signature.
-  if (returnCoerced)
-    insertReturnCoercion(funcOp, oldResultTypes[0],
-                         fc.ReturnInfo.CoercedType, rewriter);
+  // Body modifications only apply to definitions.
+  if (!isDecl) {
+    if (returnCoerced)
+      insertReturnCoercion(funcOp, oldResultTypes[0],
+                           fc.ReturnInfo.CoercedType, rewriter);
 
-  // For sret, add a block argument for the pointer, then rewrite returns.
-  if (hasSRet) {
-    auto ptrTy = cir::PointerType::get(oldResultTypes[0]);
-    Region &body = funcOp->getRegion(0);
-    body.insertArgument(0u, ptrTy, funcOp.getLoc());
-    insertSRetStores(funcOp, oldResultTypes[0], rewriter);
+    if (hasSRet) {
+      auto ptrTy = cir::PointerType::get(oldResultTypes[0]);
+      Region &body = funcOp->getRegion(0);
+      body.insertArgument(0u, ptrTy, funcOp.getLoc());
+      insertSRetStores(funcOp, oldResultTypes[0], rewriter);
+    }
+
+    unsigned sretOffset = hasSRet ? 1 : 0;
+    if (hasArgChanges)
+      insertArgAdaptation(funcOp, fc, sretOffset, rewriter);
   }
 
   Type newFnTy = funcOp.cloneTypeWith(newArgTypes, newResultTypes);
@@ -141,6 +195,30 @@ CIRABIRewriteContext::rewriteCallSite(Operation *callOp,
   auto call = cast<cir::CallOp>(callOp);
   bool hasSRet = fc.ReturnInfo.Kind == ArgKind::Indirect;
 
+  // Coerce arguments at the call site (e.g., extend i8 to i32).
+  SmallVector<Value> newArgs;
+  bool argsChanged = false;
+  auto argOperands = call.getArgOperands();
+
+  for (auto [idx, argClass] : llvm::enumerate(fc.ArgInfos)) {
+    if (idx >= argOperands.size())
+      break;
+
+    Value arg = argOperands[idx];
+
+    if (argClass.Kind == ArgKind::Extend && argClass.CoercedType &&
+        arg.getType() != argClass.CoercedType) {
+      rewriter.setInsertionPoint(call);
+      auto widened = cir::CastOp::create(rewriter, call.getLoc(),
+                                          argClass.CoercedType,
+                                          cir::CastKind::integral, arg);
+      newArgs.push_back(widened);
+      argsChanged = true;
+    } else {
+      newArgs.push_back(arg);
+    }
+  }
+
   // Handle indirect return (sret) at call site.
   if (hasSRet && call.getNumResults() > 0) {
     Type origRetTy = call.getResult().getType();
@@ -148,25 +226,20 @@ CIRABIRewriteContext::rewriteCallSite(Operation *callOp,
 
     rewriter.setInsertionPoint(call);
 
-    // Allocate stack space for the return value.
     auto alloca = cir::AllocaOp::create(
         rewriter, call.getLoc(), ptrTy, origRetTy,
         /*name=*/rewriter.getStringAttr("sret"),
         /*alignment=*/rewriter.getI64IntegerAttr(8));
 
-    // Prepend the sret pointer to the argument list.
-    SmallVector<Value> newArgs;
-    newArgs.push_back(alloca);
-    newArgs.append(call.getArgOperands().begin(),
-                   call.getArgOperands().end());
+    SmallVector<Value> sretArgs;
+    sretArgs.push_back(alloca);
+    sretArgs.append(newArgs.begin(), newArgs.end());
 
-    // Create a void call (no result).
     auto voidTy = cir::VoidType::get(call.getContext());
     auto newCall = cir::CallOp::create(
-        rewriter, call.getLoc(), call.getCalleeAttr(), voidTy, newArgs);
+        rewriter, call.getLoc(), call.getCalleeAttr(), voidTy, sretArgs);
     (void)newCall;
 
-    // Load the result from the sret pointer.
     rewriter.setInsertionPointAfter(newCall);
     auto load = cir::LoadOp::create(rewriter, call.getLoc(), origRetTy,
                                     alloca,
@@ -181,7 +254,7 @@ CIRABIRewriteContext::rewriteCallSite(Operation *callOp,
     return success();
   }
 
-  // Handle direct return coercion (existing logic).
+  // Handle direct return coercion.
   bool returnCoerced = false;
   Type coercedRetTy;
   if ((fc.ReturnInfo.Kind == ArgKind::Direct ||
@@ -191,25 +264,34 @@ CIRABIRewriteContext::rewriteCallSite(Operation *callOp,
     coercedRetTy = fc.ReturnInfo.CoercedType;
   }
 
-  if (!returnCoerced)
+  if (!returnCoerced && !argsChanged)
     return success();
 
-  Type origRetTy = call.getResult().getType();
-  if (origRetTy == coercedRetTy)
-    return success();
+  Type callRetTy;
+  Type origRetTy;
+  bool hasResult = call.getNumResults() > 0;
+
+  if (hasResult) {
+    origRetTy = call.getResult().getType();
+    callRetTy = returnCoerced ? coercedRetTy : origRetTy;
+  } else {
+    callRetTy = cir::VoidType::get(call.getContext());
+  }
 
   rewriter.setInsertionPoint(call);
   auto newCall = cir::CallOp::create(
-      rewriter, call.getLoc(), call.getCalleeAttr(), coercedRetTy,
-      call.getArgOperands());
+      rewriter, call.getLoc(), call.getCalleeAttr(), callRetTy, newArgs);
 
-  rewriter.setInsertionPointAfter(newCall);
-  auto castBack = cir::CastOp::create(rewriter, call.getLoc(), origRetTy,
-                                       cir::CastKind::bitcast,
-                                       newCall.getResult());
+  if (hasResult && returnCoerced && origRetTy != coercedRetTy) {
+    rewriter.setInsertionPointAfter(newCall);
+    auto castBack = cir::CastOp::create(rewriter, call.getLoc(), origRetTy,
+                                         cir::CastKind::bitcast,
+                                         newCall.getResult());
+    call.getResult().replaceAllUsesWith(castBack);
+  } else if (hasResult) {
+    call.getResult().replaceAllUsesWith(newCall.getResult());
+  }
 
-  call.getResult().replaceAllUsesWith(castBack);
   call->erase();
-
   return success();
 }
