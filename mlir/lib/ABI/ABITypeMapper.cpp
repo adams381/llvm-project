@@ -48,6 +48,9 @@ const llvm::abi::Type *
 ABITypeMapper::mapIntegerType(mlir::IntegerType type) {
   uint64_t width = type.getWidth();
   uint64_t abiAlign = DL.getTypeABIAlignment(type);
+  // MLIR signless integers are treated as signed for ABI purposes.
+  // Most C/C++ integer types are signless in MLIR but behave as
+  // signed for ABI classification (sign extension, etc.).
   bool isSigned = type.isSigned() || type.isSignless();
   return Builder.getIntegerType(width, llvm::Align(abiAlign), isSigned);
 }

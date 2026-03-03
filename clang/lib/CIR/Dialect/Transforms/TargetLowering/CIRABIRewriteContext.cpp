@@ -21,19 +21,22 @@ using namespace mlir::abi;
 /// value from the original type to the ABI type.
 static void insertReturnCoercion(FunctionOpInterface funcOp, Type origRetTy,
                                  Type coercedRetTy, OpBuilder &rewriter) {
-  funcOp->walk([&](cir::ReturnOp retOp) {
+  SmallVector<cir::ReturnOp> returnOps;
+  funcOp->walk([&](cir::ReturnOp retOp) { returnOps.push_back(retOp); });
+
+  for (cir::ReturnOp retOp : returnOps) {
     if (retOp.getInput().empty())
-      return;
+      continue;
 
     Value origVal = retOp.getInput()[0];
     if (origVal.getType() == coercedRetTy)
-      return;
+      continue;
 
     rewriter.setInsertionPoint(retOp);
     auto castOp = cir::CastOp::create(rewriter, retOp.getLoc(), coercedRetTy,
                                        cir::CastKind::bitcast, origVal);
     retOp->setOperand(0, castOp);
-  });
+  }
 }
 
 /// Rewrite each cir.return to store the return value through the sret
@@ -41,9 +44,13 @@ static void insertReturnCoercion(FunctionOpInterface funcOp, Type origRetTy,
 static void insertSRetStores(FunctionOpInterface funcOp, Type origRetTy,
                              OpBuilder &rewriter) {
   Value sretPtr = funcOp.getArguments()[0];
-  funcOp->walk([&](cir::ReturnOp retOp) {
+
+  SmallVector<cir::ReturnOp> returnOps;
+  funcOp->walk([&](cir::ReturnOp retOp) { returnOps.push_back(retOp); });
+
+  for (cir::ReturnOp retOp : returnOps) {
     if (retOp.getInput().empty())
-      return;
+      continue;
 
     Value retVal = retOp.getInput()[0];
     rewriter.setInsertionPoint(retOp);
@@ -54,7 +61,7 @@ static void insertSRetStores(FunctionOpInterface funcOp, Type origRetTy,
                          /*mem_order=*/cir::MemOrderAttr());
     cir::ReturnOp::create(rewriter, retOp.getLoc());
     retOp->erase();
-  });
+  }
 }
 
 /// For each extended argument, insert a truncation cast at the function
@@ -68,7 +75,9 @@ static void insertArgAdaptation(FunctionOpInterface funcOp,
     return;
 
   Block &entryBlock = body.front();
-  rewriter.setInsertionPointToStart(&entryBlock);
+
+  // Track the insertion point so casts are emitted in argument order.
+  Operation *lastInserted = nullptr;
 
   for (auto [idx, argClass] : llvm::enumerate(fc.ArgInfos)) {
     if (argClass.Kind != ArgKind::Extend || !argClass.CoercedType)
@@ -83,18 +92,18 @@ static void insertArgAdaptation(FunctionOpInterface funcOp,
     if (oldArgTy == newArgTy)
       continue;
 
-    // Change the block argument type to the coerced type.
     blockArg.setType(newArgTy);
 
-    // Insert a truncation cast from the coerced type back to the
-    // original type at the start of the entry block.
-    rewriter.setInsertionPointToStart(&entryBlock);
+    if (lastInserted)
+      rewriter.setInsertionPointAfter(lastInserted);
+    else
+      rewriter.setInsertionPointToStart(&entryBlock);
+
     auto truncCast = cir::CastOp::create(rewriter, funcOp.getLoc(),
                                           oldArgTy, cir::CastKind::integral,
                                           blockArg);
+    lastInserted = truncCast.getOperation();
 
-    // Replace all uses of the block argument (except the cast itself)
-    // with the truncated value.
     blockArg.replaceAllUsesExcept(truncCast, truncCast.getOperation());
   }
 }
@@ -123,11 +132,6 @@ LogicalResult CIRABIRewriteContext::rewriteFunctionDefinition(
     Type origTy = oldArgTypes[idx];
     switch (argClass.Kind) {
     case ArgKind::Direct:
-      newArgTypes.push_back(argClass.CoercedType ? argClass.CoercedType
-                                                 : origTy);
-      if (argClass.CoercedType && argClass.CoercedType != origTy)
-        hasArgChanges = true;
-      break;
     case ArgKind::Extend:
       newArgTypes.push_back(argClass.CoercedType ? argClass.CoercedType
                                                  : origTy);

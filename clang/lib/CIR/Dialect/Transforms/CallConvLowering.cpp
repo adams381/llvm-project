@@ -21,7 +21,6 @@
 #include "TargetLowering/CIRABIRewriteContext.h"
 
 #include "mlir/ABI/ABIRewriteContext.h"
-#include "mlir/ABI/ABITypeMapper.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/Interfaces/DataLayoutInterfaces.h"
 #include "mlir/Interfaces/FunctionInterfaces.h"
@@ -46,6 +45,10 @@ namespace {
 /// the real LLVM ABI library classifier when it lands upstream.
 ArgClassification classifyTypeX86_64(Type ty, const DataLayout &dl,
                                      bool isReturnType) {
+  // Void returns are ignored.
+  if (isa<cir::VoidType>(ty))
+    return ArgClassification::getIgnore();
+
   // Records: inspect size and decide coercion vs indirect.
   if (auto recTy = dyn_cast<cir::RecordType>(ty)) {
     if (!recTy.isComplete())
@@ -123,7 +126,6 @@ struct CallConvLoweringPass
   void runOnOperation() override {
     ModuleOp module = getOperation();
     DataLayout dataLayout(module);
-    ABITypeMapper typeMapper(dataLayout);
     cir::CIRABIRewriteContext rewriteCtx(module);
 
     // Phase 1: Classify and rewrite all functions (both definitions
