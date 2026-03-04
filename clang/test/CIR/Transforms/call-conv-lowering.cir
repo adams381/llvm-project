@@ -106,4 +106,29 @@ module {
   }
   // CHECK: cir.func @call_extern(%arg0: !s32i, %arg1: !s32i) -> !u64i
   // CHECK:   %[[R:.*]] = cir.call @extern_div(%arg0, %arg1) : (!s32i, !s32i) -> !u64i
+
+  // --- Struct argument coercion ---
+
+  // Struct argument coerced to integer: bitcast inserted at entry,
+  // and all uses of the original argument replaced with the cast result.
+  cir.func @takes_pair(%p : !rec_div_t) -> !rec_div_t {
+    cir.return %p : !rec_div_t
+  }
+  // CHECK: cir.func @takes_pair(%arg0: !u64i) -> !u64i
+  // CHECK:   %[[BC:.*]] = cir.cast bitcast %arg0 : !u64i -> !rec_div_t
+  // CHECK:   %[[RET:.*]] = cir.cast bitcast %[[BC]] : !rec_div_t -> !u64i
+  // CHECK:   cir.return %[[RET]] : !u64i
+
+  // Call site with struct argument coercion.
+  cir.func @call_takes_pair() -> !rec_div_t {
+    %tmp = cir.alloca !rec_div_t, !cir.ptr<!rec_div_t>, ["tmp"] {alignment = 4 : i64}
+    %val = cir.load %tmp : !cir.ptr<!rec_div_t>, !rec_div_t
+    %r = cir.call @takes_pair(%val) : (!rec_div_t) -> !rec_div_t
+    cir.return %r : !rec_div_t
+  }
+  // CHECK: cir.func @call_takes_pair() -> !u64i
+  // CHECK:   %[[V:.*]] = cir.load
+  // CHECK:   %[[COERCE:.*]] = cir.cast bitcast %[[V]] : !rec_div_t -> !u64i
+  // CHECK:   %[[RAW:.*]] = cir.call @takes_pair(%[[COERCE]]) : (!u64i) -> !u64i
+  // CHECK:   cir.cast bitcast %[[RAW]] : !u64i -> !rec_div_t
 }
