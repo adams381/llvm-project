@@ -38,9 +38,9 @@ module {
   }
   // CHECK: cir.func @scalar_args(%arg0: !s32i, %arg1: !s64i) -> !s32i
 
-  // --- Struct return coercion ---
+  // --- Struct return coercion (memory-based) ---
 
-  // div_t {i32, i32} (8 bytes) -> coerced to u64
+  // div_t {i32, i32} (8 bytes) -> coerced to u64 via memory
   cir.func @mock_div(%n : !s32i, %d : !s32i) -> !rec_div_t {
     %result = cir.alloca !rec_div_t, !cir.ptr<!rec_div_t>, ["result"] {alignment = 4 : i64}
     %val = cir.load %result : !cir.ptr<!rec_div_t>, !rec_div_t
@@ -48,8 +48,11 @@ module {
   }
   // CHECK: cir.func @mock_div(%arg0: !s32i, %arg1: !s32i) -> !u64i
   // CHECK:   %[[VAL:.*]] = cir.load
-  // CHECK:   %[[CAST:.*]] = cir.cast bitcast %[[VAL]] : !rec_div_t -> !u64i
-  // CHECK:   cir.return %[[CAST]] : !u64i
+  // CHECK:   %[[A:.*]] = cir.alloca !rec_div_t, !cir.ptr<!rec_div_t>, ["coerce"]
+  // CHECK:   cir.store %[[VAL]], %[[A]]
+  // CHECK:   %[[P:.*]] = cir.cast bitcast %[[A]] : !cir.ptr<!rec_div_t> -> !cir.ptr<!u64i>
+  // CHECK:   %[[R:.*]] = cir.load %[[P]] : !cir.ptr<!u64i>, !u64i
+  // CHECK:   cir.return %[[R]] : !u64i
 
   // Single-field struct {i32} (4 bytes) -> coerced to u32
   cir.func @ret_single() -> !rec_single {
@@ -58,9 +61,12 @@ module {
     cir.return %val : !rec_single
   }
   // CHECK: cir.func @ret_single() -> !u32i
-  // CHECK:   %[[V:.*]] = cir.load
-  // CHECK:   %[[C:.*]] = cir.cast bitcast %[[V]] : !rec_single -> !u32i
-  // CHECK:   cir.return %[[C]] : !u32i
+  // CHECK:   %[[V:.*]] = cir.load {{.*}} : !cir.ptr<!rec_single>, !rec_single
+  // CHECK:   %[[A:.*]] = cir.alloca !rec_single, !cir.ptr<!rec_single>, ["coerce"]
+  // CHECK:   cir.store %[[V]], %[[A]]
+  // CHECK:   %[[P:.*]] = cir.cast bitcast %[[A]] : !cir.ptr<!rec_single> -> !cir.ptr<!u32i>
+  // CHECK:   %[[R:.*]] = cir.load %[[P]] : !cir.ptr<!u32i>, !u32i
+  // CHECK:   cir.return %[[R]] : !u32i
 
   // Two i64 struct {i64, i64} (16 bytes) -> coerced to u128
   cir.func @ret_two_i64() -> !rec_two_i64 {
@@ -69,12 +75,14 @@ module {
     cir.return %val : !rec_two_i64
   }
   // CHECK: cir.func @ret_two_i64() -> !u128i
-  // CHECK:   %[[V:.*]] = cir.load
-  // CHECK:   %[[C:.*]] = cir.cast bitcast %[[V]] : !rec_two_i64 -> !u128i
-  // CHECK:   cir.return %[[C]] : !u128i
+  // CHECK:   %[[V:.*]] = cir.load {{.*}} : !cir.ptr<!rec_two_i64>, !rec_two_i64
+  // CHECK:   %[[A:.*]] = cir.alloca !rec_two_i64, !cir.ptr<!rec_two_i64>, ["coerce"]
+  // CHECK:   cir.store %[[V]], %[[A]]
+  // CHECK:   %[[P:.*]] = cir.cast bitcast %[[A]] : !cir.ptr<!rec_two_i64> -> !cir.ptr<!u128i>
+  // CHECK:   %[[R:.*]] = cir.load %[[P]] : !cir.ptr<!u128i>, !u128i
+  // CHECK:   cir.return %[[R]] : !u128i
 
   // Three i64 struct {i64, i64, i64} (24 bytes) -> no coercion
-  // (classifier does not produce sret without CanPassInRegisters)
   cir.func @ret_three_i64() -> !rec_three_i64 {
     %tmp = cir.alloca !rec_three_i64, !cir.ptr<!rec_three_i64>, ["tmp"] {alignment = 8 : i64}
     %val = cir.load %tmp : !cir.ptr<!rec_three_i64>, !rec_three_i64
@@ -93,7 +101,10 @@ module {
   }
   // CHECK: cir.func @call_div() -> !u64i
   // CHECK:   %[[RAW:.*]] = cir.call @mock_div
-  // CHECK:   cir.cast bitcast %[[RAW]] : !u64i -> !rec_div_t
+  // CHECK:   cir.alloca !u64i, !cir.ptr<!u64i>, ["coerce"]
+  // CHECK:   cir.store %[[RAW]]
+  // CHECK:   cir.cast bitcast {{.*}} : !cir.ptr<!u64i> -> !cir.ptr<!rec_div_t>
+  // CHECK:   cir.load {{.*}} : !cir.ptr<!rec_div_t>, !rec_div_t
 
   // --- Declaration rewriting ---
 
@@ -107,17 +118,18 @@ module {
   // CHECK: cir.func @call_extern(%arg0: !s32i, %arg1: !s32i) -> !u64i
   // CHECK:   %[[R:.*]] = cir.call @extern_div(%arg0, %arg1) : (!s32i, !s32i) -> !u64i
 
-  // --- Struct argument coercion ---
+  // --- Struct argument coercion (memory-based) ---
 
-  // Struct argument coerced to integer: bitcast inserted at entry,
-  // and all uses of the original argument replaced with the cast result.
+  // Struct argument coerced to integer via memory, and all uses of
+  // the original argument replaced with the coercion result.
   cir.func @takes_pair(%p : !rec_div_t) -> !rec_div_t {
     cir.return %p : !rec_div_t
   }
   // CHECK: cir.func @takes_pair(%arg0: !u64i) -> !u64i
-  // CHECK:   %[[BC:.*]] = cir.cast bitcast %arg0 : !u64i -> !rec_div_t
-  // CHECK:   %[[RET:.*]] = cir.cast bitcast %[[BC]] : !rec_div_t -> !u64i
-  // CHECK:   cir.return %[[RET]] : !u64i
+  // CHECK:   %[[A:.*]] = cir.alloca !u64i, !cir.ptr<!u64i>, ["coerce"]
+  // CHECK:   cir.store %arg0, %[[A]]
+  // CHECK:   %[[P:.*]] = cir.cast bitcast %[[A]] : !cir.ptr<!u64i> -> !cir.ptr<!rec_div_t>
+  // CHECK:   %[[V:.*]] = cir.load %[[P]] : !cir.ptr<!rec_div_t>, !rec_div_t
 
   // Call site with struct argument coercion.
   cir.func @call_takes_pair() -> !rec_div_t {
@@ -127,8 +139,10 @@ module {
     cir.return %r : !rec_div_t
   }
   // CHECK: cir.func @call_takes_pair() -> !u64i
-  // CHECK:   %[[V:.*]] = cir.load
-  // CHECK:   %[[COERCE:.*]] = cir.cast bitcast %[[V]] : !rec_div_t -> !u64i
-  // CHECK:   %[[RAW:.*]] = cir.call @takes_pair(%[[COERCE]]) : (!u64i) -> !u64i
-  // CHECK:   cir.cast bitcast %[[RAW]] : !u64i -> !rec_div_t
+  // CHECK:   %[[V:.*]] = cir.load {{.*}} : !cir.ptr<!rec_div_t>, !rec_div_t
+  // CHECK:   %[[CA:.*]] = cir.alloca !rec_div_t, !cir.ptr<!rec_div_t>, ["coerce"]
+  // CHECK:   cir.store %[[V]], %[[CA]]
+  // CHECK:   %[[CP:.*]] = cir.cast bitcast %[[CA]] : !cir.ptr<!rec_div_t> -> !cir.ptr<!u64i>
+  // CHECK:   %[[CV:.*]] = cir.load %[[CP]] : !cir.ptr<!u64i>, !u64i
+  // CHECK:   cir.call @takes_pair(%[[CV]]) : (!u64i) -> !u64i
 }
