@@ -8,12 +8,8 @@
 //
 // This pass rewrites CIR function signatures and call sites to match the
 // target ABI calling conventions.  It uses the MLIR ABI integration layer
-// (ABITypeMapper + ABIRewriteContext) to map types, classify arguments,
-// and drive dialect-specific rewrites.
-//
-// A mock X86_64 classifier handles common patterns (struct coercion,
-// integer extension, indirect returns) until the LLVM ABI Lowering Library
-// provides real target-specific classifiers.
+// (ABITypeMapper + ABIRewriteContext) to map types, classify arguments
+// via the LLVM ABI Lowering Library, and drive dialect-specific rewrites.
 //
 //===----------------------------------------------------------------------===//
 
@@ -21,13 +17,19 @@
 #include "TargetLowering/CIRABIRewriteContext.h"
 
 #include "mlir/ABI/ABIRewriteContext.h"
+#include "mlir/ABI/ABITypeMapper.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/Interfaces/DataLayoutInterfaces.h"
 #include "mlir/Interfaces/FunctionInterfaces.h"
 #include "mlir/Pass/Pass.h"
 #include "clang/CIR/Dialect/IR/CIRDialect.h"
 #include "clang/CIR/Dialect/Passes.h"
+#include "llvm/ABI/ABIFunctionInfo.h"
+#include "llvm/ABI/ABIInfo.h"
+#include "llvm/ABI/TargetCodegenInfo.h"
 #include "llvm/ABI/Types.h"
+#include "llvm/IR/CallingConv.h"
+#include "llvm/TargetParser/Triple.h"
 
 using namespace mlir;
 using namespace mlir::abi;
@@ -39,82 +41,115 @@ namespace mlir {
 
 namespace {
 
-/// Classify a single type for the x86_64 System V ABI.
+/// Convert an abi::Type* coercion type back to a CIR type.
 ///
-/// This is a mock that covers common patterns.  It will be replaced by
-/// the real LLVM ABI library classifier when it lands upstream.
-ArgClassification classifyTypeX86_64(Type ty, const DataLayout &dl,
-                                     bool isReturnType) {
-  // Void returns are ignored.
-  if (isa<cir::VoidType>(ty))
-    return ArgClassification::getIgnore();
+/// The classifier produces coercion types expressed as abi::Type*
+/// (e.g. abi::IntegerType(64) for the div_t -> i64 case).  We need
+/// to convert these back to CIR types for the rewrite context.
+static mlir::Type abiTypeToCIR(const llvm::abi::Type *ty, MLIRContext *ctx) {
+  if (!ty)
+    return nullptr;
 
-  // Records: inspect size and decide coercion vs indirect.
-  if (auto recTy = dyn_cast<cir::RecordType>(ty)) {
-    if (!recTy.isComplete())
-      return ArgClassification::getDirect();
+  if (ty->isVoid())
+    return cir::VoidType::get(ctx);
 
-    uint64_t sizeInBytes = dl.getTypeSize(recTy);
-
-    // Structs > 16 bytes: pass/return indirectly.
-    if (sizeInBytes > 16)
-      return ArgClassification::getIndirect(
-          llvm::Align(dl.getTypeABIAlignment(recTy)));
-
-    // Structs <= 8 bytes with all-integer fields: coerce to a single
-    // integer register.  This covers div_t {int, int} -> i64.
-    if (sizeInBytes <= 8) {
-      bool allInteger = true;
-      for (Type member : recTy.getMembers()) {
-        if (!isa<cir::IntType>(member)) {
-          allInteger = false;
-          break;
-        }
-      }
-      if (allInteger) {
-        unsigned coerceBits = sizeInBytes * 8;
-        auto coerceTy =
-            cir::IntType::get(ty.getContext(), coerceBits, /*isSigned=*/false);
-        return ArgClassification::getDirect(coerceTy);
-      }
-    }
-
-    // Other small structs: pass directly for now.
-    return ArgClassification::getDirect();
+  if (auto *intTy = llvm::dyn_cast<llvm::abi::IntegerType>(ty)) {
+    uint64_t width = intTy->getSizeInBits().getFixedValue();
+    return cir::IntType::get(ctx, width, intTy->isSigned());
   }
 
-  // Standard small C integer arguments (i8, i16): extend to i32.
-  // Only for widths 8 and 16 (standard C types), not arbitrary
-  // widths like _BitInt(31).
-  if (auto intTy = dyn_cast<cir::IntType>(ty)) {
-    unsigned width = intTy.getWidth();
-    if (!isReturnType && (width == 8 || width == 16)) {
-      auto i32Ty =
-          cir::IntType::get(ty.getContext(), 32, intTy.isSigned());
-      return ArgClassification::getExtend(i32Ty, intTy.isSigned());
-    }
-  }
+  // Fallback: represent as an unsigned integer of the same bit width.
+  uint64_t bits = ty->getSizeInBits().getFixedValue();
+  if (bits > 0)
+    return cir::IntType::get(ctx, bits, /*isSigned=*/false);
 
-  return ArgClassification::getDirect();
+  return nullptr;
 }
 
-/// Mock X86_64 System V ABI classifier.
+/// Convert an abi::ABIArgInfo classification result into our
+/// dialect-agnostic ArgClassification.
+///
+/// \p origTy is the original CIR type before classification.  When the
+/// coercion type has the same bit width as the original, we use the
+/// original to avoid spurious signedness mismatches.
+static ArgClassification
+convertABIArgInfo(const llvm::abi::ABIArgInfo &info, MLIRContext *ctx,
+                  mlir::Type origTy) {
+  switch (info.getKind()) {
+  case llvm::abi::ABIArgInfo::Direct: {
+    mlir::Type coerced = abiTypeToCIR(info.getCoerceToType(), ctx);
+    // If the coerced type has the same bit width as the original,
+    // the coercion is a no-op (just a signedness difference).  Use
+    // null to mean "keep original type".
+    if (coerced && origTy && coerced != origTy) {
+      if (auto coercedInt = dyn_cast<cir::IntType>(coerced))
+        if (auto origInt = dyn_cast<cir::IntType>(origTy))
+          if (coercedInt.getWidth() == origInt.getWidth())
+            coerced = nullptr;
+    }
+    return ArgClassification::getDirect(coerced);
+  }
+  case llvm::abi::ABIArgInfo::Extend: {
+    mlir::Type coerced = abiTypeToCIR(info.getCoerceToType(), ctx);
+    return ArgClassification::getExtend(coerced, info.isSignExt());
+  }
+  case llvm::abi::ABIArgInfo::Indirect:
+    return ArgClassification::getIndirect(
+        llvm::Align(info.getIndirectAlign()), info.getIndirectByVal());
+  case llvm::abi::ABIArgInfo::Ignore:
+    return ArgClassification::getIgnore();
+  default:
+    llvm_unreachable("ABI arg info kind not yet supported in CIR");
+  }
+}
+
+/// Classify a function using the real LLVM ABI Lowering Library.
+///
+/// Maps CIR types to abi::Type* via ABITypeMapper, calls the X86_64
+/// classifier, and converts the results back to FunctionClassification.
 FunctionClassification
-mockClassifyX86_64(FunctionOpInterface funcOp, const DataLayout &dl) {
+classifyWithABILibrary(FunctionOpInterface funcOp,
+                       ABITypeMapper &typeMapper,
+                       const llvm::abi::ABIInfo &abiInfo) {
   FunctionClassification fc;
+  MLIRContext *ctx = funcOp->getContext();
 
-  // Classify the return type.
+  // Map return type.
   ArrayRef<Type> resultTypes = funcOp.getResultTypes();
+  const llvm::abi::Type *retAbiTy = nullptr;
   if (resultTypes.empty())
-    fc.ReturnInfo = ArgClassification::getIgnore();
+    retAbiTy = typeMapper.getTypeBuilder().getVoidType();
   else
-    fc.ReturnInfo = classifyTypeX86_64(resultTypes[0], dl,
-                                       /*isReturnType=*/true);
+    retAbiTy = typeMapper.map(resultTypes[0]);
 
-  // Classify each argument.
-  for (Type argTy : funcOp.getArgumentTypes())
+  // Map argument types.
+  SmallVector<const llvm::abi::Type *> argAbiTypes;
+  for (Type argTy : funcOp.getArgumentTypes()) {
+    const llvm::abi::Type *mapped = typeMapper.map(argTy);
+    assert(mapped && "ABITypeMapper failed to map CIR type");
+    argAbiTypes.push_back(mapped);
+  }
+  assert(retAbiTy && "ABITypeMapper failed to map return type");
+
+  // Create ABIFunctionInfo, classify, and convert results.
+  std::unique_ptr<llvm::abi::ABIFunctionInfo,
+                  void (*)(llvm::abi::ABIFunctionInfo *)>
+      abiFI(llvm::abi::ABIFunctionInfo::create(llvm::CallingConv::C, retAbiTy,
+                                                argAbiTypes),
+            [](llvm::abi::ABIFunctionInfo *p) { p->operator delete(p); });
+  abiInfo.computeInfo(*abiFI);
+
+  // Convert return classification.
+  Type origRetTy = resultTypes.empty() ? Type() : resultTypes[0];
+  fc.ReturnInfo = convertABIArgInfo(abiFI->getReturnInfo(), ctx, origRetTy);
+
+  // Convert argument classifications.
+  ArrayRef<Type> argTypes = funcOp.getArgumentTypes();
+  for (unsigned i = 0, e = abiFI->getNumArgs(); i < e; ++i) {
+    Type origArgTy = i < argTypes.size() ? argTypes[i] : Type();
     fc.ArgInfos.push_back(
-        classifyTypeX86_64(argTy, dl, /*isReturnType=*/false));
+        convertABIArgInfo(abiFI->getArgInfo(i).ArgInfo, ctx, origArgTy));
+  }
 
   return fc;
 }
@@ -126,15 +161,29 @@ struct CallConvLoweringPass
   void runOnOperation() override {
     ModuleOp module = getOperation();
     DataLayout dataLayout(module);
+    ABITypeMapper typeMapper(dataLayout);
     cir::CIRABIRewriteContext rewriteCtx(module);
 
+    // Read target triple from the module.  When not present (e.g. CIR
+    // parsed from text without a triple), fall back to x86_64-linux.
+    llvm::Triple triple("x86_64-unknown-linux-gnu");
+    if (auto tripleAttr = module->getAttrOfType<StringAttr>(
+            cir::CIRDialect::getTripleAttrName()))
+      triple = llvm::Triple(tripleAttr.getValue());
+    auto targetCGI = llvm::abi::createX8664TargetCodeGenInfo(
+        typeMapper.getTypeBuilder(), triple,
+        llvm::abi::X86AVXABILevel::None,
+        /*Has64BitPointers=*/true,
+        llvm::abi::ABICompatInfo());
+    const llvm::abi::ABIInfo &abiInfo = targetCGI->getABIInfo();
+
     // Phase 1: Classify and rewrite all functions (both definitions
-    // and declarations).  Declarations only get their type updated;
-    // definitions also get body adaptations.
+    // and declarations).
     llvm::DenseMap<StringRef, FunctionClassification> classificationMap;
 
     module.walk([&](FunctionOpInterface funcOp) {
-      FunctionClassification fc = mockClassifyX86_64(funcOp, dataLayout);
+      FunctionClassification fc =
+          classifyWithABILibrary(funcOp, typeMapper, abiInfo);
 
       if (auto nameAttr = funcOp->getAttrOfType<StringAttr>("sym_name"))
         classificationMap[nameAttr.getValue()] = fc;

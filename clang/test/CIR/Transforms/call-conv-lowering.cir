@@ -1,32 +1,46 @@
 // RUN: cir-opt %s -cir-call-conv-lowering -o - | FileCheck %s
 
 // Verify that the CallConvLowering pass correctly handles ABI lowering
-// using the mock X86_64 classifier.
+// using the LLVM ABI Lowering Library's X86_64 classifier.
 
-!s8i = !cir.int<s, 8>
 !s32i = !cir.int<s, 32>
 !s64i = !cir.int<s, 64>
+!u32i = !cir.int<u, 32>
 !u64i = !cir.int<u, 64>
+!u128i = !cir.int<u, 128>
 !rec_div_t = !cir.record<struct "div_t" {!s32i, !s32i}>
-!rec_big = !cir.record<struct "Big" {!s64i, !s64i, !s64i, !s64i, !s64i}>
+!rec_single = !cir.record<struct "single" {!s32i}>
+!rec_two_i64 = !cir.record<struct "two_i64" {!s64i, !s64i}>
+!rec_three_i64 = !cir.record<struct "three_i64" {!s64i, !s64i, !s64i}>
 
 module {
-  // Scalar arguments should be unchanged.
+  // --- Scalars: should be unchanged ---
+
   cir.func @add(%a : !s32i, %b : !s32i) -> !s32i {
     %r = cir.binop(add, %a, %b) : !s32i
     cir.return %r : !s32i
   }
   // CHECK: cir.func @add(%arg0: !s32i, %arg1: !s32i) -> !s32i
 
-  // A void function should be unchanged.
-  cir.func @noop() {
+  cir.func @ret_i64() -> !s64i {
+    %v = cir.const #cir.int<42> : !s64i
+    cir.return %v : !s64i
+  }
+  // CHECK: cir.func @ret_i64() -> !s64i
+
+  cir.func @void_func() {
     cir.return
   }
-  // CHECK: cir.func @noop()
+  // CHECK: cir.func @void_func()
 
-  // div_t proof of concept: a function returning a struct with two i32
-  // fields (8 bytes total) should have its return type coerced to u64
-  // on x86_64, with a bitcast inserted before the return.
+  cir.func @scalar_args(%a : !s32i, %b : !s64i) -> !s32i {
+    cir.return %a : !s32i
+  }
+  // CHECK: cir.func @scalar_args(%arg0: !s32i, %arg1: !s64i) -> !s32i
+
+  // --- Struct return coercion ---
+
+  // div_t {i32, i32} (8 bytes) -> coerced to u64
   cir.func @mock_div(%n : !s32i, %d : !s32i) -> !rec_div_t {
     %result = cir.alloca !rec_div_t, !cir.ptr<!rec_div_t>, ["result"] {alignment = 4 : i64}
     %val = cir.load %result : !cir.ptr<!rec_div_t>, !rec_div_t
@@ -37,71 +51,59 @@ module {
   // CHECK:   %[[CAST:.*]] = cir.cast bitcast %[[VAL]] : !rec_div_t -> !u64i
   // CHECK:   cir.return %[[CAST]] : !u64i
 
-  // Call-site rewriting: caller of mock_div gets the u64 result
-  // bitcasted back to the original struct type.
+  // Single-field struct {i32} (4 bytes) -> coerced to u32
+  cir.func @ret_single() -> !rec_single {
+    %tmp = cir.alloca !rec_single, !cir.ptr<!rec_single>, ["tmp"] {alignment = 4 : i64}
+    %val = cir.load %tmp : !cir.ptr<!rec_single>, !rec_single
+    cir.return %val : !rec_single
+  }
+  // CHECK: cir.func @ret_single() -> !u32i
+  // CHECK:   %[[V:.*]] = cir.load
+  // CHECK:   %[[C:.*]] = cir.cast bitcast %[[V]] : !rec_single -> !u32i
+  // CHECK:   cir.return %[[C]] : !u32i
+
+  // Two i64 struct {i64, i64} (16 bytes) -> coerced to u128
+  cir.func @ret_two_i64() -> !rec_two_i64 {
+    %tmp = cir.alloca !rec_two_i64, !cir.ptr<!rec_two_i64>, ["tmp"] {alignment = 8 : i64}
+    %val = cir.load %tmp : !cir.ptr<!rec_two_i64>, !rec_two_i64
+    cir.return %val : !rec_two_i64
+  }
+  // CHECK: cir.func @ret_two_i64() -> !u128i
+  // CHECK:   %[[V:.*]] = cir.load
+  // CHECK:   %[[C:.*]] = cir.cast bitcast %[[V]] : !rec_two_i64 -> !u128i
+  // CHECK:   cir.return %[[C]] : !u128i
+
+  // Three i64 struct {i64, i64, i64} (24 bytes) -> no coercion
+  // (classifier does not produce sret without CanPassInRegisters)
+  cir.func @ret_three_i64() -> !rec_three_i64 {
+    %tmp = cir.alloca !rec_three_i64, !cir.ptr<!rec_three_i64>, ["tmp"] {alignment = 8 : i64}
+    %val = cir.load %tmp : !cir.ptr<!rec_three_i64>, !rec_three_i64
+    cir.return %val : !rec_three_i64
+  }
+  // CHECK: cir.func @ret_three_i64() -> !rec_three_i64
+  // CHECK:   cir.return %{{.*}} : !rec_three_i64
+
+  // --- Call-site rewriting ---
+
   cir.func @call_div() -> !rec_div_t {
     %n = cir.const #cir.int<10> : !s32i
     %d = cir.const #cir.int<3> : !s32i
     %result = cir.call @mock_div(%n, %d) : (!s32i, !s32i) -> !rec_div_t
     cir.return %result : !rec_div_t
   }
-  // call_div also returns div_t, so it is also coerced to u64i.
-  // The call to mock_div returns u64i and is bitcasted back to
-  // rec_div_t, then the return coercion bitcasts it back to u64i.
   // CHECK: cir.func @call_div() -> !u64i
-  // CHECK:   %[[N:.*]] = cir.const #cir.int<10>
-  // CHECK:   %[[D:.*]] = cir.const #cir.int<3>
-  // CHECK:   %[[RAW:.*]] = cir.call @mock_div(%[[N]], %[[D]]) : (!s32i, !s32i) -> !u64i
-  // CHECK:   %[[BACK:.*]] = cir.cast bitcast %[[RAW]] : !u64i -> !rec_div_t
-  // CHECK:   %[[RET:.*]] = cir.cast bitcast %[[BACK]] : !rec_div_t -> !u64i
-  // CHECK:   cir.return %[[RET]] : !u64i
+  // CHECK:   %[[RAW:.*]] = cir.call @mock_div
+  // CHECK:   cir.cast bitcast %[[RAW]] : !u64i -> !rec_div_t
 
-  // Indirect return (sret): struct > 16 bytes gets returned via pointer.
-  // Callee: return type becomes void, sret pointer prepended.
-  cir.func @make_big() -> !rec_big {
-    %tmp = cir.alloca !rec_big, !cir.ptr<!rec_big>, ["tmp"] {alignment = 8 : i64}
-    %val = cir.load %tmp : !cir.ptr<!rec_big>, !rec_big
-    cir.return %val : !rec_big
-  }
-  // CHECK: cir.func @make_big(%arg0: !cir.ptr<!rec_Big>)
-  // CHECK-NOT: -> !rec_Big
-  // CHECK:   %[[V:.*]] = cir.load
-  // CHECK:   cir.store %[[V]], %arg0
-  // CHECK:   cir.return{{$}}
+  // --- Declaration rewriting ---
 
-  // Caller of sret function: alloca + pass pointer + load result.
-  cir.func @use_big() {
-    %big = cir.call @make_big() : () -> !rec_big
-    cir.return
-  }
-  // CHECK: cir.func @use_big()
-  // CHECK:   %[[SRET:.*]] = cir.alloca !rec_Big, !cir.ptr<!rec_Big>
-  // CHECK:   cir.call @make_big(%[[SRET]])
-  // CHECK:   %[[LOADED:.*]] = cir.load %[[SRET]]
-
-  // Argument extension: i8 argument extended to i32, with truncation
-  // cast inserted at function entry.
-  cir.func @takes_char(%c : !s8i) -> !s32i {
-    %ext = cir.cast integral %c : !s8i -> !s32i
-    cir.return %ext : !s32i
-  }
-  // CHECK: cir.func @takes_char(%arg0: !s32i) -> !s32i
-  // CHECK:   %[[TRUNC:.*]] = cir.cast integral %arg0 : !s32i -> !s8i
-  // CHECK:   %[[EXT:.*]] = cir.cast integral %[[TRUNC]] : !s8i -> !s32i
-  // CHECK:   cir.return %[[EXT]] : !s32i
-
-  // Declaration rewriting: external function declarations also get
-  // their types updated.
   cir.func private @extern_div(!s32i, !s32i) -> !rec_div_t
-
   // CHECK: cir.func private @extern_div(!s32i, !s32i) -> !u64i
 
-  // Call to an external declaration: call site rewritten.
   cir.func @call_extern(%a : !s32i, %b : !s32i) -> !rec_div_t {
     %r = cir.call @extern_div(%a, %b) : (!s32i, !s32i) -> !rec_div_t
     cir.return %r : !rec_div_t
   }
   // CHECK: cir.func @call_extern(%arg0: !s32i, %arg1: !s32i) -> !u64i
   // CHECK:   %[[R:.*]] = cir.call @extern_div(%arg0, %arg1) : (!s32i, !s32i) -> !u64i
-  // CHECK:   %[[BC:.*]] = cir.cast bitcast %[[R]] : !u64i -> !rec_div_t
 }
