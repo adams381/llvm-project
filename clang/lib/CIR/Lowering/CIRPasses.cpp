@@ -33,6 +33,11 @@ mlir::LogicalResult runCIRToCIRPasses(mlir::ModuleOp theModule,
 
   pm.addPass(mlir::createTargetLoweringPass());
   pm.addPass(mlir::createCXXABILoweringPass());
+  // Disable record coercion because CIR RecordType does not carry
+  // triviality info.  Non-trivially-copyable C++ structs (with
+  // ctors/dtors) would be incorrectly coerced.  Enable when CIR
+  // carries triviality on RecordType.
+  pm.addPass(mlir::createCallConvLoweringPass(/*recordCoercionEnabled=*/false));
   pm.addPass(mlir::createLoweringPreparePass(&astContext));
 
   pm.enableVerifier(enableVerifier);

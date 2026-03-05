@@ -72,23 +72,22 @@ static mlir::Type abiTypeToCIR(const llvm::abi::Type *ty, MLIRContext *ctx) {
 /// \p origTy is the original CIR type before classification.  When the
 /// coercion type has the same bit width as the original, we use the
 /// original to avoid spurious signedness mismatches.
-static ArgClassification
-convertABIArgInfo(const llvm::abi::ABIArgInfo &info, MLIRContext *ctx,
-                  mlir::Type origTy) {
+static ArgClassification convertABIArgInfo(const llvm::abi::ABIArgInfo &info,
+                                           MLIRContext *ctx, mlir::Type origTy,
+                                           bool recordCoercionEnabled) {
   switch (info.getKind()) {
   case llvm::abi::ABIArgInfo::Direct: {
     mlir::Type coerced = abiTypeToCIR(info.getCoerceToType(), ctx);
     // Suppress coercion when it is a no-op:
     //
-    // 1. Same-width integer signedness difference (e.g. !s32i vs !u32i).
-    // 2. The original type is NOT a record.  The ABITypeMapper
-    //    fallback maps every non-record CIR type (pointers, bools,
-    //    etc.) to an integer of equal bit width.  The classifier
-    //    echoes that integer back as the coercion type, producing a
-    //    spurious coercion.  Real coercion only applies to records
-    //    that must be split/packed into registers.
-    if (coerced && origTy && coerced != origTy) {
-      if (!isa<cir::RecordType>(origTy))
+    // 1. Coerced type equals original (e.g. i32 → i32).
+    // 2. Original is not a record — the mapper fallback produces
+    //    spurious integer coercions for non-record CIR types.
+    // 3. Same-width integer signedness difference on records.
+    if (coerced && origTy) {
+      if (coerced == origTy)
+        coerced = nullptr;
+      else if (!isa<cir::RecordType>(origTy))
         coerced = nullptr;
       else if (auto coercedInt = dyn_cast<cir::IntType>(coerced))
         if (auto origInt = dyn_cast<cir::IntType>(origTy))
@@ -99,12 +98,22 @@ convertABIArgInfo(const llvm::abi::ABIArgInfo &info, MLIRContext *ctx,
   }
   case llvm::abi::ABIArgInfo::Extend: {
     mlir::Type coerced = abiTypeToCIR(info.getCoerceToType(), ctx);
+    // Extension only applies to CIR integer types.  Other types
+    // (e.g. cir::BoolType) handle promotion during CIR-to-LLVM
+    // lowering, and inserting cir.cast integral on them would fail
+    // verification.
+    if (origTy && !isa<cir::IntType>(origTy))
+      return ArgClassification::getDirect(nullptr);
     return ArgClassification::getExtend(coerced, info.isSignExt());
   }
   case llvm::abi::ABIArgInfo::Indirect:
-    return ArgClassification::getIndirect(
-        llvm::Align(info.getIndirectAlign()), info.getIndirectByVal());
+    if (!recordCoercionEnabled)
+      return ArgClassification::getDirect(nullptr);
+    return ArgClassification::getIndirect(llvm::Align(info.getIndirectAlign()),
+                                          info.getIndirectByVal());
   case llvm::abi::ABIArgInfo::Ignore:
+    if (!recordCoercionEnabled && origTy && isa<cir::RecordType>(origTy))
+      return ArgClassification::getDirect(nullptr);
     return ArgClassification::getIgnore();
   default:
     llvm_unreachable("ABI arg info kind not yet supported in CIR");
@@ -117,28 +126,33 @@ convertABIArgInfo(const llvm::abi::ABIArgInfo &info, MLIRContext *ctx,
 /// types (cir::IntType, cir::PointerType, cir::RecordType, etc.)
 /// need dialect-aware mapping to preserve signedness, field layout,
 /// and pointer semantics.
-static const llvm::abi::Type *
-mapCIRType(mlir::Type type, ABITypeMapper &typeMapper,
-           const DataLayout &dl) {
+static const llvm::abi::Type *mapCIRType(mlir::Type type,
+                                         ABITypeMapper &typeMapper,
+                                         const DataLayout &dl,
+                                         bool recordCoercionEnabled) {
   llvm::abi::TypeBuilder &tb = typeMapper.getTypeBuilder();
+
+  // llvm::Align requires a power of 2.  DataLayout may return
+  // non-power-of-2 for unusual types (e.g. _BitInt(31)).
+  auto safeAlign = [](uint64_t a) -> llvm::Align {
+    return llvm::Align(llvm::PowerOf2Ceil(std::max<uint64_t>(a, 1)));
+  };
 
   if (auto intTy = dyn_cast<cir::IntType>(type)) {
     uint64_t width = intTy.getWidth();
-    uint64_t abiAlign = dl.getTypeABIAlignment(type);
-    return tb.getIntegerType(width, llvm::Align(abiAlign), intTy.isSigned());
+    return tb.getIntegerType(width, safeAlign(dl.getTypeABIAlignment(type)),
+                             intTy.isSigned());
   }
 
   if (isa<cir::PointerType>(type)) {
     uint64_t sizeBits = dl.getTypeSizeInBits(type);
-    uint64_t abiAlign = dl.getTypeABIAlignment(type);
-    return tb.getPointerType(sizeBits, llvm::Align(abiAlign),
+    return tb.getPointerType(sizeBits, safeAlign(dl.getTypeABIAlignment(type)),
                              /*AddressSpace=*/0);
   }
 
   if (isa<cir::BoolType>(type)) {
     uint64_t sizeBits = dl.getTypeSizeInBits(type);
-    uint64_t abiAlign = dl.getTypeABIAlignment(type);
-    return tb.getIntegerType(sizeBits, llvm::Align(abiAlign),
+    return tb.getIntegerType(sizeBits, safeAlign(dl.getTypeABIAlignment(type)),
                              /*Signed=*/false);
   }
 
@@ -150,20 +164,23 @@ mapCIRType(mlir::Type type, ABITypeMapper &typeMapper,
     uint64_t offsetBits = 0;
     for (mlir::Type fieldTy : recTy.getMembers()) {
       const llvm::abi::Type *mappedField =
-          mapCIRType(fieldTy, typeMapper, dl);
+          mapCIRType(fieldTy, typeMapper, dl, recordCoercionEnabled);
       uint64_t fieldSize = dl.getTypeSizeInBits(fieldTy);
       fields.push_back({mappedField, offsetBits,
-                         /*BitFieldWidth=*/0,
-                         /*IsBitField=*/false,
-                         /*IsUnnamedBitfield=*/false});
+                        /*BitFieldWidth=*/0,
+                        /*IsBitField=*/false,
+                        /*IsUnnamedBitfield=*/false});
       offsetBits += fieldSize;
     }
     llvm::TypeSize size = dl.getTypeSizeInBits(type);
-    uint64_t abiAlign = dl.getTypeABIAlignment(type);
-    // Plain C/C++ data structs without non-trivial copy/dtor can be
-    // passed in registers.  CIR record types at this stage are always
-    // trivially copyable (non-trivial semantics are lowered earlier).
-    return tb.getRecordType(fields, size, llvm::Align(abiAlign),
+    uint64_t rawAlign = dl.getTypeABIAlignment(type);
+    // CIR RecordType does not carry triviality information (whether
+    // the type has non-trivial copy/dtor).  When record coercion is
+    // enabled (e.g. standalone cir-opt with known-trivial C structs),
+    // set CanPassInRegister=true so the classifier produces Direct
+    // coercion.  When disabled (pipeline, where non-trivial C++
+    // structs may appear), default to false so records pass through.
+    return tb.getRecordType(fields, size, safeAlign(rawAlign),
                             llvm::abi::StructPacking::Default,
                             /*BaseClasses=*/{},
                             /*VirtualBaseClasses=*/{},
@@ -173,7 +190,7 @@ mapCIRType(mlir::Type type, ABITypeMapper &typeMapper,
                             /*NonTrivialDtor=*/false,
                             /*FlexibleArray=*/false,
                             /*UnalignedFields=*/false,
-                            /*CanPassInRegister=*/true);
+                            /*CanPassInRegister=*/recordCoercionEnabled);
   }
 
   // Fall back to the generic mapper for MLIR built-in types.
@@ -185,11 +202,11 @@ mapCIRType(mlir::Type type, ABITypeMapper &typeMapper,
 /// Maps CIR types to abi::Type* via CIR-aware mapping, calls the
 /// X86_64 classifier, and converts the results back to
 /// FunctionClassification.
-FunctionClassification
-classifyWithABILibrary(FunctionOpInterface funcOp,
-                       ABITypeMapper &typeMapper,
-                       const DataLayout &dl,
-                       const llvm::abi::ABIInfo &abiInfo) {
+FunctionClassification classifyWithABILibrary(FunctionOpInterface funcOp,
+                                              ABITypeMapper &typeMapper,
+                                              const DataLayout &dl,
+                                              const llvm::abi::ABIInfo &abiInfo,
+                                              bool recordCoercionEnabled) {
   FunctionClassification fc;
   MLIRContext *ctx = funcOp->getContext();
 
@@ -199,12 +216,14 @@ classifyWithABILibrary(FunctionOpInterface funcOp,
   if (resultTypes.empty())
     retAbiTy = typeMapper.getTypeBuilder().getVoidType();
   else
-    retAbiTy = mapCIRType(resultTypes[0], typeMapper, dl);
+    retAbiTy =
+        mapCIRType(resultTypes[0], typeMapper, dl, recordCoercionEnabled);
 
   // Map argument types.
   SmallVector<const llvm::abi::Type *> argAbiTypes;
   for (Type argTy : funcOp.getArgumentTypes()) {
-    const llvm::abi::Type *mapped = mapCIRType(argTy, typeMapper, dl);
+    const llvm::abi::Type *mapped =
+        mapCIRType(argTy, typeMapper, dl, recordCoercionEnabled);
     assert(mapped && "failed to map CIR type to ABI type");
     argAbiTypes.push_back(mapped);
   }
@@ -214,20 +233,21 @@ classifyWithABILibrary(FunctionOpInterface funcOp,
   std::unique_ptr<llvm::abi::ABIFunctionInfo,
                   void (*)(llvm::abi::ABIFunctionInfo *)>
       abiFI(llvm::abi::ABIFunctionInfo::create(llvm::CallingConv::C, retAbiTy,
-                                                argAbiTypes),
+                                               argAbiTypes),
             [](llvm::abi::ABIFunctionInfo *p) { p->operator delete(p); });
   abiInfo.computeInfo(*abiFI);
 
   // Convert return classification.
   Type origRetTy = resultTypes.empty() ? Type() : resultTypes[0];
-  fc.ReturnInfo = convertABIArgInfo(abiFI->getReturnInfo(), ctx, origRetTy);
+  fc.ReturnInfo = convertABIArgInfo(abiFI->getReturnInfo(), ctx, origRetTy,
+                                    recordCoercionEnabled);
 
   // Convert argument classifications.
   ArrayRef<Type> argTypes = funcOp.getArgumentTypes();
   for (unsigned i = 0, e = abiFI->getNumArgs(); i < e; ++i) {
     Type origArgTy = i < argTypes.size() ? argTypes[i] : Type();
-    fc.ArgInfos.push_back(
-        convertABIArgInfo(abiFI->getArgInfo(i).ArgInfo, ctx, origArgTy));
+    fc.ArgInfos.push_back(convertABIArgInfo(abiFI->getArgInfo(i).ArgInfo, ctx,
+                                            origArgTy, recordCoercionEnabled));
   }
 
   return fc;
@@ -236,6 +256,10 @@ classifyWithABILibrary(FunctionOpInterface funcOp,
 struct CallConvLoweringPass
     : public impl::CallConvLoweringBase<CallConvLoweringPass> {
   CallConvLoweringPass() = default;
+  explicit CallConvLoweringPass(bool enableRecordCoercion)
+      : CallConvLoweringBase() {
+    recordCoercionEnabled = enableRecordCoercion;
+  }
 
   void runOnOperation() override {
     ModuleOp module = getOperation();
@@ -250,10 +274,8 @@ struct CallConvLoweringPass
             cir::CIRDialect::getTripleAttrName()))
       triple = llvm::Triple(tripleAttr.getValue());
     auto targetCGI = llvm::abi::createX8664TargetCodeGenInfo(
-        typeMapper.getTypeBuilder(), triple,
-        llvm::abi::X86AVXABILevel::None,
-        /*Has64BitPointers=*/true,
-        llvm::abi::ABICompatInfo());
+        typeMapper.getTypeBuilder(), triple, llvm::abi::X86AVXABILevel::None,
+        /*Has64BitPointers=*/true, llvm::abi::ABICompatInfo());
     const llvm::abi::ABIInfo &abiInfo = targetCGI->getABIInfo();
 
     // Phase 1: Classify and rewrite all functions (both definitions
@@ -261,8 +283,13 @@ struct CallConvLoweringPass
     llvm::DenseMap<StringRef, FunctionClassification> classificationMap;
 
     module.walk([&](FunctionOpInterface funcOp) {
-      FunctionClassification fc =
-          classifyWithABILibrary(funcOp, typeMapper, dataLayout, abiInfo);
+      // Skip coroutine functions — their return semantics are handled
+      // by the coroutine lowering passes and must not be rewritten.
+      if (funcOp->hasAttr("coroutine"))
+        return;
+
+      FunctionClassification fc = classifyWithABILibrary(
+          funcOp, typeMapper, dataLayout, abiInfo, recordCoercionEnabled);
 
       if (auto nameAttr = funcOp->getAttrOfType<StringAttr>("sym_name"))
         classificationMap[nameAttr.getValue()] = fc;
@@ -272,7 +299,26 @@ struct CallConvLoweringPass
         return signalPassFailure();
     });
 
-    // Phase 2: Rewrite call sites to match rewritten callees.
+    // Phase 2: Update cir.get_global ops whose result type embeds a
+    // function type that was rewritten in Phase 1.
+    module.walk([&](cir::GetGlobalOp getOp) {
+      FlatSymbolRefAttr sym = getOp.getNameAttr();
+      auto funcOp = module.lookupSymbol<FunctionOpInterface>(sym);
+      if (!funcOp)
+        return;
+      auto ptrTy = dyn_cast<cir::PointerType>(getOp.getType());
+      if (!ptrTy)
+        return;
+      auto fnTy = dyn_cast<cir::FuncType>(ptrTy.getPointee());
+      if (!fnTy)
+        return;
+      auto currentFnTy = dyn_cast<cir::FuncType>(funcOp.getFunctionType());
+      if (!currentFnTy || fnTy == currentFnTy)
+        return;
+      getOp.getResult().setType(cir::PointerType::get(currentFnTy));
+    });
+
+    // Phase 3: Rewrite call sites to match rewritten callees.
     module.walk([&](cir::CallOp callOp) {
       auto callee = callOp.getCalleeAttr();
       if (!callee)
@@ -293,4 +339,9 @@ struct CallConvLoweringPass
 
 std::unique_ptr<Pass> mlir::createCallConvLoweringPass() {
   return std::make_unique<CallConvLoweringPass>();
+}
+
+std::unique_ptr<Pass>
+mlir::createCallConvLoweringPass(bool recordCoercionEnabled) {
+  return std::make_unique<CallConvLoweringPass>(recordCoercionEnabled);
 }

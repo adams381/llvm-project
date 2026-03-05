@@ -208,6 +208,7 @@ LogicalResult CIRABIRewriteContext::rewriteFunctionDefinition(
       fc.ReturnInfo.Kind == ArgKind::Indirect && !oldResultTypes.empty();
   bool returnCoerced = false;
   bool hasArgChanges = false;
+  SmallVector<unsigned> ignoredArgIndices;
 
   // Compute new argument types.
   SmallVector<Type> newArgTypes;
@@ -232,6 +233,8 @@ LogicalResult CIRABIRewriteContext::rewriteFunctionDefinition(
       newArgTypes.push_back(origTy);
       break;
     case ArgKind::Ignore:
+      ignoredArgIndices.push_back(idx);
+      hasArgChanges = true;
       break;
     }
   }
@@ -285,6 +288,38 @@ LogicalResult CIRABIRewriteContext::rewriteFunctionDefinition(
     if (hasArgChanges)
       insertArgAdaptation(funcOp, fc, sretOffset, rewriter);
 
+    // Erase block arguments for Ignore'd args (in reverse to keep
+    // indices valid).  Replace any remaining uses with undef first.
+    if (!ignoredArgIndices.empty()) {
+      Region &body = funcOp->getRegion(0);
+      if (!body.empty()) {
+        Block &entry = body.front();
+        for (int i = ignoredArgIndices.size() - 1; i >= 0; --i) {
+          unsigned blockIdx = ignoredArgIndices[i] + sretOffset;
+          if (blockIdx < entry.getNumArguments()) {
+            BlockArgument arg = entry.getArgument(blockIdx);
+            if (!arg.use_empty()) {
+              rewriter.setInsertionPointToStart(&entry);
+              auto ptrTy = cir::PointerType::get(arg.getType());
+              auto alloca = cir::AllocaOp::create(
+                  rewriter, funcOp.getLoc(), ptrTy, arg.getType(),
+                  /*name=*/rewriter.getStringAttr("ignored"),
+                  /*alignment=*/rewriter.getI64IntegerAttr(1));
+              auto load = cir::LoadOp::create(
+                  rewriter, funcOp.getLoc(), arg.getType(), alloca,
+                  /*isDeref=*/mlir::UnitAttr(),
+                  /*isVolatile=*/mlir::UnitAttr(),
+                  /*alignment=*/mlir::IntegerAttr(),
+                  /*sync_scope=*/cir::SyncScopeKindAttr(),
+                  /*mem_order=*/cir::MemOrderAttr());
+              arg.replaceAllUsesWith(load);
+            }
+            entry.eraseArgument(blockIdx);
+          }
+        }
+      }
+    }
+
     if (returnCoerced)
       insertReturnCoercion(funcOp, oldResultTypes[0], fc.ReturnInfo.CoercedType,
                            rewriter);
@@ -312,6 +347,11 @@ LogicalResult CIRABIRewriteContext::rewriteCallSite(
       break;
 
     Value arg = argOperands[idx];
+
+    if (argClass.Kind == ArgKind::Ignore) {
+      argsChanged = true;
+      continue;
+    }
 
     if ((argClass.Kind == ArgKind::Extend ||
          argClass.Kind == ArgKind::Direct) &&
@@ -351,7 +391,10 @@ LogicalResult CIRABIRewriteContext::rewriteCallSite(
     auto voidTy = cir::VoidType::get(call.getContext());
     auto newCall = cir::CallOp::create(rewriter, call.getLoc(),
                                        call.getCalleeAttr(), voidTy, sretArgs);
-    (void)newCall;
+    // Preserve call attributes (noreturn, side_effect, etc.).
+    for (NamedAttribute attr : call->getAttrs())
+      if (!newCall->hasAttr(attr.getName()))
+        newCall->setAttr(attr.getName(), attr.getValue());
 
     rewriter.setInsertionPointAfter(newCall);
     auto load = cir::LoadOp::create(rewriter, call.getLoc(), origRetTy, alloca,
@@ -393,6 +436,10 @@ LogicalResult CIRABIRewriteContext::rewriteCallSite(
   rewriter.setInsertionPoint(call);
   auto newCall = cir::CallOp::create(rewriter, call.getLoc(),
                                      call.getCalleeAttr(), callRetTy, newArgs);
+  // Preserve call attributes (noreturn, side_effect, etc.).
+  for (NamedAttribute attr : call->getAttrs())
+    if (!newCall->hasAttr(attr.getName()))
+      newCall->setAttr(attr.getName(), attr.getValue());
 
   if (hasResult && returnCoerced && origRetTy != coercedRetTy) {
     rewriter.setInsertionPointAfter(newCall);

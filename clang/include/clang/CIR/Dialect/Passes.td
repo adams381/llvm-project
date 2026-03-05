@@ -163,6 +163,15 @@ def CallConvLowering : Pass<"cir-call-conv-lowering", "mlir::ModuleOp"> {
   }];
   let constructor = "mlir::createCallConvLoweringPass()";
   let dependentDialects = ["cir::CIRDialect"];
+  let options = [
+    Option<"recordCoercionEnabled", "record-coercion", "bool",
+           /*default=*/"true",
+           "Enable ABI coercion for record (struct/union) types.  "
+           "Defaults to true for standalone cir-opt (where test "
+           "inputs use known-trivial C structs).  The clang pipeline "
+           "passes false because CIR RecordType does not carry "
+           "triviality info for C++ types.">
+  ];
 }
 
 def LoweringPrepare : Pass<"cir-lowering-prepare"> {

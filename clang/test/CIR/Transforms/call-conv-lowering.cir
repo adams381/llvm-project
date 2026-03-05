@@ -2,18 +2,20 @@
 
 // Verify that the CallConvLowering pass correctly handles ABI lowering
 // using the LLVM ABI Lowering Library's X86_64 classifier.
+// Record coercion is enabled (the default for cir-opt) since the test
+// uses plain C structs that are trivially copyable.
 
 !s32i = !cir.int<s, 32>
 !s64i = !cir.int<s, 64>
-!u64i = !cir.int<u, 64>
 !u128i = !cir.int<u, 128>
+!u64i = !cir.int<u, 64>
 !rec_div_t = !cir.record<struct "div_t" {!s32i, !s32i}>
 !rec_single = !cir.record<struct "single" {!s32i}>
 !rec_two_i64 = !cir.record<struct "two_i64" {!s64i, !s64i}>
 !rec_three_i64 = !cir.record<struct "three_i64" {!s64i, !s64i, !s64i}>
 
 module {
-  // --- Scalars: should be unchanged ---
+  // --- Scalars: unchanged ---
 
   cir.func @add(%a : !s32i, %b : !s32i) -> !s32i {
     %r = cir.binop(add, %a, %b) : !s32i
@@ -120,8 +122,6 @@ module {
 
   // --- Struct argument coercion (memory-based) ---
 
-  // Struct argument coerced to integer via memory, and all uses of
-  // the original argument replaced with the coercion result.
   cir.func @takes_pair(%p : !rec_div_t) -> !rec_div_t {
     cir.return %p : !rec_div_t
   }
