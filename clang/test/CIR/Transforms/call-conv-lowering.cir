@@ -5,7 +5,6 @@
 
 !s32i = !cir.int<s, 32>
 !s64i = !cir.int<s, 64>
-!u32i = !cir.int<u, 32>
 !u64i = !cir.int<u, 64>
 !u128i = !cir.int<u, 128>
 !rec_div_t = !cir.record<struct "div_t" {!s32i, !s32i}>
@@ -54,19 +53,19 @@ module {
   // CHECK:   %[[R:.*]] = cir.load %[[P]] : !cir.ptr<!u64i>, !u64i
   // CHECK:   cir.return %[[R]] : !u64i
 
-  // Single-field struct {i32} (4 bytes) -> coerced to u32
+  // Single-field struct {i32} (4 bytes) -> coerced to s32i
   cir.func @ret_single() -> !rec_single {
     %tmp = cir.alloca !rec_single, !cir.ptr<!rec_single>, ["tmp"] {alignment = 4 : i64}
     %val = cir.load %tmp : !cir.ptr<!rec_single>, !rec_single
     cir.return %val : !rec_single
   }
-  // CHECK: cir.func @ret_single() -> !u32i
+  // CHECK: cir.func @ret_single() -> !s32i
   // CHECK:   %[[V:.*]] = cir.load {{.*}} : !cir.ptr<!rec_single>, !rec_single
   // CHECK:   %[[A:.*]] = cir.alloca !rec_single, !cir.ptr<!rec_single>, ["coerce"]
   // CHECK:   cir.store %[[V]], %[[A]]
-  // CHECK:   %[[P:.*]] = cir.cast bitcast %[[A]] : !cir.ptr<!rec_single> -> !cir.ptr<!u32i>
-  // CHECK:   %[[R:.*]] = cir.load %[[P]] : !cir.ptr<!u32i>, !u32i
-  // CHECK:   cir.return %[[R]] : !u32i
+  // CHECK:   %[[P:.*]] = cir.cast bitcast %[[A]] : !cir.ptr<!rec_single> -> !cir.ptr<!s32i>
+  // CHECK:   %[[R:.*]] = cir.load %[[P]] : !cir.ptr<!s32i>, !s32i
+  // CHECK:   cir.return %[[R]] : !s32i
 
   // Two i64 struct {i64, i64} (16 bytes) -> coerced to u128
   cir.func @ret_two_i64() -> !rec_two_i64 {
@@ -82,14 +81,15 @@ module {
   // CHECK:   %[[R:.*]] = cir.load %[[P]] : !cir.ptr<!u128i>, !u128i
   // CHECK:   cir.return %[[R]] : !u128i
 
-  // Three i64 struct {i64, i64, i64} (24 bytes) -> no coercion
+  // Three i64 struct {i64, i64, i64} (24 bytes) -> sret
   cir.func @ret_three_i64() -> !rec_three_i64 {
     %tmp = cir.alloca !rec_three_i64, !cir.ptr<!rec_three_i64>, ["tmp"] {alignment = 8 : i64}
     %val = cir.load %tmp : !cir.ptr<!rec_three_i64>, !rec_three_i64
     cir.return %val : !rec_three_i64
   }
-  // CHECK: cir.func @ret_three_i64() -> !rec_three_i64
-  // CHECK:   cir.return %{{.*}} : !rec_three_i64
+  // CHECK: cir.func @ret_three_i64(%arg0: !cir.ptr<!rec_three_i64>)
+  // CHECK:   cir.store %{{.*}}, %arg0 : !rec_three_i64
+  // CHECK:   cir.return
 
   // --- Call-site rewriting ---
 

@@ -78,11 +78,19 @@ convertABIArgInfo(const llvm::abi::ABIArgInfo &info, MLIRContext *ctx,
   switch (info.getKind()) {
   case llvm::abi::ABIArgInfo::Direct: {
     mlir::Type coerced = abiTypeToCIR(info.getCoerceToType(), ctx);
-    // If the coerced type has the same bit width as the original,
-    // the coercion is a no-op (just a signedness difference).  Use
-    // null to mean "keep original type".
+    // Suppress coercion when it is a no-op:
+    //
+    // 1. Same-width integer signedness difference (e.g. !s32i vs !u32i).
+    // 2. The original type is NOT a record.  The ABITypeMapper
+    //    fallback maps every non-record CIR type (pointers, bools,
+    //    etc.) to an integer of equal bit width.  The classifier
+    //    echoes that integer back as the coercion type, producing a
+    //    spurious coercion.  Real coercion only applies to records
+    //    that must be split/packed into registers.
     if (coerced && origTy && coerced != origTy) {
-      if (auto coercedInt = dyn_cast<cir::IntType>(coerced))
+      if (!isa<cir::RecordType>(origTy))
+        coerced = nullptr;
+      else if (auto coercedInt = dyn_cast<cir::IntType>(coerced))
         if (auto origInt = dyn_cast<cir::IntType>(origTy))
           if (coercedInt.getWidth() == origInt.getWidth())
             coerced = nullptr;
@@ -103,13 +111,84 @@ convertABIArgInfo(const llvm::abi::ABIArgInfo &info, MLIRContext *ctx,
   }
 }
 
+/// Map a CIR type to an abi::Type* with CIR-specific knowledge.
+///
+/// The generic ABITypeMapper only handles MLIR built-in types.  CIR
+/// types (cir::IntType, cir::PointerType, cir::RecordType, etc.)
+/// need dialect-aware mapping to preserve signedness, field layout,
+/// and pointer semantics.
+static const llvm::abi::Type *
+mapCIRType(mlir::Type type, ABITypeMapper &typeMapper,
+           const DataLayout &dl) {
+  llvm::abi::TypeBuilder &tb = typeMapper.getTypeBuilder();
+
+  if (auto intTy = dyn_cast<cir::IntType>(type)) {
+    uint64_t width = intTy.getWidth();
+    uint64_t abiAlign = dl.getTypeABIAlignment(type);
+    return tb.getIntegerType(width, llvm::Align(abiAlign), intTy.isSigned());
+  }
+
+  if (isa<cir::PointerType>(type)) {
+    uint64_t sizeBits = dl.getTypeSizeInBits(type);
+    uint64_t abiAlign = dl.getTypeABIAlignment(type);
+    return tb.getPointerType(sizeBits, llvm::Align(abiAlign),
+                             /*AddressSpace=*/0);
+  }
+
+  if (isa<cir::BoolType>(type)) {
+    uint64_t sizeBits = dl.getTypeSizeInBits(type);
+    uint64_t abiAlign = dl.getTypeABIAlignment(type);
+    return tb.getIntegerType(sizeBits, llvm::Align(abiAlign),
+                             /*Signed=*/false);
+  }
+
+  if (isa<cir::VoidType>(type))
+    return tb.getVoidType();
+
+  if (auto recTy = dyn_cast<cir::RecordType>(type)) {
+    SmallVector<llvm::abi::FieldInfo> fields;
+    uint64_t offsetBits = 0;
+    for (mlir::Type fieldTy : recTy.getMembers()) {
+      const llvm::abi::Type *mappedField =
+          mapCIRType(fieldTy, typeMapper, dl);
+      uint64_t fieldSize = dl.getTypeSizeInBits(fieldTy);
+      fields.push_back({mappedField, offsetBits,
+                         /*BitFieldWidth=*/0,
+                         /*IsBitField=*/false,
+                         /*IsUnnamedBitfield=*/false});
+      offsetBits += fieldSize;
+    }
+    llvm::TypeSize size = dl.getTypeSizeInBits(type);
+    uint64_t abiAlign = dl.getTypeABIAlignment(type);
+    // Plain C/C++ data structs without non-trivial copy/dtor can be
+    // passed in registers.  CIR record types at this stage are always
+    // trivially copyable (non-trivial semantics are lowered earlier).
+    return tb.getRecordType(fields, size, llvm::Align(abiAlign),
+                            llvm::abi::StructPacking::Default,
+                            /*BaseClasses=*/{},
+                            /*VirtualBaseClasses=*/{},
+                            /*CXXRecord=*/false,
+                            /*Polymorphic=*/false,
+                            /*NonTrivialCopy=*/false,
+                            /*NonTrivialDtor=*/false,
+                            /*FlexibleArray=*/false,
+                            /*UnalignedFields=*/false,
+                            /*CanPassInRegister=*/true);
+  }
+
+  // Fall back to the generic mapper for MLIR built-in types.
+  return typeMapper.map(type);
+}
+
 /// Classify a function using the real LLVM ABI Lowering Library.
 ///
-/// Maps CIR types to abi::Type* via ABITypeMapper, calls the X86_64
-/// classifier, and converts the results back to FunctionClassification.
+/// Maps CIR types to abi::Type* via CIR-aware mapping, calls the
+/// X86_64 classifier, and converts the results back to
+/// FunctionClassification.
 FunctionClassification
 classifyWithABILibrary(FunctionOpInterface funcOp,
                        ABITypeMapper &typeMapper,
+                       const DataLayout &dl,
                        const llvm::abi::ABIInfo &abiInfo) {
   FunctionClassification fc;
   MLIRContext *ctx = funcOp->getContext();
@@ -120,16 +199,16 @@ classifyWithABILibrary(FunctionOpInterface funcOp,
   if (resultTypes.empty())
     retAbiTy = typeMapper.getTypeBuilder().getVoidType();
   else
-    retAbiTy = typeMapper.map(resultTypes[0]);
+    retAbiTy = mapCIRType(resultTypes[0], typeMapper, dl);
 
   // Map argument types.
   SmallVector<const llvm::abi::Type *> argAbiTypes;
   for (Type argTy : funcOp.getArgumentTypes()) {
-    const llvm::abi::Type *mapped = typeMapper.map(argTy);
-    assert(mapped && "ABITypeMapper failed to map CIR type");
+    const llvm::abi::Type *mapped = mapCIRType(argTy, typeMapper, dl);
+    assert(mapped && "failed to map CIR type to ABI type");
     argAbiTypes.push_back(mapped);
   }
-  assert(retAbiTy && "ABITypeMapper failed to map return type");
+  assert(retAbiTy && "failed to map return type to ABI type");
 
   // Create ABIFunctionInfo, classify, and convert results.
   std::unique_ptr<llvm::abi::ABIFunctionInfo,
@@ -183,7 +262,7 @@ struct CallConvLoweringPass
 
     module.walk([&](FunctionOpInterface funcOp) {
       FunctionClassification fc =
-          classifyWithABILibrary(funcOp, typeMapper, abiInfo);
+          classifyWithABILibrary(funcOp, typeMapper, dataLayout, abiInfo);
 
       if (auto nameAttr = funcOp->getAttrOfType<StringAttr>("sym_name"))
         classificationMap[nameAttr.getValue()] = fc;
