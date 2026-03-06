@@ -465,26 +465,23 @@ In a module with mixed dialect content, the pass selects the appropriate
 ABIRewriteContext for each function based on the dialect of its operations.  Classification is
 performed by the library's ABIInfo and produces the library's result (e.g.  ABIFunctionInfo,
 ABIArgInfo); ABIRewriteContext consumes that classification to perform the
-actual IR rewriting.  The interface defines the operations needed for lowering
-(createFunction, createCall, createExtractValue, createLoad, etc.); each dialect
-implements these to produce its own operations.  ABIRewriteContext is also
-responsible for updating ABI-related attributes (e.g.  sret, byval, signext,
-zeroext, inreg) on the rewritten function signatures and call sites as
-indicated by the classification result.
+actual IR rewriting.  ABIRewriteContext is also responsible for updating
+ABI-related attributes (e.g.  sret, byval, signext, zeroext, inreg) on the
+rewritten function signatures and call sites as indicated by the classification
+result.
 
-The interface defines approximately 15-20 methods covering function operations
-(`createFunction`, `createCall`), value manipulation (`createCast`,
-`createLoad`, `createStore`, `createAlloca`), type coercion (`createBitcast`,
-`createTrunc`, `createZExt`, `createSExt`), aggregate operations
-(`createExtractValue`, `createInsertValue`, `createGEP`), and housekeeping
-(`createFunctionType`, `replaceOp`).  This set was chosen based on analyzing the
-operations actually needed by existing ABI lowering code: struct expansion
-requires extract/insert operations, indirect passing requires alloca and pointer
-operations, and coercion requires bitcasts and truncations.
+The interface defines two high-level methods:
+`rewriteFunctionDefinition(funcOp, classification, builder)` rewrites a
+function's signature and body (coercing return values, adapting arguments,
+handling sret), and `rewriteCallSite(callOp, classification, builder)` rewrites
+a call to match the lowered callee (coercing arguments, handling coerced
+returns).  Each method encapsulates the full rewriting logic for its scope,
+using the dialect's own builder operations internally (e.g.  `cir::CastOp`,
+`cir::AllocaOp`, `cir::StoreOp`).  Each dialect handles operation creation
+using its own builder internally.
 
 Each dialect implementing ABI lowering must provide a concrete
-`ABIRewriteContext` subclass—estimated at 800-1000 lines of implementation code
-that wraps the dialect's builder API.  This is a significant but one-time cost:
+`ABIRewriteContext` subclass.  This is a significant but one-time cost:
 CIR implements `CIRABIRewriteContext`, FIR implements `FIRABIRewriteContext`,
 and any future dialect reuses the shared classification infrastructure by
 providing its own context implementation.  The alternative—reimplementing the
