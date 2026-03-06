@@ -285,10 +285,15 @@ cir::RecordType::RecordKind RecordType::getKind() const {
   return getImpl()->kind;
 }
 
-void RecordType::complete(ArrayRef<Type> members, bool packed, bool padded) {
+void RecordType::complete(ArrayRef<Type> members, bool packed, bool padded,
+                          bool triviallyCopyable) {
   assert(!cir::MissingFeatures::astRecordDeclAttr());
-  if (mutate(members, packed, padded).failed())
+  if (mutate(members, packed, padded, triviallyCopyable).failed())
     llvm_unreachable("failed to complete record");
+}
+
+bool RecordType::isTriviallyCopyable() const {
+  return getImpl()->triviallyCopyable;
 }
 
 /// Return the largest member of in the type.

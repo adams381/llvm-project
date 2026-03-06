@@ -346,8 +346,8 @@ void calling_function_with_default_values() {
 // CIR: %[[ELEM_1_PTR:.*]] = cir.get_member %[[AGG_ADDR]][1] {name = "b"} : !cir.ptr<!rec_CompleteS> -> !cir.ptr<!s8i>
 // CIR: %[[CONST_2:.*]] = cir.const #cir.int<2> : !s8i
 // CIR: cir.store{{.*}} %[[CONST_2]], %[[ELEM_1_PTR]] : !s8i, !cir.ptr<!s8i>
-// CIR: %[[TMP_AGG:.*]] = cir.load{{.*}} %[[AGG_ADDR]] : !cir.ptr<!rec_CompleteS>, !rec_CompleteS
-// CIR: cir.call @_Z31function_arg_with_default_value9CompleteS(%[[TMP_AGG]]) : (!rec_CompleteS) -> ()
+// CIR: %{{.+}} = cir.load{{.*}} %[[AGG_ADDR]] : !cir.ptr<!rec_CompleteS>, !rec_CompleteS
+// CIR: cir.call @_Z31function_arg_with_default_value9CompleteS(%{{.+}}) : (!u64i) -> ()
 
 // TODO(CIR): the difference between the CIR LLVM and OGCG is because the lack of calling convention lowering,
 
@@ -356,8 +356,8 @@ void calling_function_with_default_values() {
 // LLVM: store i32 1, ptr %[[ELEM_0_PTR]], align 4
 // LLVM: %[[ELEM_1_PTR:.*]] = getelementptr %struct.CompleteS, ptr %[[AGG_ADDR]], i32 0, i32 1
 // LLVM: store i8 2, ptr %[[ELEM_1_PTR]], align 4
-// LLVM: %[[TMP_AGG:.*]] = load %struct.CompleteS, ptr %[[AGG_ADDR]], align 4
-// LLVM: call void @_Z31function_arg_with_default_value9CompleteS(%struct.CompleteS %[[TMP_AGG]])
+// LLVM: %{{.+}} = load %struct.CompleteS, ptr %[[AGG_ADDR]], align 4
+// LLVM: call void @_Z31function_arg_with_default_value9CompleteS(i64 %{{.+}})
 
 // OGCG: %[[AGG_ADDR:.*]] = alloca %struct.CompleteS, align 4
 // OGCG: %[[ELEM_0_PTR:.*]] = getelementptr inbounds nuw %struct.CompleteS, ptr %[[AGG_ADDR]], i32 0, i32 0

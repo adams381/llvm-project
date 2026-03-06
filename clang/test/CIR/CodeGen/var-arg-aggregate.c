@@ -34,10 +34,10 @@ struct Bar varargs_aggregate(int count, ...) {
 // CIR:   cir.copy %[[TMP_ADDR]] to %[[RET_ADDR]] : !cir.ptr<!rec_Bar>
 // CIR:   %[[VA_PTR2:.+]] = cir.cast array_to_ptrdecay %[[VAAREA]] : !cir.ptr<!cir.array<!rec___va_list_tag x 1>> -> !cir.ptr<!rec___va_list_tag>
 // CIR:   cir.va_end %[[VA_PTR2]] : !cir.ptr<!rec___va_list_tag>
-// CIR:   %[[RETVAL:.+]] = cir.load{{.*}} %[[RET_ADDR]] : !cir.ptr<!rec_Bar>, !rec_Bar
-// CIR:   cir.return %[[RETVAL]] : !rec_Bar
+// CIR:   %{{.+}} = cir.load{{.*}} %[[RET_ADDR]] : !cir.ptr<!rec_Bar>, !rec_Bar
+// CIR:   cir.return %{{.+}} : !u128i
 
-// LLVM-LABEL: define dso_local %struct.Bar @varargs_aggregate(
+// LLVM-LABEL: define dso_local i128 @varargs_aggregate(
 // LLVM:   call void @llvm.va_start.p0(ptr %{{.*}})
 // LLVM:   %[[VA_PTR1:.+]] = getelementptr %struct.__va_list_tag, ptr %{{.*}}, i32 0
 // LLVM:   %[[VA_ARG:.+]] = va_arg ptr %[[VA_PTR1]], %struct.Bar

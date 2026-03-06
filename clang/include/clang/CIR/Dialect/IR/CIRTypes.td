@@ -732,7 +732,12 @@ def CIR_RecordType : CIR_Type<"Record", "record", [
     }
 
     void complete(llvm::ArrayRef<mlir::Type> members, bool packed,
-                  bool isPadded);
+                  bool isPadded, bool triviallyCopyable = false);
+
+    /// Returns true if the record can be passed in registers according
+    /// to the C++ ABI.  Always true for C structs.  Set during
+    /// completion from RecordDecl::canPassInRegisters().
+    bool isTriviallyCopyable() const;
 
     uint64_t getElementOffset(const mlir::DataLayout &dataLayout,
               unsigned idx) const;

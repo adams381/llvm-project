@@ -18,11 +18,11 @@ void f2(void) {
 
 // CIR-LABEL: cir.func{{.*}} @f2(){{.*}} {
 // CIR:         %[[S:.+]] = cir.load align(4) %{{.+}} : !cir.ptr<!rec_S>, !rec_S
-// CIR-NEXT:    cir.call @f1(%[[S]]) : (!rec_S) -> ()
+// CIR:         cir.call @f1(%{{.+}}) : (!u64i) -> ()
 
 // LLVM-LABEL: define{{.*}} void @f2(){{.*}}
 // LLVM:         %[[S:.+]] = load %struct.S, ptr %{{.+}}, align 4
-// LLVM-NEXT:    call void @f1(%struct.S %[[S]])
+// LLVM:         call void @f1(i64 %{{.+}})
 
 // OGCG-LABEL: define{{.*}} void @f2()
 // OGCG:         %[[S:.+]] = load i64, ptr %{{.+}}, align 4
@@ -34,12 +34,12 @@ void f4(void) {
 }
 
 // CIR-LABEL: cir.func{{.*}} @f4(){{.*}} {
-// CIR:         %[[S:.+]] = cir.call @f3() : () -> !rec_S
-// CIR-NEXT:    cir.store align(4) %[[S]], %{{.+}} : !rec_S, !cir.ptr<!rec_S>
+// CIR:         %{{.+}} = cir.call @f3() : () -> !u64i
+// CIR:         cir.store align(4) %{{.+}}, %{{.+}} : !rec_S, !cir.ptr<!rec_S>
 
 // LLVM-LABEL: define{{.*}} void @f4(){{.*}} {
-// LLVM:         %[[S:.+]] = call %struct.S @f3()
-// LLVM-NEXT:    store %struct.S %[[S]], ptr %{{.+}}, align 4
+// LLVM:         %{{.+}} = call i64 @f3()
+// LLVM:         store %struct.S %{{.+}}, ptr %{{.+}}, align 4
 
 // OGCG-LABEL: define{{.*}} void @f4() #0 {
 // OGCG:         %[[S:.+]] = call i64 @f3()
@@ -91,17 +91,17 @@ void f9(void) {
 
 // CIR-LABEL: cir.func{{.*}} @f9(){{.*}} {
 // CIR:         %[[SLOT:.+]] = cir.alloca !rec_S, !cir.ptr<!rec_S>, ["agg.tmp0"] {alignment = 4 : i64}
-// CIR-NEXT:    %[[RET:.+]] = cir.call @f3() : () -> !rec_S
-// CIR-NEXT:    cir.store align(4) %[[RET]], %[[SLOT]] : !rec_S, !cir.ptr<!rec_S>
-// CIR-NEXT:    %[[ARG:.+]] = cir.load align(4) %[[SLOT]] : !cir.ptr<!rec_S>, !rec_S
-// CIR-NEXT:    cir.call @f1(%[[ARG]]) : (!rec_S) -> ()
+// CIR-NEXT:    %{{.+}} = cir.call @f3() : () -> !u64i
+// CIR:         cir.store align(4) %{{.+}}, %[[SLOT]] : !rec_S, !cir.ptr<!rec_S>
+// CIR-NEXT:    %{{.+}} = cir.load align(4) %[[SLOT]] : !cir.ptr<!rec_S>, !rec_S
+// CIR:         cir.call @f1(%{{.+}}) : (!u64i) -> ()
 
 // LLVM-LABEL: define{{.*}} void @f9(){{.*}} {
 // LLVM:         %[[SLOT:.+]] = alloca %struct.S, i64 1, align 4
-// LLVM-NEXT:    %[[RET:.+]] = call %struct.S @f3()
-// LLVM-NEXT:    store %struct.S %[[RET]], ptr %[[SLOT]], align 4
-// LLVM-NEXT:    %[[ARG:.+]] = load %struct.S, ptr %[[SLOT]], align 4
-// LLVM-NEXT:    call void @f1(%struct.S %[[ARG]])
+// LLVM-NEXT:    %{{.+}} = call i64 @f3()
+// LLVM:         store %struct.S %{{.+}}, ptr %[[SLOT]], align 4
+// LLVM-NEXT:    %{{.+}} = load %struct.S, ptr %[[SLOT]], align 4
+// LLVM:         call void @f1(i64 %{{.+}})
 
 // OGCG-LABEL: define{{.*}} void @f9() #0 {
 // OGCG:         %[[SLOT:.+]] = alloca %struct.S, align 4

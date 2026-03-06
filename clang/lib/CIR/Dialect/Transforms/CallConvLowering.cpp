@@ -93,6 +93,15 @@ static ArgClassification convertABIArgInfo(const llvm::abi::ABIArgInfo &info,
         if (auto origInt = dyn_cast<cir::IntType>(origTy))
           if (coercedInt.getWidth() == origInt.getWidth())
             coerced = nullptr;
+      // Suppress coercion for padded records whose only member
+      // matches the coerced type (e.g. empty C++ class with padding
+      // byte).  The memory-based coercion ops produce IR that the
+      // CIR-to-LLVM lowering cannot handle for these types.
+      if (coerced)
+        if (auto recTy = dyn_cast<cir::RecordType>(origTy))
+          if (recTy.getPadded() && recTy.getMembers().size() == 1 &&
+              recTy.getMembers()[0] == coerced)
+            coerced = nullptr;
     }
     return ArgClassification::getDirect(coerced);
   }
@@ -174,12 +183,11 @@ static const llvm::abi::Type *mapCIRType(mlir::Type type,
     }
     llvm::TypeSize size = dl.getTypeSizeInBits(type);
     uint64_t rawAlign = dl.getTypeABIAlignment(type);
-    // CIR RecordType does not carry triviality information (whether
-    // the type has non-trivial copy/dtor).  When record coercion is
-    // enabled (e.g. standalone cir-opt with known-trivial C structs),
-    // set CanPassInRegister=true so the classifier produces Direct
-    // coercion.  When disabled (pipeline, where non-trivial C++
-    // structs may appear), default to false so records pass through.
+    // Use triviality from CIRGen (set via RecordDecl::canPassInRegisters)
+    // when available.  For CIR parsed from text (cir-opt), the flag
+    // defaults to false; the recordCoercionEnabled option overrides it
+    // for testing with known-trivial C structs.
+    bool canPass = recTy.isTriviallyCopyable() || recordCoercionEnabled;
     return tb.getRecordType(fields, size, safeAlign(rawAlign),
                             llvm::abi::StructPacking::Default,
                             /*BaseClasses=*/{},
@@ -190,7 +198,7 @@ static const llvm::abi::Type *mapCIRType(mlir::Type type,
                             /*NonTrivialDtor=*/false,
                             /*FlexibleArray=*/false,
                             /*UnalignedFields=*/false,
-                            /*CanPassInRegister=*/recordCoercionEnabled);
+                            /*CanPassInRegister=*/canPass);
   }
 
   // Fall back to the generic mapper for MLIR built-in types.

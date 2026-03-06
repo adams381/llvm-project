@@ -60,7 +60,8 @@ two_floats test_aggregate_record(two_ints& ti) {
 //  CIR-NEXT:   %[[#SIZE:]] = cir.const #cir.int<8> : !u64i
 //  CIR-NEXT:   cir.libc.memcpy %[[#SIZE]] bytes from %[[#SRC_VOID_PTR]] to %[[#DST_VOID_PTR]] : !u64i, !cir.ptr<!void> -> !cir.ptr<!void>
 
-// LLVM-LABEL: define dso_local{{.*}} %struct.two_floats @_Z21test_aggregate_recordR8two_ints
+// LLVM-DIRECT-LABEL: define dso_local{{.*}} %struct.two_floats @_Z21test_aggregate_recordR8two_ints
+// LLVM-VIA-CIR-LABEL: define dso_local{{.*}} i64 @_Z21test_aggregate_recordR8two_ints
 //       LLVM:   %[[DST_SLOT:.*]] = alloca %struct.two_floats{{.*}}, align 4
 //       LLVM:   %[[SRC_PTR:.*]] = load ptr, ptr {{.*}}, align 8
 //  LLVM-NEXT:   call void @llvm.memcpy.p0.p0.i64(ptr{{.*}} %[[DST_SLOT]], ptr{{.*}} %[[SRC_PTR]], i64 8, i1 false)
@@ -77,7 +78,8 @@ two_floats test_aggregate_array(int (&ary)[2]) {
 //  CIR-NEXT:   %[[#SIZE:]] = cir.const #cir.int<8> : !u64i
 //  CIR-NEXT:   cir.libc.memcpy %[[#SIZE]] bytes from %[[#SRC_VOID_PTR]] to %[[#DST_VOID_PTR]] : !u64i, !cir.ptr<!void> -> !cir.ptr<!void>
 
-// LLVM-LABEL: define dso_local{{.*}} %struct.two_floats @_Z20test_aggregate_arrayRA2_i
+// LLVM-DIRECT-LABEL: define dso_local{{.*}} %struct.two_floats @_Z20test_aggregate_arrayRA2_i
+// LLVM-VIA-CIR-LABEL: define dso_local{{.*}} i64 @_Z20test_aggregate_arrayRA2_i
 //       LLVM:   %[[DST_SLOT:.*]] = alloca %struct.two_floats{{.*}}, align 4
 //       LLVM:   %[[SRC_PTR:.*]] = load ptr, ptr {{.*}}, align 8
 //  LLVM-NEXT:   call void @llvm.memcpy.p0.p0.i64(ptr{{.*}} %[[DST_SLOT]], ptr{{.*}} %[[SRC_PTR]], i64 8, i1 false)
@@ -94,7 +96,7 @@ two_ints test_scalar_to_aggregate(unsigned long ul) {
 //  CIR-NEXT:   cir.libc.memcpy %[[#SIZE]] bytes from %[[#SRC_VOID_PTR]] to %[[#DST_VOID_PTR]] : !u64i, !cir.ptr<!void> -> !cir.ptr<!void>
 
 // LLVM-DIRECT-LABEL: define dso_local i64 @_Z24test_scalar_to_aggregatem
-// LLVM-VIA-CIR-LABEL: define dso_local %struct.two_ints @_Z24test_scalar_to_aggregatem
+// LLVM-VIA-CIR-LABEL: define dso_local i64 @_Z24test_scalar_to_aggregatem
 //       LLVM:   %[[DST_SLOT:.*]] = alloca %struct.two_ints{{.*}}, align 4
 //       LLVM:   call void @llvm.memcpy.p0.p0.i64(ptr{{.*}} %[[DST_SLOT]], ptr{{.*}} %{{.+}}, i64 8, i1 false)
 //  LLVM-DIRECT-NEXT:   %{{.+}} = load i64, ptr %[[DST_SLOT]], align 4
@@ -128,12 +130,8 @@ two_ints test_rvalue_aggregate() {
 //  CIR-NEXT:     cir.libc.memcpy %[[#SIZE]] bytes from %[[#SRC_VOID_PTR]] to %[[#DST_VOID_PTR]] : !u64i, !cir.ptr<!void> -> !cir.ptr<!void>
 //  CIR-NEXT:   }
 
-/// FIXME: The function signature below should be identical for both lowering
-/// paths, but CIR is still missing calling convention lowering. Update this
-/// once calling convention is unstreamed.
-
 // LLVM-DIRECT-LABEL: define dso_local{{.*}} i64 @_Z21test_rvalue_aggregatev
-// LLVM-VIA-CIR-LABEL: define dso_local{{.*}} %struct.two_ints @_Z21test_rvalue_aggregatev
+// LLVM-VIA-CIR-LABEL: define dso_local{{.*}} i64 @_Z21test_rvalue_aggregatev
 //  LLVM:   %[[SRC_SLOT:.*]] = alloca i64{{.*}}, align 8
 //  LLVM:   store i64 42, ptr %[[SRC_SLOT]], align 8
 //  LLVM-NEXT:   call void @llvm.memcpy.p0.p0.i64(ptr{{.*}} %{{.+}}, ptr{{.*}} %[[SRC_SLOT]], i64 8, i1 false)

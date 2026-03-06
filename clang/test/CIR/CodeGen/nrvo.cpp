@@ -22,26 +22,26 @@ struct S f1() {
   return s;
 }
 
-// CIR:      cir.func{{.*}} @_Z2f1v() -> !rec_S
+// CIR:      cir.func{{.*}} @_Z2f1v() -> !u64i
 // CIR-NEXT:   %[[RETVAL:.*]] = cir.alloca !rec_S, !cir.ptr<!rec_S>, ["__retval", init]
 // CIR-NEXT:   cir.call @_ZN1SC1Ev(%[[RETVAL]]) : (!cir.ptr<!rec_S>) -> ()
-// CIR-NEXT:   %[[RET:.*]] = cir.load %[[RETVAL]] : !cir.ptr<!rec_S>, !rec_S
-// CIR-NEXT:   cir.return %[[RET]]
+// CIR-NEXT:   %{{.+}} = cir.load %[[RETVAL]] : !cir.ptr<!rec_S>, !rec_S
+// CIR:        cir.return %{{.+}}
 
-// CIR-NOELIDE:      cir.func{{.*}} @_Z2f1v() -> !rec_S
+// CIR-NOELIDE:      cir.func{{.*}} @_Z2f1v() -> !u64i
 // CIR-NOELIDE-NEXT:   %[[RETVAL:.*]] = cir.alloca !rec_S, !cir.ptr<!rec_S>, ["__retval"]
 // CIR-NOELIDE-NEXT:   %[[S:.*]] = cir.alloca !rec_S, !cir.ptr<!rec_S>, ["s", init]
 // CIR-NOELIDE-NEXT:   cir.call @_ZN1SC1Ev(%[[S]]) : (!cir.ptr<!rec_S>) -> ()
 // CIR-NOELIDE-NEXT:   cir.call @_ZN1SC1EOS_(%[[RETVAL]], %[[S]]){{.*}} : (!cir.ptr<!rec_S>, !cir.ptr<!rec_S>) -> ()
-// CIR-NOELIDE-NEXT:   %[[RET:.*]] = cir.load %[[RETVAL]] : !cir.ptr<!rec_S>, !rec_S
-// CIR-NOELIDE-NEXT:   cir.return %[[RET]]
+// CIR-NOELIDE-NEXT:   %{{.+}} = cir.load %[[RETVAL]] : !cir.ptr<!rec_S>, !rec_S
+// CIR-NOELIDE:        cir.return %{{.+}}
 
 // FIXME: Update this when calling convetnion lowering is implemented.
-// LLVM:      define{{.*}} %struct.S @_Z2f1v()
+// LLVM:      define{{.*}} i64 @_Z2f1v()
 // LLVM-NEXT:   %[[RETVAL:.*]] = alloca %struct.S
 // LLVM-NEXT:   call void @_ZN1SC1Ev(ptr %[[RETVAL]])
-// LLVM-NEXT:   %[[RET:.*]] = load %struct.S, ptr %[[RETVAL]]
-// LLVM-NEXT:   ret %struct.S %[[RET]]
+// LLVM-NEXT:   %{{.+}} = load %struct.S, ptr %[[RETVAL]]
+// LLVM:        ret i64 %{{.+}}
 
 // OGCG:      define{{.*}} i64 @_Z2f1v()
 // OGCG-NEXT: entry:

@@ -82,12 +82,12 @@ void f11() {
 }
 
 // CIR-LABEL: cir.func{{.*}} @_Z3f11v()
-// CIR:         %[[#s:]] = cir.call @_Z3f10v() : () -> !rec_S
-// CIR-NEXT:    cir.store align(4) %[[#s]], %{{.+}} : !rec_S, !cir.ptr<!rec_S>
+// CIR:         %{{.+}} = cir.call @_Z3f10v() : () -> !u64i
+// CIR:         cir.store align(4) %{{.+}}, %{{.+}} : !rec_S, !cir.ptr<!rec_S>
 
 // LLVM-LABEL: define{{.*}} void @_Z3f11v(){{.*}}
-// LLVM:         %[[#s:]] = call %struct.S @_Z3f10v()
-// LLVM-NEXT:    store %struct.S %[[#s]], ptr %{{.+}}, align 4
+// LLVM:         %{{.+}} = call i64 @_Z3f10v()
+// LLVM:         store %struct.S %{{.+}}, ptr %{{.+}}, align 4
 
 void f12() {
   f10();
@@ -95,13 +95,13 @@ void f12() {
 
 // CIR-LABEL: cir.func{{.*}} @_Z3f12v()
 // CIR:         %[[#slot:]] = cir.alloca !rec_S, !cir.ptr<!rec_S>, ["agg.tmp0"]
-// CIR-NEXT:    %[[#ret:]] = cir.call @_Z3f10v() : () -> !rec_S
-// CIR-NEXT:    cir.store align(4) %[[#ret]], %[[#slot]] : !rec_S, !cir.ptr<!rec_S>
+// CIR-NEXT:    %{{.+}} = cir.call @_Z3f10v() : () -> !u64i
+// CIR:         cir.store align(4) %{{.+}}, %[[#slot]] : !rec_S, !cir.ptr<!rec_S>
 
 // LLVM-LABEL: define{{.*}} void @_Z3f12v(){{.*}} {
 // LLVM:         %[[#slot:]] = alloca %struct.S, i64 1, align 4
-// LLVM-NEXT:    %[[#ret:]] = call %struct.S @_Z3f10v()
-// LLVM-NEXT:    store %struct.S %[[#ret]], ptr %[[#slot]], align 4
+// LLVM-NEXT:    %{{.+}} = call i64 @_Z3f10v()
+// LLVM:         store %struct.S %{{.+}}, ptr %[[#slot]], align 4
 
 void f13() noexcept;
 void f14() {

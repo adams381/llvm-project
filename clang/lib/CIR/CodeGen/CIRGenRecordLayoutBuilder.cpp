@@ -692,7 +692,9 @@ CIRGenTypes::computeRecordLayout(const RecordDecl *rd, cir::RecordType *ty) {
   // signifies that the type is no longer opaque and record layout is complete,
   // but we may need to recursively layout rd while laying D out as a base type.
   assert(!cir::MissingFeatures::astRecordDeclAttr());
-  ty->complete(lowering.fieldTypes, lowering.packed, lowering.padded);
+  bool triviallyCopyable = rd->canPassInRegisters();
+  ty->complete(lowering.fieldTypes, lowering.packed, lowering.padded,
+               triviallyCopyable);
 
   auto rl = std::make_unique<CIRGenRecordLayout>(
       ty ? *ty : cir::RecordType{}, baseTy ? baseTy : cir::RecordType{},
