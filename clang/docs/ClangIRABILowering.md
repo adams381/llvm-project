@@ -247,10 +247,14 @@ the `abi::Type*` type system, the `ABIInfo` base and target-specific
 implementations (e.g.  X86_64, AArch64), and the classification result types
 (e.g.  ABIArgInfo, ABIFunctionInfo).  **ABITypeMapper** maps `mlir::Type` to
 `abi::Type*` so that MLIR dialect types can be classified by the ABI library.
-Dialects with custom types do not need a new interface for this: the mapper
-relies on existing MLIR type interfaces (e.g.  `DataLayoutTypeInterface`) for
-size and alignment, and pattern-matches on standard type categories (integers,
-floats, pointers, structs, arrays, vectors) to build `abi::Type*`.
+The generic mapper relies on existing MLIR type interfaces (e.g.
+`DataLayoutTypeInterface`) for size and alignment, and pattern-matches on
+standard type categories (integers, floats, pointers, structs, arrays,
+vectors) to build `abi::Type*`.  Dialects whose types do not conform to
+standard MLIR type categories (e.g.  CIR's `cir::IntType` is not
+`mlir::IntegerType`) may need dialect-aware mapping alongside the generic
+mapper to preserve semantics such as signedness, pointer identity, and
+record field structure.
 The **MLIR ABI lowering pass** orchestrates the flow: it uses ABITypeMapper,
 calls the library's ABIInfo, and drives rewriting from the classification
 result.  **ABIRewriteContext** is the dialect-specific interface for operation
