@@ -48,3 +48,30 @@ int get_quot(int a, int b) {
 // OGCG-LABEL: define{{.*}} i32 @get_quot(i32 {{.*}}, i32 {{.*}})
 // OGCG:         %{{.+}} = call i64 @do_div(i32 {{.*}}, i32 {{.*}})
 // OGCG:         %{{.+}} = getelementptr inbounds nuw %struct.div_t, ptr %{{.*}}, i32 0, i32 0
+
+// Verify that large structs (>16 bytes) are returned via sret pointer
+// per the x86_64 System V ABI.
+
+typedef struct {
+  int a, b, c, d, e;
+} Big;
+
+Big make_big(int x);
+
+Big call_make_big(int x) {
+  return make_big(x);
+}
+
+// CIR-LABEL: cir.func{{.*}} @call_make_big
+// CIR-SAME:    %{{.+}}: !cir.ptr<!rec_Big> {llvm.align = 4 : i64, llvm.sret = !rec_Big}
+// CIR:         cir.call @make_big(%{{.+}}, %{{.+}}) : (!cir.ptr<!rec_Big>, !s32i) -> ()
+// CIR:         cir.store %{{.+}}, %arg0 : !rec_Big
+// CIR:         cir.return
+
+// LLVM-LABEL: define{{.*}} void @call_make_big(ptr sret(%struct.Big) align 4 %{{.*}}, i32 %{{.*}})
+// LLVM:         call void @make_big(ptr %{{.*}}, i32 %{{.*}})
+// LLVM:         ret void
+
+// OGCG-LABEL: define{{.*}} void @call_make_big(ptr {{.*}} sret(%struct.Big) align 4 %{{.*}}, i32 {{.*}})
+// OGCG:         call void @make_big(ptr {{.*}} sret(%struct.Big) align 4 %{{.*}}, i32 {{.*}})
+// OGCG:         ret void

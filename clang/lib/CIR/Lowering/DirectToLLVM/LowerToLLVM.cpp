@@ -2426,6 +2426,44 @@ mlir::LogicalResult CIRToLLVMFuncOpLowering::matchAndRewrite(
   fn.setVisibility_(
       lowerCIRVisibilityToLLVMVisibility(op.getGlobalVisibility()));
 
+  // Convert CIR types inside arg_attrs (e.g. llvm.sret, llvm.byval)
+  // to LLVM types so the LLVM dialect-to-LLVM-IR translation works.
+  if (auto argAttrs = fn->getAttrOfType<mlir::ArrayAttr>("arg_attrs")) {
+    SmallVector<mlir::Attribute> converted;
+    bool changed = false;
+    for (mlir::Attribute dictAttr : argAttrs) {
+      auto dict = mlir::cast<mlir::DictionaryAttr>(dictAttr);
+      SmallVector<mlir::NamedAttribute> newEntries;
+      bool dictChanged = false;
+      for (mlir::NamedAttribute entry : dict) {
+        if ((entry.getName() == "llvm.sret" ||
+             entry.getName() == "llvm.byval") &&
+            mlir::isa<mlir::TypeAttr>(entry.getValue())) {
+          mlir::Type cirTy =
+              mlir::cast<mlir::TypeAttr>(entry.getValue()).getValue();
+          mlir::Type llvmTy = typeConverter->convertType(cirTy);
+          if (llvmTy && llvmTy != cirTy) {
+            newEntries.push_back(rewriter.getNamedAttr(
+                entry.getName(), mlir::TypeAttr::get(llvmTy)));
+            dictChanged = true;
+            continue;
+          }
+        }
+        newEntries.push_back(entry);
+      }
+      if (dictChanged) {
+        converted.push_back(
+            mlir::DictionaryAttr::get(fn->getContext(), newEntries));
+        changed = true;
+      } else {
+        converted.push_back(dictAttr);
+      }
+    }
+    if (changed)
+      fn->setAttr("arg_attrs",
+                  mlir::ArrayAttr::get(fn->getContext(), converted));
+  }
+
   rewriter.inlineRegionBefore(op.getBody(), fn.getBody(), fn.end());
   if (failed(rewriter.convertRegionTypes(&fn.getBody(), *typeConverter,
                                          &signatureConversion)))

@@ -74,12 +74,14 @@ void f8(void) {
 }
 
 // CIR-LABEL: cir.func{{.*}} @f8(){{.*}} {
-// CIR:         %[[B:.+]] = cir.call @f6() : () -> !rec_Big
+// CIR:         cir.call @f6(%{{.+}}) : (!cir.ptr<!rec_Big>) -> ()
+// CIR:         %[[B:.+]] = cir.load %{{.+}} : !cir.ptr<!rec_Big>, !rec_Big
 // CIR:         cir.store align(4) %[[B]], %{{.+}} : !rec_Big, !cir.ptr<!rec_Big>
 
 // LLVM-LABEL: define{{.*}} void @f8(){{.*}} {
-// LLVM:        %[[B:.+]] = call %struct.Big @f6()
-// LLVM-NEXT:   store %struct.Big %[[B]], ptr %{{.+}}, align 4
+// LLVM:        call void @f6(ptr %{{.+}})
+// LLVM:        %[[B:.+]] = load %struct.Big, ptr %{{.+}}
+// LLVM:        store %struct.Big %[[B]], ptr %{{.+}}, align 4
 
 // OGCG-LABEL: define{{.*}} void @f8() #0 {
 // OGCG:         %[[B:.+]] = alloca %struct.Big, align 4

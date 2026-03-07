@@ -328,6 +328,24 @@ LogicalResult CIRABIRewriteContext::rewriteFunctionDefinition(
   Type newFnTy = funcOp.cloneTypeWith(newArgTypes, newResultTypes);
   funcOp.setFunctionTypeAttr(TypeAttr::get(newFnTy));
 
+  // Attach llvm.sret attribute to the sret pointer argument so the
+  // CIR-to-LLVM lowering can propagate it to the LLVM IR signature.
+  if (hasSRet) {
+    MLIRContext *ctx = funcOp->getContext();
+    Type retTy = oldResultTypes[0];
+    unsigned numArgs = newArgTypes.size();
+
+    SmallVector<Attribute> argAttrDicts(numArgs, DictionaryAttr::get(ctx));
+    SmallVector<NamedAttribute> sretAttrs;
+    sretAttrs.push_back(
+        rewriter.getNamedAttr("llvm.sret", TypeAttr::get(retTy)));
+    sretAttrs.push_back(rewriter.getNamedAttr(
+        "llvm.align",
+        rewriter.getI64IntegerAttr(fc.ReturnInfo.IndirectAlign.value())));
+    argAttrDicts[0] = DictionaryAttr::get(ctx, sretAttrs);
+    funcOp->setAttr("arg_attrs", ArrayAttr::get(ctx, argAttrDicts));
+  }
+
   return success();
 }
 

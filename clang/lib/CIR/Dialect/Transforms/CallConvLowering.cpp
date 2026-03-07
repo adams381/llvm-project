@@ -115,11 +115,15 @@ static ArgClassification convertABIArgInfo(const llvm::abi::ABIArgInfo &info,
       return ArgClassification::getDirect(nullptr);
     return ArgClassification::getExtend(coerced, info.isSignExt());
   }
-  case llvm::abi::ABIArgInfo::Indirect:
-    if (!recordCoercionEnabled)
-      return ArgClassification::getDirect(nullptr);
+  case llvm::abi::ABIArgInfo::Indirect: {
+    if (!recordCoercionEnabled) {
+      if (!origTy || !isa<cir::RecordType>(origTy) ||
+          !cast<cir::RecordType>(origTy).isTriviallyCopyable())
+        return ArgClassification::getDirect(nullptr);
+    }
     return ArgClassification::getIndirect(llvm::Align(info.getIndirectAlign()),
                                           info.getIndirectByVal());
+  }
   case llvm::abi::ABIArgInfo::Ignore:
     if (!recordCoercionEnabled && origTy && isa<cir::RecordType>(origTy))
       return ArgClassification::getDirect(nullptr);
