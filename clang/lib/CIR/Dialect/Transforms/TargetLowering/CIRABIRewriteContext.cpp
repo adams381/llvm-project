@@ -229,6 +229,13 @@ LogicalResult CIRABIRewriteContext::rewriteFunctionDefinition(
         hasArgChanges = true;
       break;
     case ArgKind::Indirect:
+      if (argClass.ByVal) {
+        newArgTypes.push_back(cir::PointerType::get(origTy));
+        hasArgChanges = true;
+      } else {
+        newArgTypes.push_back(origTy);
+      }
+      break;
     case ArgKind::Expand:
       newArgTypes.push_back(origTy);
       break;
@@ -288,6 +295,34 @@ LogicalResult CIRABIRewriteContext::rewriteFunctionDefinition(
     if (hasArgChanges)
       insertArgAdaptation(funcOp, fc, sretOffset, rewriter);
 
+    // For Indirect (byval) args, the block argument type was changed
+    // to a pointer.  Insert a load at function entry so existing uses
+    // see the original value type.
+    if (!funcOp->getRegion(0).empty()) {
+      Block &entry = funcOp->getRegion(0).front();
+      for (auto [idx, argClass] : llvm::enumerate(fc.ArgInfos)) {
+        if (argClass.Kind != ArgKind::Indirect || !argClass.ByVal)
+          continue;
+        unsigned blockIdx = idx + sretOffset;
+        BlockArgument blockArg = entry.getArgument(blockIdx);
+        Type origTy = oldArgTypes[idx];
+        auto ptrTy = cir::PointerType::get(origTy);
+        blockArg.setType(ptrTy);
+
+        rewriter.setInsertionPointToStart(&entry);
+        auto load =
+            cir::LoadOp::create(rewriter, funcOp.getLoc(), origTy, blockArg,
+                                /*isDeref=*/mlir::UnitAttr(),
+                                /*isVolatile=*/mlir::UnitAttr(),
+                                /*alignment=*/mlir::IntegerAttr(),
+                                /*sync_scope=*/cir::SyncScopeKindAttr(),
+                                /*mem_order=*/cir::MemOrderAttr());
+        SmallPtrSet<Operation *, 1> loadOps;
+        loadOps.insert(load.getOperation());
+        blockArg.replaceAllUsesExcept(load, loadOps);
+      }
+    }
+
     // Erase block arguments for Ignore'd args (in reverse to keep
     // indices valid).  Replace any remaining uses with undef first.
     if (!ignoredArgIndices.empty()) {
@@ -328,22 +363,45 @@ LogicalResult CIRABIRewriteContext::rewriteFunctionDefinition(
   Type newFnTy = funcOp.cloneTypeWith(newArgTypes, newResultTypes);
   funcOp.setFunctionTypeAttr(TypeAttr::get(newFnTy));
 
-  // Attach llvm.sret attribute to the sret pointer argument so the
-  // CIR-to-LLVM lowering can propagate it to the LLVM IR signature.
-  if (hasSRet) {
+  // Attach llvm.sret / llvm.byval attributes to the appropriate
+  // pointer arguments so the CIR-to-LLVM lowering can propagate
+  // them to the LLVM IR signature.
+  {
     MLIRContext *ctx = funcOp->getContext();
-    Type retTy = oldResultTypes[0];
     unsigned numArgs = newArgTypes.size();
+    bool needsAttrs = hasSRet;
+    for (auto &argClass : fc.ArgInfos)
+      if (argClass.Kind == ArgKind::Indirect && argClass.ByVal)
+        needsAttrs = true;
 
-    SmallVector<Attribute> argAttrDicts(numArgs, DictionaryAttr::get(ctx));
-    SmallVector<NamedAttribute> sretAttrs;
-    sretAttrs.push_back(
-        rewriter.getNamedAttr("llvm.sret", TypeAttr::get(retTy)));
-    sretAttrs.push_back(rewriter.getNamedAttr(
-        "llvm.align",
-        rewriter.getI64IntegerAttr(fc.ReturnInfo.IndirectAlign.value())));
-    argAttrDicts[0] = DictionaryAttr::get(ctx, sretAttrs);
-    funcOp->setAttr("arg_attrs", ArrayAttr::get(ctx, argAttrDicts));
+    if (needsAttrs) {
+      SmallVector<Attribute> argAttrDicts(numArgs, DictionaryAttr::get(ctx));
+
+      if (hasSRet) {
+        SmallVector<NamedAttribute> sretAttrs;
+        sretAttrs.push_back(rewriter.getNamedAttr(
+            "llvm.sret", TypeAttr::get(oldResultTypes[0])));
+        sretAttrs.push_back(rewriter.getNamedAttr(
+            "llvm.align",
+            rewriter.getI64IntegerAttr(fc.ReturnInfo.IndirectAlign.value())));
+        argAttrDicts[0] = DictionaryAttr::get(ctx, sretAttrs);
+      }
+
+      unsigned sretOff = hasSRet ? 1 : 0;
+      for (auto [idx, argClass] : llvm::enumerate(fc.ArgInfos)) {
+        if (argClass.Kind != ArgKind::Indirect || !argClass.ByVal)
+          continue;
+        SmallVector<NamedAttribute> byvalAttrs;
+        byvalAttrs.push_back(rewriter.getNamedAttr(
+            "llvm.byval", TypeAttr::get(oldArgTypes[idx])));
+        byvalAttrs.push_back(rewriter.getNamedAttr(
+            "llvm.align",
+            rewriter.getI64IntegerAttr(argClass.IndirectAlign.value())));
+        argAttrDicts[idx + sretOff] = DictionaryAttr::get(ctx, byvalAttrs);
+      }
+
+      funcOp->setAttr("arg_attrs", ArrayAttr::get(ctx, argAttrDicts));
+    }
   }
 
   return success();
@@ -367,6 +425,25 @@ LogicalResult CIRABIRewriteContext::rewriteCallSite(
     Value arg = argOperands[idx];
 
     if (argClass.Kind == ArgKind::Ignore) {
+      argsChanged = true;
+      continue;
+    }
+
+    if (argClass.Kind == ArgKind::Indirect && argClass.ByVal) {
+      rewriter.setInsertionPoint(call);
+      Type origTy = arg.getType();
+      auto ptrTy = cir::PointerType::get(origTy);
+      auto alloca = cir::AllocaOp::create(
+          rewriter, call.getLoc(), ptrTy, origTy,
+          /*name=*/rewriter.getStringAttr("byval"),
+          /*alignment=*/
+          rewriter.getI64IntegerAttr(argClass.IndirectAlign.value()));
+      cir::StoreOp::create(rewriter, call.getLoc(), arg, alloca,
+                           /*isVolatile=*/mlir::UnitAttr(),
+                           /*alignment=*/mlir::IntegerAttr(),
+                           /*sync_scope=*/cir::SyncScopeKindAttr(),
+                           /*mem_order=*/cir::MemOrderAttr());
+      newArgs.push_back(alloca);
       argsChanged = true;
       continue;
     }

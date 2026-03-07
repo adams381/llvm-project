@@ -1916,6 +1916,37 @@ rewriteCallOrInvoke(mlir::Operation *op, mlir::ValueRange callOperands,
   newOp.setWillReturn(willReturn);
   newOp.setNoreturn(noReturn);
 
+  // Propagate per-argument attributes (sret, byval, align) from
+  // the callee declaration to the call site.  LLVM IR requires
+  // these on both the declaration and the call instruction.
+  if (calleeAttr) {
+    auto *callee = mlir::SymbolTable::lookupNearestSymbolFrom(op, calleeAttr);
+    if (auto fn = mlir::dyn_cast_or_null<mlir::LLVM::LLVMFuncOp>(callee)) {
+      if (auto callerArgAttrs =
+              fn->getAttrOfType<mlir::ArrayAttr>("arg_attrs")) {
+        SmallVector<mlir::Attribute> converted;
+        for (mlir::Attribute dictAttr : callerArgAttrs) {
+          auto dict = mlir::cast<mlir::DictionaryAttr>(dictAttr);
+          if (dict.empty()) {
+            converted.push_back(dictAttr);
+            continue;
+          }
+          SmallVector<mlir::NamedAttribute> filtered;
+          for (mlir::NamedAttribute entry : dict) {
+            if (entry.getName() == "llvm.sret" ||
+                entry.getName() == "llvm.byval" ||
+                entry.getName() == "llvm.align")
+              filtered.push_back(entry);
+          }
+          converted.push_back(
+              mlir::DictionaryAttr::get(op->getContext(), filtered));
+        }
+        newOp->setAttr("arg_attrs",
+                       mlir::ArrayAttr::get(op->getContext(), converted));
+      }
+    }
+  }
+
   return mlir::success();
 }
 

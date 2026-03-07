@@ -117,8 +117,11 @@ static ArgClassification convertABIArgInfo(const llvm::abi::ABIArgInfo &info,
   }
   case llvm::abi::ABIArgInfo::Indirect: {
     if (!recordCoercionEnabled) {
-      if (!origTy || !isa<cir::RecordType>(origTy) ||
-          !cast<cir::RecordType>(origTy).isTriviallyCopyable())
+      auto recTy = origTy ? dyn_cast<cir::RecordType>(origTy) : nullptr;
+      // Suppress for non-records, non-trivially-copyable, and unions.
+      // Union field offsets are not yet modeled correctly for ABI
+      // classification; they need dedicated handling.
+      if (!recTy || !recTy.isTriviallyCopyable() || recTy.isUnion())
         return ArgClassification::getDirect(nullptr);
     }
     return ArgClassification::getIndirect(llvm::Align(info.getIndirectAlign()),

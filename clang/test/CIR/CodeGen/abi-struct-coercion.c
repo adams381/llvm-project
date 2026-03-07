@@ -69,9 +69,28 @@ Big call_make_big(int x) {
 // CIR:         cir.return
 
 // LLVM-LABEL: define{{.*}} void @call_make_big(ptr sret(%struct.Big) align 4 %{{.*}}, i32 %{{.*}})
-// LLVM:         call void @make_big(ptr %{{.*}}, i32 %{{.*}})
+// LLVM:         call void @make_big(ptr sret(%struct.Big) align 4 %{{.*}}, i32 %{{.*}})
 // LLVM:         ret void
 
 // OGCG-LABEL: define{{.*}} void @call_make_big(ptr {{.*}} sret(%struct.Big) align 4 %{{.*}}, i32 {{.*}})
 // OGCG:         call void @make_big(ptr {{.*}} sret(%struct.Big) align 4 %{{.*}}, i32 {{.*}})
 // OGCG:         ret void
+
+// Verify that large structs passed as arguments use byval.
+
+void use_big(Big b);
+
+void pass_big(int x) {
+  Big b;
+  b.a = x;
+  use_big(b);
+}
+
+// CIR-LABEL: cir.func{{.*}} @pass_big
+// CIR:         cir.call @use_big(%{{.+}}) : (!cir.ptr<!rec_Big>) -> ()
+
+// LLVM-LABEL: define{{.*}} void @pass_big(i32 %{{.*}})
+// LLVM:         call void @use_big(ptr byval(%struct.Big) align 8 %{{.*}})
+
+// OGCG-LABEL: define{{.*}} void @pass_big(i32 {{.*}})
+// OGCG:         call void @use_big(ptr {{.*}} byval(%struct.Big) align 8 %{{.*}})
