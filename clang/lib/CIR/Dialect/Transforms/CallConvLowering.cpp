@@ -102,6 +102,15 @@ static ArgClassification convertABIArgInfo(const llvm::abi::ABIArgInfo &info,
           if (recTy.getPadded() && recTy.getMembers().size() == 1 &&
               recTy.getMembers()[0] == coerced)
             coerced = nullptr;
+      // Suppress Direct coercion for unions in the pipeline.
+      // The ABI library may produce coercion types that differ
+      // from classic Clang for some unions (e.g. i32 instead of
+      // i40 or i64).  Union coercion needs dedicated handling
+      // that accounts for overlapping member classification.
+      if (coerced && !recordCoercionEnabled)
+        if (auto recTy = dyn_cast<cir::RecordType>(origTy))
+          if (recTy.isUnion())
+            coerced = nullptr;
     }
     return ArgClassification::getDirect(coerced);
   }
@@ -117,11 +126,8 @@ static ArgClassification convertABIArgInfo(const llvm::abi::ABIArgInfo &info,
   }
   case llvm::abi::ABIArgInfo::Indirect: {
     if (!recordCoercionEnabled) {
-      auto recTy = origTy ? dyn_cast<cir::RecordType>(origTy) : nullptr;
-      // Suppress for non-records, non-trivially-copyable, and unions.
-      // Union field offsets are not yet modeled correctly for ABI
-      // classification; they need dedicated handling.
-      if (!recTy || !recTy.isTriviallyCopyable() || recTy.isUnion())
+      if (!origTy || !isa<cir::RecordType>(origTy) ||
+          !cast<cir::RecordType>(origTy).isTriviallyCopyable())
         return ArgClassification::getDirect(nullptr);
     }
     return ArgClassification::getIndirect(llvm::Align(info.getIndirectAlign()),
@@ -177,16 +183,18 @@ static const llvm::abi::Type *mapCIRType(mlir::Type type,
 
   if (auto recTy = dyn_cast<cir::RecordType>(type)) {
     SmallVector<llvm::abi::FieldInfo> fields;
+    bool isUnion = recTy.isUnion();
     uint64_t offsetBits = 0;
     for (mlir::Type fieldTy : recTy.getMembers()) {
       const llvm::abi::Type *mappedField =
           mapCIRType(fieldTy, typeMapper, dl, recordCoercionEnabled);
       uint64_t fieldSize = dl.getTypeSizeInBits(fieldTy);
-      fields.push_back({mappedField, offsetBits,
+      fields.push_back({mappedField, isUnion ? 0 : offsetBits,
                         /*BitFieldWidth=*/0,
                         /*IsBitField=*/false,
                         /*IsUnnamedBitfield=*/false});
-      offsetBits += fieldSize;
+      if (!isUnion)
+        offsetBits += fieldSize;
     }
     llvm::TypeSize size = dl.getTypeSizeInBits(type);
     uint64_t rawAlign = dl.getTypeABIAlignment(type);
@@ -195,6 +203,11 @@ static const llvm::abi::Type *mapCIRType(mlir::Type type,
     // defaults to false; the recordCoercionEnabled option overrides it
     // for testing with known-trivial C structs.
     bool canPass = recTy.isTriviallyCopyable() || recordCoercionEnabled;
+    if (isUnion)
+      return tb.getUnionType(fields, size, safeAlign(rawAlign),
+                             llvm::abi::StructPacking::Default,
+                             /*IsTransparent=*/false,
+                             /*CanPassInRegs=*/canPass);
     return tb.getRecordType(fields, size, safeAlign(rawAlign),
                             llvm::abi::StructPacking::Default,
                             /*BaseClasses=*/{},
