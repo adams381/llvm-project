@@ -102,15 +102,6 @@ static ArgClassification convertABIArgInfo(const llvm::abi::ABIArgInfo &info,
           if (recTy.getPadded() && recTy.getMembers().size() == 1 &&
               recTy.getMembers()[0] == coerced)
             coerced = nullptr;
-      // Suppress Direct coercion for unions in the pipeline.
-      // The ABI library may produce coercion types that differ
-      // from classic Clang for some unions (e.g. i32 instead of
-      // i40 or i64).  Union coercion needs dedicated handling
-      // that accounts for overlapping member classification.
-      if (coerced && !recordCoercionEnabled)
-        if (auto recTy = dyn_cast<cir::RecordType>(origTy))
-          if (recTy.isUnion())
-            coerced = nullptr;
     }
     return ArgClassification::getDirect(coerced);
   }
@@ -276,6 +267,48 @@ FunctionClassification classifyWithABILibrary(FunctionOpInterface funcOp,
     Type origArgTy = i < argTypes.size() ? argTypes[i] : Type();
     fc.ArgInfos.push_back(convertABIArgInfo(abiFI->getArgInfo(i).ArgInfo, ctx,
                                             origArgTy, recordCoercionEnabled));
+  }
+
+  // Fix up union coercion types.  The ABI library's
+  // reduceUnionForX8664 picks the "best" member by alignment,
+  // which may be narrower than the union's data content.  Classic
+  // Clang uses the union's full sizeof (including alignment
+  // padding).  Widen undersized coercion types to match.
+  auto fixupUnionCoercion = [&](ArgClassification &ac, Type origTy) {
+    if (ac.Kind != ArgKind::Direct || !ac.CoercedType || !origTy)
+      return;
+    auto recTy = dyn_cast<cir::RecordType>(origTy);
+    if (!recTy || !recTy.isUnion())
+      return;
+    auto coercedInt = dyn_cast<cir::IntType>(ac.CoercedType);
+    if (!coercedInt)
+      return;
+    // Compute the union's true sizeof in bits: max member size
+    // (excluding padding), rounded up to alignment.  For packed
+    // unions, alignment is 1 (no rounding).
+    auto members = recTy.getMembers();
+    auto endIt = recTy.getPadded() && !members.empty() ? members.end() - 1
+                                                       : members.end();
+    uint64_t maxMemberBits = 0;
+    uint64_t maxAlignBytes = 1;
+    for (auto it = members.begin(); it != endIt; ++it) {
+      maxMemberBits =
+          std::max(maxMemberBits, dl.getTypeSizeInBits(*it).getFixedValue());
+      if (!recTy.getPacked())
+        maxAlignBytes = std::max(maxAlignBytes, dl.getTypeABIAlignment(*it));
+    }
+    uint64_t alignBits = maxAlignBytes * 8;
+    uint64_t unionBits = llvm::alignTo(maxMemberBits, alignBits);
+    uint64_t coercedBits = coercedInt.getWidth();
+    if (coercedBits < unionBits && unionBits <= 64)
+      ac.CoercedType = cir::IntType::get(ctx, unionBits, coercedInt.isSigned());
+  };
+
+  if (!resultTypes.empty())
+    fixupUnionCoercion(fc.ReturnInfo, origRetTy);
+  for (unsigned i = 0; i < fc.ArgInfos.size(); ++i) {
+    Type origArgTy = i < argTypes.size() ? argTypes[i] : Type();
+    fixupUnionCoercion(fc.ArgInfos[i], origArgTy);
   }
 
   return fc;
