@@ -58,6 +58,45 @@ static mlir::Type abiTypeToCIR(const llvm::abi::Type *ty, MLIRContext *ctx) {
     return cir::IntType::get(ctx, width, intTy->isSigned());
   }
 
+  if (auto *fltTy = llvm::dyn_cast<llvm::abi::FloatType>(ty)) {
+    const llvm::fltSemantics *sem = fltTy->getSemantics();
+    if (sem == &llvm::APFloat::IEEEhalf())
+      return cir::FP16Type::get(ctx);
+    if (sem == &llvm::APFloat::IEEEsingle())
+      return cir::SingleType::get(ctx);
+    if (sem == &llvm::APFloat::IEEEdouble())
+      return cir::DoubleType::get(ctx);
+    if (sem == &llvm::APFloat::x87DoubleExtended())
+      return cir::FP80Type::get(ctx);
+    if (sem == &llvm::APFloat::IEEEquad())
+      return cir::FP128Type::get(ctx);
+  }
+
+  if (auto *vecTy = llvm::dyn_cast<llvm::abi::VectorType>(ty)) {
+    mlir::Type elemCIR = abiTypeToCIR(vecTy->getElementType(), ctx);
+    if (!elemCIR)
+      return nullptr;
+    uint64_t numElts = vecTy->getNumElements().getFixedValue();
+    return cir::VectorType::get(elemCIR, numElts);
+  }
+
+  // Multi-register coercion: the ABI library produces a coerced
+  // RecordType (e.g. {i64, i64} for a 16-byte struct returned in
+  // two registers).  Convert each field to a CIR type and build
+  // an anonymous CIR RecordType that lowers to an LLVM struct.
+  if (auto *recTy = llvm::dyn_cast<llvm::abi::RecordType>(ty)) {
+    SmallVector<mlir::Type> fieldTypes;
+    for (const auto &field : recTy->getFields()) {
+      mlir::Type fieldCIR = abiTypeToCIR(field.FieldType, ctx);
+      if (!fieldCIR)
+        return nullptr;
+      fieldTypes.push_back(fieldCIR);
+    }
+    return cir::RecordType::get(ctx, fieldTypes, /*packed=*/false,
+                                /*padded=*/false,
+                                cir::RecordType::RecordKind::Struct);
+  }
+
   // Fallback: represent as an unsigned integer of the same bit width.
   uint64_t bits = ty->getSizeInBits().getFixedValue();
   if (bits > 0)

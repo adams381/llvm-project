@@ -60,6 +60,22 @@ Pair add_to_pair(Pair p, int n) {
   return r;
 }
 
+// Two-register return: {long long, long long} -> {i64, i64}
+typedef struct {
+  long long a, b;
+} TwoLong;
+
+TwoLong make_two_long(long long a, long long b) {
+  TwoLong t;
+  t.a = a;
+  t.b = b;
+  return t;
+}
+
+long long sum_two_long(TwoLong t) {
+  return t.a + t.b;
+}
+
 // Scalar passthrough (baseline sanity check)
 int add(int a, int b) {
   return a + b;
@@ -77,11 +93,17 @@ typedef struct {
   int a, b, c, d, e;
 } Big;
 
+typedef struct {
+  long long a, b;
+} TwoLong;
+
 Pair make_pair(int a, int b);
 int sum_pair(Pair p);
 Big make_big(int x);
 int sum_big(Big b);
 Pair add_to_pair(Pair p, int n);
+TwoLong make_two_long(long long a, long long b);
+long long sum_two_long(TwoLong t);
 int add(int a, int b);
 
 int main(void) {
@@ -107,6 +129,13 @@ int main(void) {
   Pair q = add_to_pair(p, 10);
   printf("add_to_pair: %d %d\n", q.a, q.b);
   // CHECK: add_to_pair: 13 14
+
+  // Two-register struct return and arg
+  TwoLong t = make_two_long(100, 200);
+  printf("two_long: %lld %lld\n", t.a, t.b);
+  // CHECK: two_long: 100 200
+  printf("sum_two_long: %lld\n", sum_two_long(t));
+  // CHECK: sum_two_long: 300
 
   // Scalar baseline
   printf("add: %d\n", add(17, 25));

@@ -46,5 +46,5 @@
 //
 // Check cudaLaunchKernel is called with all 6 arguments:
 // func ptr, gridDim, blockDim, args, sharedMem, stream
-// CUDA-NEW: cir.call @cudaLaunchKernel({{.*}}) : (!cir.ptr<!void>, !u128i, !u128i, !cir.ptr<!cir.ptr<!void>>, !u64i, !cir.ptr<!rec_cudaStream>) -> !u32i
+// CUDA-NEW: cir.call @cudaLaunchKernel({{.*}}) : (!cir.ptr<!void>, !rec_anon_struct, !rec_anon_struct, !cir.ptr<!cir.ptr<!void>>, !u64i, !cir.ptr<!rec_cudaStream>) -> !u32i
 __global__ void kernel(int x, float y) {}

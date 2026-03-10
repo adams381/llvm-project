@@ -69,19 +69,19 @@ module {
   // CHECK:   %[[R:.*]] = cir.load %[[P]] : !cir.ptr<!s32i>, !s32i
   // CHECK:   cir.return %[[R]] : !s32i
 
-  // Two i64 struct {i64, i64} (16 bytes) -> coerced to u128
+  // Two i64 struct {i64, i64} (16 bytes) -> coerced to {s64i, s64i}
   cir.func @ret_two_i64() -> !rec_two_i64 {
     %tmp = cir.alloca !rec_two_i64, !cir.ptr<!rec_two_i64>, ["tmp"] {alignment = 8 : i64}
     %val = cir.load %tmp : !cir.ptr<!rec_two_i64>, !rec_two_i64
     cir.return %val : !rec_two_i64
   }
-  // CHECK: cir.func @ret_two_i64() -> !u128i
+  // CHECK: cir.func @ret_two_i64() -> !rec_anon_struct
   // CHECK:   %[[V:.*]] = cir.load {{.*}} : !cir.ptr<!rec_two_i64>, !rec_two_i64
   // CHECK:   %[[A:.*]] = cir.alloca !rec_two_i64, !cir.ptr<!rec_two_i64>, ["coerce"]
   // CHECK:   cir.store %[[V]], %[[A]]
-  // CHECK:   %[[P:.*]] = cir.cast bitcast %[[A]] : !cir.ptr<!rec_two_i64> -> !cir.ptr<!u128i>
-  // CHECK:   %[[R:.*]] = cir.load %[[P]] : !cir.ptr<!u128i>, !u128i
-  // CHECK:   cir.return %[[R]] : !u128i
+  // CHECK:   %[[P:.*]] = cir.cast bitcast %[[A]] : !cir.ptr<!rec_two_i64> -> !cir.ptr<!rec_anon_struct>
+  // CHECK:   %[[R:.*]] = cir.load %[[P]] : !cir.ptr<!rec_anon_struct>, !rec_anon_struct
+  // CHECK:   cir.return %[[R]] : !rec_anon_struct
 
   // Three i64 struct {i64, i64, i64} (24 bytes) -> sret
   cir.func @ret_three_i64() -> !rec_three_i64 {
