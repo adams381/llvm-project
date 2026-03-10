@@ -504,6 +504,8 @@ LogicalResult CIRABIRewriteContext::rewriteFunctionDefinition(
         byvalAttrs.push_back(rewriter.getNamedAttr(
             "llvm.align",
             rewriter.getI64IntegerAttr(argClass.IndirectAlign.value())));
+        byvalAttrs.push_back(
+            rewriter.getNamedAttr("llvm.noundef", rewriter.getUnitAttr()));
         argAttrDicts[idx + sretOff] = DictionaryAttr::get(ctx, byvalAttrs);
       }
 

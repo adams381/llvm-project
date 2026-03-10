@@ -90,7 +90,7 @@ void pass_big(int x) {
 // CIR:         cir.call @use_big(%{{.+}}) : (!cir.ptr<!rec_Big>) -> ()
 
 // LLVM-LABEL: define{{.*}} void @pass_big(i32 %{{.*}})
-// LLVM:         call void @use_big(ptr byval(%struct.Big) align 8 %{{.*}})
+// LLVM:         call void @use_big(ptr noundef byval(%struct.Big) align 8 %{{.*}})
 
 // OGCG-LABEL: define{{.*}} void @pass_big(i32 {{.*}})
 // OGCG:         call void @use_big(ptr {{.*}} byval(%struct.Big) align 8 %{{.*}})

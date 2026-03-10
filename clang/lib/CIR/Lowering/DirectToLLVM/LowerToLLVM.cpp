@@ -1935,7 +1935,8 @@ rewriteCallOrInvoke(mlir::Operation *op, mlir::ValueRange callOperands,
           for (mlir::NamedAttribute entry : dict) {
             if (entry.getName() == "llvm.sret" ||
                 entry.getName() == "llvm.byval" ||
-                entry.getName() == "llvm.align")
+                entry.getName() == "llvm.align" ||
+                entry.getName() == "llvm.noundef")
               filtered.push_back(entry);
           }
           converted.push_back(

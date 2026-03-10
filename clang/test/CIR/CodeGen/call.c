@@ -62,7 +62,7 @@ void f7(void) {
 // CIR:         cir.call @f5(%{{.+}}) : (!cir.ptr<!rec_Big>) -> ()
 
 // LLVM-LABEL: define{{.*}} void @f7(){{.*}} {
-// LLVM:         call void @f5(ptr byval(%struct.Big) align 8 %{{.+}})
+// LLVM:         call void @f5(ptr noundef byval(%struct.Big) align 8 %{{.+}})
 
 // OGCG-LABEL: define{{.*}} void @f7() #0 {
 // OGCG:         %[[B:.+]] = alloca %struct.Big, align 8
