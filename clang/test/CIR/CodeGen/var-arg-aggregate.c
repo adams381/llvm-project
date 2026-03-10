@@ -37,11 +37,7 @@ struct Bar varargs_aggregate(int count, ...) {
 // CIR:   %{{.+}} = cir.load{{.*}} %[[RET_ADDR]] : !cir.ptr<!rec_Bar>, !rec_Bar
 // CIR:   cir.return %{{.+}} : !rec_anon_struct
 
-// Note: CIR produces { i64, i32 } but OGCG produces { <2 x float>, i32 }.
-// The first eightbyte should use SSE class (<2 x float> in XMM0) but the
-// ABI library produces IntegerType(64) instead of VectorType(<2 x float>).
-// This is an ABI library classification issue to resolve upstream.
-// LLVM-LABEL: define dso_local { i64, i32 } @varargs_aggregate(
+// LLVM-LABEL: define dso_local { <2 x float>, i32 } @varargs_aggregate(
 // LLVM:   call void @llvm.va_start.p0(ptr %{{.*}})
 // LLVM:   %[[VA_PTR1:.+]] = getelementptr %struct.__va_list_tag, ptr %{{.*}}, i32 0
 // LLVM:   %[[VA_ARG:.+]] = va_arg ptr %[[VA_PTR1]], %struct.Bar

@@ -211,6 +211,22 @@ static const llvm::abi::Type *mapCIRType(mlir::Type type,
   if (isa<cir::VoidType>(type))
     return tb.getVoidType();
 
+  if (isa<cir::SingleType>(type))
+    return tb.getFloatType(llvm::APFloat::IEEEsingle(),
+                           safeAlign(dl.getTypeABIAlignment(type)));
+  if (isa<cir::DoubleType>(type))
+    return tb.getFloatType(llvm::APFloat::IEEEdouble(),
+                           safeAlign(dl.getTypeABIAlignment(type)));
+  if (isa<cir::FP16Type>(type))
+    return tb.getFloatType(llvm::APFloat::IEEEhalf(),
+                           safeAlign(dl.getTypeABIAlignment(type)));
+  if (isa<cir::FP80Type>(type))
+    return tb.getFloatType(llvm::APFloat::x87DoubleExtended(),
+                           safeAlign(dl.getTypeABIAlignment(type)));
+  if (isa<cir::FP128Type>(type))
+    return tb.getFloatType(llvm::APFloat::IEEEquad(),
+                           safeAlign(dl.getTypeABIAlignment(type)));
+
   if (auto recTy = dyn_cast<cir::RecordType>(type)) {
     SmallVector<llvm::abi::FieldInfo> fields;
     bool isUnion = recTy.isUnion();

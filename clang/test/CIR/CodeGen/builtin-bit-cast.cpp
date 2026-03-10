@@ -61,7 +61,7 @@ two_floats test_aggregate_record(two_ints& ti) {
 //  CIR-NEXT:   cir.libc.memcpy %[[#SIZE]] bytes from %[[#SRC_VOID_PTR]] to %[[#DST_VOID_PTR]] : !u64i, !cir.ptr<!void> -> !cir.ptr<!void>
 
 // LLVM-DIRECT-LABEL: define dso_local{{.*}} %struct.two_floats @_Z21test_aggregate_recordR8two_ints
-// LLVM-VIA-CIR-LABEL: define dso_local{{.*}} i64 @_Z21test_aggregate_recordR8two_ints
+// LLVM-VIA-CIR-LABEL: define dso_local{{.*}} <2 x float> @_Z21test_aggregate_recordR8two_ints
 //       LLVM:   %[[DST_SLOT:.*]] = alloca %struct.two_floats{{.*}}, align 4
 //       LLVM:   %[[SRC_PTR:.*]] = load ptr, ptr {{.*}}, align 8
 //  LLVM-NEXT:   call void @llvm.memcpy.p0.p0.i64(ptr{{.*}} %[[DST_SLOT]], ptr{{.*}} %[[SRC_PTR]], i64 8, i1 false)
@@ -79,7 +79,7 @@ two_floats test_aggregate_array(int (&ary)[2]) {
 //  CIR-NEXT:   cir.libc.memcpy %[[#SIZE]] bytes from %[[#SRC_VOID_PTR]] to %[[#DST_VOID_PTR]] : !u64i, !cir.ptr<!void> -> !cir.ptr<!void>
 
 // LLVM-DIRECT-LABEL: define dso_local{{.*}} %struct.two_floats @_Z20test_aggregate_arrayRA2_i
-// LLVM-VIA-CIR-LABEL: define dso_local{{.*}} i64 @_Z20test_aggregate_arrayRA2_i
+// LLVM-VIA-CIR-LABEL: define dso_local{{.*}} <2 x float> @_Z20test_aggregate_arrayRA2_i
 //       LLVM:   %[[DST_SLOT:.*]] = alloca %struct.two_floats{{.*}}, align 4
 //       LLVM:   %[[SRC_PTR:.*]] = load ptr, ptr {{.*}}, align 8
 //  LLVM-NEXT:   call void @llvm.memcpy.p0.p0.i64(ptr{{.*}} %[[DST_SLOT]], ptr{{.*}} %[[SRC_PTR]], i64 8, i1 false)
