@@ -89,7 +89,7 @@ module {
     %val = cir.load %tmp : !cir.ptr<!rec_three_i64>, !rec_three_i64
     cir.return %val : !rec_three_i64
   }
-  // CHECK: cir.func @ret_three_i64(%arg0: !cir.ptr<!rec_three_i64> {llvm.align = 8 : i64, llvm.sret = !rec_three_i64})
+  // CHECK: cir.func @ret_three_i64(%arg0: !cir.ptr<!rec_three_i64> {llvm.align = 8 : i64, llvm.dead_on_unwind, llvm.sret = !rec_three_i64, llvm.writable})
   // CHECK:   cir.store %{{.*}}, %arg0 : !rec_three_i64
   // CHECK:   cir.return
 

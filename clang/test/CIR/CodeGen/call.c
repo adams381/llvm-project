@@ -78,7 +78,7 @@ void f8(void) {
 // CIR:         cir.store align(4) %[[B]], %{{.+}} : !rec_Big, !cir.ptr<!rec_Big>
 
 // LLVM-LABEL: define{{.*}} void @f8(){{.*}} {
-// LLVM:        call void @f6(ptr sret(%struct.Big) align 4 %{{.+}})
+// LLVM:        call void @f6(ptr dead_on_unwind writable sret(%struct.Big) align 4 %{{.+}})
 // LLVM:        %[[B:.+]] = load %struct.Big, ptr %{{.+}}
 // LLVM:        store %struct.Big %[[B]], ptr %{{.+}}, align 4
 
