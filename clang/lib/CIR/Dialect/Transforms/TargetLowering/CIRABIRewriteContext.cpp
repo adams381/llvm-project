@@ -128,9 +128,14 @@ static void insertArgAdaptation(FunctionOpInterface funcOp,
       continue;
 
     // Handle Extend (integer widening) and Direct with coercion
-    // (struct -> integer).
+    // (struct -> integer).  Skip flattened args — they are handled
+    // separately after this function.
     if (argClass.Kind != ArgKind::Extend && argClass.Kind != ArgKind::Direct)
       continue;
+    if (argClass.CanFlatten && argClass.CoercedType)
+      if (auto cr = dyn_cast<cir::RecordType>(argClass.CoercedType))
+        if (cr.getMembers().size() > 1)
+          continue;
 
     unsigned blockIdx = idx + sretOffset;
     BlockArgument blockArg = entryBlock.getArgument(blockIdx);
@@ -223,6 +228,16 @@ LogicalResult CIRABIRewriteContext::rewriteFunctionDefinition(
     switch (argClass.Kind) {
     case ArgKind::Direct:
     case ArgKind::Extend:
+      if (argClass.CanFlatten && argClass.CoercedType) {
+        if (auto coercedRec = dyn_cast<cir::RecordType>(argClass.CoercedType)) {
+          if (coercedRec.getMembers().size() > 1) {
+            for (mlir::Type fieldTy : coercedRec.getMembers())
+              newArgTypes.push_back(fieldTy);
+            hasArgChanges = true;
+            break;
+          }
+        }
+      }
       newArgTypes.push_back(argClass.CoercedType ? argClass.CoercedType
                                                  : origTy);
       if (argClass.CoercedType && argClass.CoercedType != origTy)
@@ -320,6 +335,98 @@ LogicalResult CIRABIRewriteContext::rewriteFunctionDefinition(
         SmallPtrSet<Operation *, 1> loadOps;
         loadOps.insert(load.getOperation());
         blockArg.replaceAllUsesExcept(load, loadOps);
+      }
+    }
+
+    // For flattened Direct args (CanFlatten + RecordType coercion),
+    // replace the single struct block arg with N scalar block args
+    // and reconstruct the struct at function entry.
+    if (!funcOp->getRegion(0).empty()) {
+      Block &entry = funcOp->getRegion(0).front();
+      // Compute block index mapping: for each original arg, where
+      // does it start in the new block arg list?
+      SmallVector<unsigned> blockArgStart;
+      unsigned blockIdx = sretOffset;
+      for (auto [idx, argClass] : llvm::enumerate(fc.ArgInfos)) {
+        blockArgStart.push_back(blockIdx);
+        if (argClass.Kind == ArgKind::Ignore) {
+          // Ignore args were not pushed to newArgTypes
+        } else if (argClass.Kind == ArgKind::Direct && argClass.CanFlatten &&
+                   argClass.CoercedType) {
+          if (auto coercedRec = dyn_cast<cir::RecordType>(argClass.CoercedType))
+            if (coercedRec.getMembers().size() > 1) {
+              blockIdx += coercedRec.getMembers().size();
+              continue;
+            }
+          ++blockIdx;
+        } else {
+          ++blockIdx;
+        }
+      }
+
+      // Process flattened args in reverse to keep indices stable.
+      for (int i = fc.ArgInfos.size() - 1; i >= 0; --i) {
+        auto &argClass = fc.ArgInfos[i];
+        if (argClass.Kind != ArgKind::Direct || !argClass.CanFlatten ||
+            !argClass.CoercedType)
+          continue;
+        auto coercedRec = dyn_cast<cir::RecordType>(argClass.CoercedType);
+        if (!coercedRec || coercedRec.getMembers().size() <= 1)
+          continue;
+
+        unsigned origBlockIdx = blockArgStart[i];
+        Type origTy = oldArgTypes[i];
+        auto members = coercedRec.getMembers();
+        unsigned numFields = members.size();
+
+        // The block arg at origBlockIdx currently has the original
+        // struct type.  Replace it with N scalar args, then
+        // reconstruct the original struct via the coerced type.
+        BlockArgument origArg = entry.getArgument(origBlockIdx);
+
+        // Insert N new scalar block args after the original.
+        for (unsigned f = 0; f < numFields; ++f)
+          entry.insertArgument(origBlockIdx + 1 + f, members[f],
+                               funcOp.getLoc());
+
+        // Store scalars into a coerced-type alloca, then bitcast
+        // to the original struct type and load.  This handles the
+        // case where the coerced fields differ from the original
+        // struct's fields (e.g. dim3 {i32,i32,i32} -> {i64,i32}).
+        rewriter.setInsertionPointToStart(&entry);
+        Type coercedTy = argClass.CoercedType;
+        auto coercedPtrTy = cir::PointerType::get(coercedTy);
+        auto alloca = cir::AllocaOp::create(
+            rewriter, funcOp.getLoc(), coercedPtrTy, coercedTy,
+            /*name=*/rewriter.getStringAttr("coerce"),
+            /*alignment=*/rewriter.getI64IntegerAttr(8));
+
+        for (unsigned f = 0; f < numFields; ++f) {
+          BlockArgument scalarArg = entry.getArgument(origBlockIdx + 1 + f);
+          auto memberPtr = cir::GetMemberOp::create(
+              rewriter, funcOp.getLoc(), cir::PointerType::get(members[f]),
+              alloca,
+              /*name=*/"", f);
+          cir::StoreOp::create(rewriter, funcOp.getLoc(), scalarArg, memberPtr,
+                               /*isVolatile=*/mlir::UnitAttr(),
+                               /*alignment=*/mlir::IntegerAttr(),
+                               /*sync_scope=*/cir::SyncScopeKindAttr(),
+                               /*mem_order=*/cir::MemOrderAttr());
+        }
+
+        auto origPtrTy = cir::PointerType::get(origTy);
+        auto ptrCast = cir::CastOp::create(rewriter, funcOp.getLoc(), origPtrTy,
+                                           cir::CastKind::bitcast, alloca);
+        auto loaded =
+            cir::LoadOp::create(rewriter, funcOp.getLoc(), origTy, ptrCast,
+                                /*isDeref=*/mlir::UnitAttr(),
+                                /*isVolatile=*/mlir::UnitAttr(),
+                                /*alignment=*/mlir::IntegerAttr(),
+                                /*sync_scope=*/cir::SyncScopeKindAttr(),
+                                /*mem_order=*/cir::MemOrderAttr());
+
+        origArg.replaceAllUsesWith(loaded);
+        entry.eraseArgument(origBlockIdx);
       }
     }
 
@@ -446,6 +553,49 @@ LogicalResult CIRABIRewriteContext::rewriteCallSite(
       newArgs.push_back(alloca);
       argsChanged = true;
       continue;
+    }
+
+    // Flatten multi-register struct args into individual scalars.
+    // Store the original struct, bitcast to the coerced type, then
+    // load each field via GetMemberOp on the coerced RecordType.
+    if (argClass.Kind == ArgKind::Direct && argClass.CanFlatten &&
+        argClass.CoercedType) {
+      if (auto coercedRec = dyn_cast<cir::RecordType>(argClass.CoercedType)) {
+        if (coercedRec.getMembers().size() > 1) {
+          rewriter.setInsertionPoint(call);
+          Type origTy = arg.getType();
+          auto origPtrTy = cir::PointerType::get(origTy);
+          auto alloca = cir::AllocaOp::create(
+              rewriter, call.getLoc(), origPtrTy, origTy,
+              /*name=*/rewriter.getStringAttr("coerce"),
+              /*alignment=*/rewriter.getI64IntegerAttr(8));
+          cir::StoreOp::create(rewriter, call.getLoc(), arg, alloca,
+                               /*isVolatile=*/mlir::UnitAttr(),
+                               /*alignment=*/mlir::IntegerAttr(),
+                               /*sync_scope=*/cir::SyncScopeKindAttr(),
+                               /*mem_order=*/cir::MemOrderAttr());
+          auto coercedPtrTy = cir::PointerType::get(argClass.CoercedType);
+          auto ptrCast =
+              cir::CastOp::create(rewriter, call.getLoc(), coercedPtrTy,
+                                  cir::CastKind::bitcast, alloca);
+          for (auto [f, fieldTy] : llvm::enumerate(coercedRec.getMembers())) {
+            auto memberPtr = cir::GetMemberOp::create(
+                rewriter, call.getLoc(), cir::PointerType::get(fieldTy),
+                ptrCast,
+                /*name=*/"", f);
+            auto fieldVal =
+                cir::LoadOp::create(rewriter, call.getLoc(), fieldTy, memberPtr,
+                                    /*isDeref=*/mlir::UnitAttr(),
+                                    /*isVolatile=*/mlir::UnitAttr(),
+                                    /*alignment=*/mlir::IntegerAttr(),
+                                    /*sync_scope=*/cir::SyncScopeKindAttr(),
+                                    /*mem_order=*/cir::MemOrderAttr());
+            newArgs.push_back(fieldVal);
+          }
+          argsChanged = true;
+          continue;
+        }
+      }
     }
 
     if ((argClass.Kind == ArgKind::Extend ||

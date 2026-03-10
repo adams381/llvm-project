@@ -142,7 +142,9 @@ static ArgClassification convertABIArgInfo(const llvm::abi::ABIArgInfo &info,
               recTy.getMembers()[0] == coerced)
             coerced = nullptr;
     }
-    return ArgClassification::getDirect(coerced);
+    auto ac = ArgClassification::getDirect(coerced);
+    ac.CanFlatten = info.getCanBeFlattened();
+    return ac;
   }
   case llvm::abi::ABIArgInfo::Extend: {
     mlir::Type coerced = abiTypeToCIR(info.getCoerceToType(), ctx);
