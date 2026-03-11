@@ -1937,6 +1937,7 @@ rewriteCallOrInvoke(mlir::Operation *op, mlir::ValueRange callOperands,
                 entry.getName() == "llvm.byval" ||
                 entry.getName() == "llvm.align" ||
                 entry.getName() == "llvm.noundef" ||
+                entry.getName() == "llvm.noalias" ||
                 entry.getName() == "llvm.writable" ||
                 entry.getName() == "llvm.dead_on_unwind")
               filtered.push_back(entry);

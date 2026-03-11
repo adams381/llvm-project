@@ -17,11 +17,10 @@
 #include "llvm/Support/TimeProfiler.h"
 
 namespace cir {
-mlir::LogicalResult runCIRToCIRPasses(mlir::ModuleOp theModule,
-                                      mlir::MLIRContext &mlirContext,
-                                      clang::ASTContext &astContext,
-                                      bool enableVerifier,
-                                      bool enableCIRSimplify) {
+mlir::LogicalResult
+runCIRToCIRPasses(mlir::ModuleOp theModule, mlir::MLIRContext &mlirContext,
+                  clang::ASTContext &astContext, bool enableVerifier,
+                  bool enableCIRSimplify, bool passByValueIsNoAlias) {
 
   llvm::TimeTraceScope scope("CIR To CIR Passes");
 
@@ -37,7 +36,8 @@ mlir::LogicalResult runCIRToCIRPasses(mlir::ModuleOp theModule,
   // triviality info.  Non-trivially-copyable C++ structs (with
   // ctors/dtors) would be incorrectly coerced.  Enable when CIR
   // carries triviality on RecordType.
-  pm.addPass(mlir::createCallConvLoweringPass(/*recordCoercionEnabled=*/false));
+  pm.addPass(mlir::createCallConvLoweringPass(/*recordCoercionEnabled=*/false,
+                                              passByValueIsNoAlias));
   pm.addPass(mlir::createLoweringPreparePass(&astContext));
 
   pm.enableVerifier(enableVerifier);

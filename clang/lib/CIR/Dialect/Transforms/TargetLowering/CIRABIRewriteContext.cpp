@@ -510,6 +510,12 @@ LogicalResult CIRABIRewriteContext::rewriteFunctionDefinition(
             rewriter.getI64IntegerAttr(argClass.IndirectAlign.value())));
         byvalAttrs.push_back(
             rewriter.getNamedAttr("llvm.noundef", rewriter.getUnitAttr()));
+        if (passByValueIsNoAlias) {
+          auto recTy = dyn_cast<cir::RecordType>(oldArgTypes[idx]);
+          if (recTy && recTy.isTriviallyCopyable())
+            byvalAttrs.push_back(
+                rewriter.getNamedAttr("llvm.noalias", rewriter.getUnitAttr()));
+        }
         argAttrDicts[idx + sretOff] = DictionaryAttr::get(ctx, byvalAttrs);
       }
 

@@ -170,7 +170,11 @@ def CallConvLowering : Pass<"cir-call-conv-lowering", "mlir::ModuleOp"> {
            "Defaults to true for standalone cir-opt (where test "
            "inputs use known-trivial C structs).  The clang pipeline "
            "passes false because CIR RecordType does not carry "
-           "triviality info for C++ types.">
+           "triviality info for C++ types.">,
+    Option<"passByValueIsNoAlias", "pass-by-value-is-noalias", "bool",
+           /*default=*/"false",
+           "Add noalias to byval parameters for trivially-copyable "
+           "records.  Mirrors -fpass-by-value-is-noalias.">
   ];
 }
 

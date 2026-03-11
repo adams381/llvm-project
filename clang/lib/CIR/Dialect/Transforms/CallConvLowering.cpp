@@ -378,12 +378,17 @@ struct CallConvLoweringPass
       : CallConvLoweringBase() {
     recordCoercionEnabled = enableRecordCoercion;
   }
+  CallConvLoweringPass(bool enableRecordCoercion, bool noAliasForByVal)
+      : CallConvLoweringBase() {
+    recordCoercionEnabled = enableRecordCoercion;
+    passByValueIsNoAlias = noAliasForByVal;
+  }
 
   void runOnOperation() override {
     ModuleOp module = getOperation();
     DataLayout dataLayout(module);
     ABITypeMapper typeMapper(dataLayout);
-    cir::CIRABIRewriteContext rewriteCtx(module);
+    cir::CIRABIRewriteContext rewriteCtx(module, passByValueIsNoAlias);
 
     // Read target triple from the module.  When not present (e.g. CIR
     // parsed from text without a triple), fall back to x86_64-linux.
@@ -462,4 +467,11 @@ std::unique_ptr<Pass> mlir::createCallConvLoweringPass() {
 std::unique_ptr<Pass>
 mlir::createCallConvLoweringPass(bool recordCoercionEnabled) {
   return std::make_unique<CallConvLoweringPass>(recordCoercionEnabled);
+}
+
+std::unique_ptr<Pass>
+mlir::createCallConvLoweringPass(bool recordCoercionEnabled,
+                                 bool passByValueIsNoAlias) {
+  return std::make_unique<CallConvLoweringPass>(recordCoercionEnabled,
+                                                passByValueIsNoAlias);
 }

@@ -26,6 +26,8 @@ std::unique_ptr<Pass> createCIRFlattenCFGPass();
 std::unique_ptr<Pass> createCIRSimplifyPass();
 std::unique_ptr<Pass> createCallConvLoweringPass();
 std::unique_ptr<Pass> createCallConvLoweringPass(bool recordCoercionEnabled);
+std::unique_ptr<Pass> createCallConvLoweringPass(bool recordCoercionEnabled,
+                                                 bool passByValueIsNoAlias);
 std::unique_ptr<Pass> createCXXABILoweringPass();
 std::unique_ptr<Pass> createTargetLoweringPass();
 std::unique_ptr<Pass> createHoistAllocasPass();
