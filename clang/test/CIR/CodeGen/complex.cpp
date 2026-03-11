@@ -867,8 +867,11 @@ void foo33(__builtin_va_list a) {
 // LLVM: %[[B_ADDR:.*]] = alloca { float, float }, i64 1, align 4
 // LLVM: store ptr %[[ARG_0:.*]], ptr %[[A_ADDR]], align 8
 // LLVM: %[[TMP_A:.*]] = load ptr, ptr %[[A_ADDR]], align 8
-// LLVM: %[[COMPLEX:.*]] = va_arg ptr %[[TMP_A]], { float, float }
-// LLVM: store { float, float } %[[COMPLEX]], ptr %[[B_ADDR]], align 4
+// LLVM: %{{.*}} = load i32, ptr %{{.*}}
+// LLVM: %{{.*}} = icmp ule i32 %{{.*}},
+// LLVM: br i1 %{{.*}},
+// LLVM: %{{.*}} = phi ptr
+// LLVM: %{{.*}} = load { float, float }, ptr %{{.*}}
 
 // TODO(CIR): the difference between the CIR LLVM and OGCG is because the lack of calling convention lowering,
 // Test will be updated when that is implemented

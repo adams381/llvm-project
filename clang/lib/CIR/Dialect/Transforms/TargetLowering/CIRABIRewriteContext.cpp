@@ -629,6 +629,23 @@ LogicalResult CIRABIRewriteContext::rewriteCallSite(
     }
   }
 
+  // Pass through variadic operands beyond the classified args.
+  // Struct variadic args must be coerced to integer types because
+  // the callee reads them via va_arg as raw register/memory values.
+  for (unsigned i = fc.ArgInfos.size(); i < argOperands.size(); ++i) {
+    Value arg = argOperands[i];
+    if (isa<cir::RecordType>(arg.getType())) {
+      rewriter.setInsertionPoint(call);
+      auto dl = mlir::DataLayout::closest(call.getOperation());
+      uint64_t sizeBits = dl.getTypeSizeInBits(arg.getType());
+      auto coercedTy =
+          cir::IntType::get(call.getContext(), sizeBits, /*isSigned=*/false);
+      arg = emitCoercion(rewriter, call.getLoc(), coercedTy, arg);
+      argsChanged = true;
+    }
+    newArgs.push_back(arg);
+  }
+
   // Handle indirect return (sret) at call site.
   if (hasSRet && call.getNumResults() > 0) {
     Type origRetTy = call.getResult().getType();

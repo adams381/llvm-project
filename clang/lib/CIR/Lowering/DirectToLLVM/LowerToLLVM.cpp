@@ -4670,10 +4670,92 @@ mlir::LogicalResult CIRToLLVMVACopyOpLowering::matchAndRewrite(
   return mlir::success();
 }
 
+/// Expand x86_64 va_arg for an aggregate type that needs GP registers.
+/// Implements AMD64-ABI 3.5.7p5 with register/memory branching.
+static mlir::Value emitX86_64VAArgAggExpansion(
+    cir::VAArgOp op, mlir::Value vaList, mlir::Type llvmType, unsigned neededGP,
+    unsigned structSize, mlir::ConversionPatternRewriter &rewriter) {
+  mlir::Location loc = op.getLoc();
+  auto i32Ty = rewriter.getI32Type();
+  auto i64Ty = rewriter.getI64Type();
+  auto ptrTy = mlir::LLVM::LLVMPointerType::get(rewriter.getContext());
+
+  // va_list struct: { i32 gp_offset, i32 fp_offset, ptr overflow, ptr reg }
+  auto vaListStructTy = mlir::LLVM::LLVMStructType::getLiteral(
+      rewriter.getContext(), {i32Ty, i32Ty, ptrTy, ptrTy});
+
+  // Load gp_offset.
+  auto zero = mlir::LLVM::ConstantOp::create(rewriter, loc, i32Ty, 0);
+  auto gpOffsetIdx = mlir::LLVM::ConstantOp::create(rewriter, loc, i32Ty, 0);
+  auto gpOffsetP =
+      mlir::LLVM::GEPOp::create(rewriter, loc, ptrTy, vaListStructTy, vaList,
+                                mlir::ValueRange{zero, gpOffsetIdx});
+  auto gpOffset = mlir::LLVM::LoadOp::create(rewriter, loc, i32Ty, gpOffsetP);
+
+  // Check: gp_offset <= 48 - neededGP * 8
+  auto limit =
+      mlir::LLVM::ConstantOp::create(rewriter, loc, i32Ty, 48 - neededGP * 8);
+  auto fits = mlir::LLVM::ICmpOp::create(
+      rewriter, loc, mlir::LLVM::ICmpPredicate::ule, gpOffset, limit);
+
+  // Split block: current -> {inReg, inMem} -> cont(ptr)
+  mlir::Block *currentBlock = rewriter.getInsertionBlock();
+  mlir::Block *contBlock =
+      rewriter.splitBlock(currentBlock, rewriter.getInsertionPoint());
+  contBlock->addArgument(ptrTy, loc);
+
+  mlir::Block *inRegBlock = rewriter.createBlock(contBlock);
+  mlir::Block *inMemBlock = rewriter.createBlock(contBlock);
+
+  // Terminate current block with cond_br.
+  rewriter.setInsertionPointToEnd(currentBlock);
+  mlir::LLVM::CondBrOp::create(rewriter, loc, fits, inRegBlock, inMemBlock);
+
+  // --- In-register path ---
+  rewriter.setInsertionPointToStart(inRegBlock);
+  auto regSaveIdx = mlir::LLVM::ConstantOp::create(rewriter, loc, i32Ty, 3);
+  auto regSaveP =
+      mlir::LLVM::GEPOp::create(rewriter, loc, ptrTy, vaListStructTy, vaList,
+                                mlir::ValueRange{zero, regSaveIdx});
+  auto regSave = mlir::LLVM::LoadOp::create(rewriter, loc, ptrTy, regSaveP);
+  auto gpExt = mlir::LLVM::ZExtOp::create(rewriter, loc, i64Ty, gpOffset);
+  auto regAddr =
+      mlir::LLVM::GEPOp::create(rewriter, loc, ptrTy, rewriter.getI8Type(),
+                                regSave, mlir::ValueRange{gpExt});
+  auto gpInc = mlir::LLVM::ConstantOp::create(
+      rewriter, loc, i32Ty, static_cast<int64_t>(neededGP * 8));
+  auto newGP = mlir::LLVM::AddOp::create(rewriter, loc, gpOffset, gpInc);
+  mlir::LLVM::StoreOp::create(rewriter, loc, newGP, gpOffsetP);
+  mlir::LLVM::BrOp::create(rewriter, loc, mlir::ValueRange{regAddr}, contBlock);
+
+  // --- In-memory path ---
+  rewriter.setInsertionPointToStart(inMemBlock);
+  auto overflowIdx = mlir::LLVM::ConstantOp::create(rewriter, loc, i32Ty, 2);
+  auto zeroMem = mlir::LLVM::ConstantOp::create(rewriter, loc, i32Ty, 0);
+  auto overflowP =
+      mlir::LLVM::GEPOp::create(rewriter, loc, ptrTy, vaListStructTy, vaList,
+                                mlir::ValueRange{zeroMem, overflowIdx});
+  auto overflow = mlir::LLVM::LoadOp::create(rewriter, loc, ptrTy, overflowP);
+  uint64_t roundedSize = (structSize + 7) & ~7;
+  auto sizeVal = mlir::LLVM::ConstantOp::create(
+      rewriter, loc, i64Ty, static_cast<int64_t>(roundedSize));
+  auto newOverflow =
+      mlir::LLVM::GEPOp::create(rewriter, loc, ptrTy, rewriter.getI8Type(),
+                                overflow, mlir::ValueRange{sizeVal});
+  mlir::LLVM::StoreOp::create(rewriter, loc, newOverflow, overflowP);
+  mlir::LLVM::BrOp::create(rewriter, loc, mlir::ValueRange{overflow},
+                           contBlock);
+
+  // --- Continuation ---
+  rewriter.setInsertionPointToStart(contBlock);
+  mlir::Value resultAddr = contBlock->getArgument(0);
+  return mlir::LLVM::LoadOp::create(rewriter, loc, llvmType, resultAddr)
+      .getResult();
+}
+
 mlir::LogicalResult CIRToLLVMVAArgOpLowering::matchAndRewrite(
     cir::VAArgOp op, OpAdaptor adaptor,
     mlir::ConversionPatternRewriter &rewriter) const {
-  assert(!cir::MissingFeatures::vaArgABILowering());
   auto opaquePtr = mlir::LLVM::LLVMPointerType::get(getContext());
   auto vaList = mlir::LLVM::BitcastOp::create(rewriter, op.getLoc(), opaquePtr,
                                               adaptor.getArgList());
@@ -4682,6 +4764,18 @@ mlir::LogicalResult CIRToLLVMVAArgOpLowering::matchAndRewrite(
       getTypeConverter()->convertType(op->getResultTypes().front());
   if (!llvmType)
     return mlir::failure();
+
+  // For aggregate types, expand va_arg inline because LLVM's va_arg
+  // instruction does not support struct types on any target.
+  if (auto structTy = dyn_cast<mlir::LLVM::LLVMStructType>(llvmType)) {
+    auto dl = mlir::DataLayout::closest(op);
+    uint64_t structSize = dl.getTypeSizeInBits(structTy) / 8;
+    unsigned neededGP = (structSize + 7) / 8;
+    mlir::Value result = emitX86_64VAArgAggExpansion(
+        op, vaList, llvmType, neededGP, structSize, rewriter);
+    rewriter.replaceOp(op, result);
+    return mlir::success();
+  }
 
   rewriter.replaceOpWithNewOp<mlir::LLVM::VaArgOp>(op, llvmType, vaList);
   return mlir::success();
