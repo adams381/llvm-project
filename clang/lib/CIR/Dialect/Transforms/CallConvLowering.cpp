@@ -245,23 +245,18 @@ static const llvm::abi::Type *mapCIRType(mlir::Type type,
     }
     llvm::TypeSize size = dl.getTypeSizeInBits(type);
     uint64_t rawAlign = dl.getTypeABIAlignment(type);
-    // Named records go through CIRGen's complete() which sets the
-    // triviallyCopyable flag from RecordDecl::canPassInRegisters().
-    // Anonymous records (created by CIR passes, e.g. member function
-    // pointer lowering) never go through complete() so the flag is
-    // unreliable — treat them as trivially copyable since they are
-    // always plain data containers.  The recordCoercionEnabled
-    // override handles cir-opt tests where text-parsed records
-    // default to non-trivially-copyable.
-    bool hasReliableFlag = static_cast<bool>(recTy.getName());
-    bool canPass = hasReliableFlag ? recTy.isTriviallyCopyable() : true;
-    canPass = canPass || recordCoercionEnabled;
+    // CIRGen sets the triviallyCopyable flag from
+    // RecordDecl::canPassInRegisters() via complete().  Anonymous
+    // records default to trivially copyable in RecordTypeStorage.
+    // The recordCoercionEnabled override handles cir-opt tests
+    // where text-parsed records default to non-trivially-copyable.
+    bool canPass = recTy.isTriviallyCopyable() || recordCoercionEnabled;
     if (isUnion)
       return tb.getUnionType(fields, size, safeAlign(rawAlign),
                              llvm::abi::StructPacking::Default,
                              /*IsTransparent=*/false,
                              /*CanPassInRegs=*/canPass);
-    bool nonTrivial = hasReliableFlag && !recTy.isTriviallyCopyable();
+    bool nonTrivial = !recTy.isTriviallyCopyable();
     return tb.getRecordType(fields, size, safeAlign(rawAlign),
                             llvm::abi::StructPacking::Default,
                             /*BaseClasses=*/{},
