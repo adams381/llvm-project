@@ -286,14 +286,19 @@ cir::RecordType::RecordKind RecordType::getKind() const {
 }
 
 void RecordType::complete(ArrayRef<Type> members, bool packed, bool padded,
-                          bool triviallyCopyable) {
+                          bool triviallyCopyable, bool triviallyDestructible) {
   assert(!cir::MissingFeatures::astRecordDeclAttr());
-  if (mutate(members, packed, padded, triviallyCopyable).failed())
+  if (mutate(members, packed, padded, triviallyCopyable, triviallyDestructible)
+          .failed())
     llvm_unreachable("failed to complete record");
 }
 
 bool RecordType::isTriviallyCopyable() const {
   return getImpl()->triviallyCopyable;
+}
+
+bool RecordType::isTriviallyDestructible() const {
+  return getImpl()->triviallyDestructible;
 }
 
 /// Return the largest member of in the type.
@@ -310,14 +315,13 @@ Type RecordType::getLargestMember(const ::mlir::DataLayout &dataLayout) const {
   auto endIt = getPadded() ? std::prev(members.end()) : members.end();
   if (endIt == members.begin())
     return {};
-  return *std::max_element(
-      members.begin(), endIt, [&](Type lhs, Type rhs) {
-        return dataLayout.getTypeABIAlignment(lhs) <
-                   dataLayout.getTypeABIAlignment(rhs) ||
-               (dataLayout.getTypeABIAlignment(lhs) ==
-                    dataLayout.getTypeABIAlignment(rhs) &&
-                dataLayout.getTypeSize(lhs) < dataLayout.getTypeSize(rhs));
-      });
+  return *std::max_element(members.begin(), endIt, [&](Type lhs, Type rhs) {
+    return dataLayout.getTypeABIAlignment(lhs) <
+               dataLayout.getTypeABIAlignment(rhs) ||
+           (dataLayout.getTypeABIAlignment(lhs) ==
+                dataLayout.getTypeABIAlignment(rhs) &&
+            dataLayout.getTypeSize(lhs) < dataLayout.getTypeSize(rhs));
+  });
 }
 
 bool RecordType::isLayoutIdentical(const RecordType &other) {

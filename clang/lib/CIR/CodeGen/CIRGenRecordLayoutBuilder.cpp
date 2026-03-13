@@ -693,8 +693,11 @@ CIRGenTypes::computeRecordLayout(const RecordDecl *rd, cir::RecordType *ty) {
   // but we may need to recursively layout rd while laying D out as a base type.
   assert(!cir::MissingFeatures::astRecordDeclAttr());
   bool triviallyCopyable = rd->canPassInRegisters();
+  bool triviallyDestructible = true;
+  if (auto *cxxRD = dyn_cast<CXXRecordDecl>(rd))
+    triviallyDestructible = cxxRD->hasTrivialDestructor();
   ty->complete(lowering.fieldTypes, lowering.packed, lowering.padded,
-               triviallyCopyable);
+               triviallyCopyable, triviallyDestructible);
 
   auto rl = std::make_unique<CIRGenRecordLayout>(
       ty ? *ty : cir::RecordType{}, baseTy ? baseTy : cir::RecordType{},

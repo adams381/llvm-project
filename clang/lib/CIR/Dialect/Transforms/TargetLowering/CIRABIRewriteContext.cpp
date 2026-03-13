@@ -520,6 +520,12 @@ LogicalResult CIRABIRewriteContext::rewriteFunctionDefinition(
           SmallVector<NamedAttribute> indirectAttrs;
           indirectAttrs.push_back(
               rewriter.getNamedAttr("llvm.noundef", rewriter.getUnitAttr()));
+          auto recTy = dyn_cast<cir::RecordType>(oldArgTypes[idx]);
+          if (!recTy || recTy.isTriviallyDestructible())
+            indirectAttrs.push_back(rewriter.getNamedAttr(
+                "llvm.dead_on_return",
+                rewriter.getI64IntegerAttr(
+                    std::numeric_limits<uint64_t>::max())));
           argAttrDicts[idx + sretOff] = DictionaryAttr::get(ctx, indirectAttrs);
         }
       }

@@ -62,6 +62,8 @@ getAttrKindToNameMapping() {
        LLVMDialect::getWriteOnlyAttrName()},
       {llvm::Attribute::AttrKind::DeadOnUnwind,
        LLVMDialect::getDeadOnUnwindAttrName()},
+      {llvm::Attribute::AttrKind::DeadOnReturn,
+       LLVMDialect::getDeadOnReturnAttrName()},
       {llvm::Attribute::AttrKind::ZExt, LLVMDialect::getZExtAttrName()}};
   return kindNamePairs;
 }
