@@ -64,7 +64,7 @@ NonTrivial test_nrvo() {
 
 // TODO(cir): Handle normal cleanup properly.
 
-// CIR: cir.func {{.*}} @_Z9test_nrvov()
+// CIR: cir.func {{.*}} @_Z9test_nrvov(%[[SRET_ARG:.*]]: !cir.ptr<!rec_NonTrivial> {llvm.align = 1 : i64, llvm.dead_on_unwind, llvm.noalias, llvm.sret = !rec_NonTrivial, llvm.writable}
 // CIR:   %[[RESULT:.*]] = cir.alloca !rec_NonTrivial, !cir.ptr<!rec_NonTrivial>, ["__retval"]
 // CIR:   %[[NRVO_FLAG:.*]] = cir.alloca !cir.bool, !cir.ptr<!cir.bool>, ["nrvo"]
 // CIR:   %[[FALSE:.*]] = cir.const #false
@@ -78,9 +78,10 @@ NonTrivial test_nrvo() {
 // CIR:     cir.call @_ZN10NonTrivialD1Ev(%[[RESULT]])
 // CIR:   }
 // CIR:   %[[RET:.*]] = cir.load %[[RESULT]]
-// CIR:   cir.return %[[RET]]
+// CIR:   cir.store %[[RET]], %[[SRET_ARG]]
+// CIR:   cir.return
 
-// LLVM: define {{.*}} %struct.NonTrivial @_Z9test_nrvov()
+// LLVM: define {{.*}} void @_Z9test_nrvov(ptr dead_on_unwind noalias writable sret(%struct.NonTrivial) align 1 %[[SRET:.*]])
 // LLVM:   %[[RESULT:.*]] = alloca %struct.NonTrivial
 // LLVM:   %[[NRVO_FLAG:.*]] = alloca i8
 // LLVM:   store i8 0, ptr %[[NRVO_FLAG]]
@@ -95,7 +96,8 @@ NonTrivial test_nrvo() {
 // LLVM:   br label %[[NRVO_USED]]
 // LLVM: [[NRVO_USED]]:
 // LLVM:   %[[RET:.*]] = load %struct.NonTrivial, ptr %[[RESULT]]
-// LLVM:   ret %struct.NonTrivial %[[RET]]
+// LLVM:   store %struct.NonTrivial %[[RET]], ptr %[[SRET]]
+// LLVM:   ret void
 
 // OGCG: define {{.*}} void @_Z9test_nrvov(ptr {{.*}} sret(%struct.NonTrivial) {{.*}} %[[RESULT:.*]])
 // OGCG:   %[[RESULT_ADDR:.*]] = alloca ptr

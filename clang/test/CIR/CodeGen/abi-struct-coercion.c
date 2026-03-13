@@ -63,13 +63,13 @@ Big call_make_big(int x) {
 }
 
 // CIR-LABEL: cir.func{{.*}} @call_make_big
-// CIR-SAME:    %{{.+}}: !cir.ptr<!rec_Big> {llvm.align = 4 : i64, llvm.dead_on_unwind, llvm.sret = !rec_Big, llvm.writable}
+// CIR-SAME:    %{{.+}}: !cir.ptr<!rec_Big> {llvm.align = 4 : i64, llvm.dead_on_unwind, llvm.noalias, llvm.sret = !rec_Big, llvm.writable}
 // CIR:         cir.call @make_big(%{{.+}}, %{{.+}}) : (!cir.ptr<!rec_Big>, !s32i) -> ()
 // CIR:         cir.store %{{.+}}, %arg0 : !rec_Big
 // CIR:         cir.return
 
-// LLVM-LABEL: define{{.*}} void @call_make_big(ptr dead_on_unwind writable sret(%struct.Big) align 4 %{{.*}}, i32 %{{.*}})
-// LLVM:         call void @make_big(ptr dead_on_unwind writable sret(%struct.Big) align 4 %{{.*}}, i32 %{{.*}})
+// LLVM-LABEL: define{{.*}} void @call_make_big(ptr dead_on_unwind noalias writable sret(%struct.Big) align 4 %{{.*}}, i32 %{{.*}})
+// LLVM:         call void @make_big(ptr dead_on_unwind noalias writable sret(%struct.Big) align 4 %{{.*}}, i32 %{{.*}})
 // LLVM:         ret void
 
 // OGCG-LABEL: define{{.*}} void @call_make_big(ptr {{.*}} sret(%struct.Big) align 4 %{{.*}}, i32 {{.*}})

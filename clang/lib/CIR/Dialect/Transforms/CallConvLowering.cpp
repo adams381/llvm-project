@@ -158,8 +158,7 @@ static ArgClassification convertABIArgInfo(const llvm::abi::ABIArgInfo &info,
   }
   case llvm::abi::ABIArgInfo::Indirect: {
     if (!recordCoercionEnabled) {
-      if (!origTy || !isa<cir::RecordType>(origTy) ||
-          !cast<cir::RecordType>(origTy).isTriviallyCopyable())
+      if (!origTy || !isa<cir::RecordType>(origTy))
         return ArgClassification::getDirect(nullptr);
     }
     return ArgClassification::getIndirect(llvm::Align(info.getIndirectAlign()),
@@ -246,24 +245,31 @@ static const llvm::abi::Type *mapCIRType(mlir::Type type,
     }
     llvm::TypeSize size = dl.getTypeSizeInBits(type);
     uint64_t rawAlign = dl.getTypeABIAlignment(type);
-    // Use triviality from CIRGen (set via RecordDecl::canPassInRegisters)
-    // when available.  For CIR parsed from text (cir-opt), the flag
-    // defaults to false; the recordCoercionEnabled option overrides it
-    // for testing with known-trivial C structs.
-    bool canPass = recTy.isTriviallyCopyable() || recordCoercionEnabled;
+    // Named records go through CIRGen's complete() which sets the
+    // triviallyCopyable flag from RecordDecl::canPassInRegisters().
+    // Anonymous records (created by CIR passes, e.g. member function
+    // pointer lowering) never go through complete() so the flag is
+    // unreliable — treat them as trivially copyable since they are
+    // always plain data containers.  The recordCoercionEnabled
+    // override handles cir-opt tests where text-parsed records
+    // default to non-trivially-copyable.
+    bool hasReliableFlag = static_cast<bool>(recTy.getName());
+    bool canPass = hasReliableFlag ? recTy.isTriviallyCopyable() : true;
+    canPass = canPass || recordCoercionEnabled;
     if (isUnion)
       return tb.getUnionType(fields, size, safeAlign(rawAlign),
                              llvm::abi::StructPacking::Default,
                              /*IsTransparent=*/false,
                              /*CanPassInRegs=*/canPass);
+    bool nonTrivial = hasReliableFlag && !recTy.isTriviallyCopyable();
     return tb.getRecordType(fields, size, safeAlign(rawAlign),
                             llvm::abi::StructPacking::Default,
                             /*BaseClasses=*/{},
                             /*VirtualBaseClasses=*/{},
-                            /*CXXRecord=*/false,
+                            /*CXXRecord=*/nonTrivial,
                             /*Polymorphic=*/false,
-                            /*NonTrivialCopy=*/false,
-                            /*NonTrivialDtor=*/false,
+                            /*NonTrivialCopy=*/nonTrivial,
+                            /*NonTrivialDtor=*/nonTrivial,
                             /*FlexibleArray=*/false,
                             /*UnalignedFields=*/false,
                             /*CanPassInRegister=*/canPass);

@@ -244,12 +244,8 @@ LogicalResult CIRABIRewriteContext::rewriteFunctionDefinition(
         hasArgChanges = true;
       break;
     case ArgKind::Indirect:
-      if (argClass.ByVal) {
-        newArgTypes.push_back(cir::PointerType::get(origTy));
-        hasArgChanges = true;
-      } else {
-        newArgTypes.push_back(origTy);
-      }
+      newArgTypes.push_back(cir::PointerType::get(origTy));
+      hasArgChanges = true;
       break;
     case ArgKind::Expand:
       newArgTypes.push_back(origTy);
@@ -310,13 +306,13 @@ LogicalResult CIRABIRewriteContext::rewriteFunctionDefinition(
     if (hasArgChanges)
       insertArgAdaptation(funcOp, fc, sretOffset, rewriter);
 
-    // For Indirect (byval) args, the block argument type was changed
-    // to a pointer.  Insert a load at function entry so existing uses
-    // see the original value type.
+    // For Indirect args, the block argument type was changed to a
+    // pointer.  Insert a load at function entry so existing uses see
+    // the original value type.
     if (!funcOp->getRegion(0).empty()) {
       Block &entry = funcOp->getRegion(0).front();
       for (auto [idx, argClass] : llvm::enumerate(fc.ArgInfos)) {
-        if (argClass.Kind != ArgKind::Indirect || !argClass.ByVal)
+        if (argClass.Kind != ArgKind::Indirect)
           continue;
         unsigned blockIdx = idx + sretOffset;
         BlockArgument blockArg = entry.getArgument(blockIdx);
@@ -478,7 +474,7 @@ LogicalResult CIRABIRewriteContext::rewriteFunctionDefinition(
     unsigned numArgs = newArgTypes.size();
     bool needsAttrs = hasSRet;
     for (auto &argClass : fc.ArgInfos)
-      if (argClass.Kind == ArgKind::Indirect && argClass.ByVal)
+      if (argClass.Kind == ArgKind::Indirect)
         needsAttrs = true;
 
     if (needsAttrs) {
@@ -492,6 +488,8 @@ LogicalResult CIRABIRewriteContext::rewriteFunctionDefinition(
             "llvm.align",
             rewriter.getI64IntegerAttr(fc.ReturnInfo.IndirectAlign.value())));
         sretAttrs.push_back(
+            rewriter.getNamedAttr("llvm.noalias", rewriter.getUnitAttr()));
+        sretAttrs.push_back(
             rewriter.getNamedAttr("llvm.writable", rewriter.getUnitAttr()));
         sretAttrs.push_back(rewriter.getNamedAttr("llvm.dead_on_unwind",
                                                   rewriter.getUnitAttr()));
@@ -500,23 +498,30 @@ LogicalResult CIRABIRewriteContext::rewriteFunctionDefinition(
 
       unsigned sretOff = hasSRet ? 1 : 0;
       for (auto [idx, argClass] : llvm::enumerate(fc.ArgInfos)) {
-        if (argClass.Kind != ArgKind::Indirect || !argClass.ByVal)
+        if (argClass.Kind != ArgKind::Indirect)
           continue;
-        SmallVector<NamedAttribute> byvalAttrs;
-        byvalAttrs.push_back(rewriter.getNamedAttr(
-            "llvm.byval", TypeAttr::get(oldArgTypes[idx])));
-        byvalAttrs.push_back(rewriter.getNamedAttr(
-            "llvm.align",
-            rewriter.getI64IntegerAttr(argClass.IndirectAlign.value())));
-        byvalAttrs.push_back(
-            rewriter.getNamedAttr("llvm.noundef", rewriter.getUnitAttr()));
-        if (passByValueIsNoAlias) {
-          auto recTy = dyn_cast<cir::RecordType>(oldArgTypes[idx]);
-          if (recTy && recTy.isTriviallyCopyable())
-            byvalAttrs.push_back(
-                rewriter.getNamedAttr("llvm.noalias", rewriter.getUnitAttr()));
+        if (argClass.ByVal) {
+          SmallVector<NamedAttribute> byvalAttrs;
+          byvalAttrs.push_back(rewriter.getNamedAttr(
+              "llvm.byval", TypeAttr::get(oldArgTypes[idx])));
+          byvalAttrs.push_back(rewriter.getNamedAttr(
+              "llvm.align",
+              rewriter.getI64IntegerAttr(argClass.IndirectAlign.value())));
+          byvalAttrs.push_back(
+              rewriter.getNamedAttr("llvm.noundef", rewriter.getUnitAttr()));
+          if (passByValueIsNoAlias) {
+            auto recTy = dyn_cast<cir::RecordType>(oldArgTypes[idx]);
+            if (recTy && recTy.isTriviallyCopyable())
+              byvalAttrs.push_back(rewriter.getNamedAttr(
+                  "llvm.noalias", rewriter.getUnitAttr()));
+          }
+          argAttrDicts[idx + sretOff] = DictionaryAttr::get(ctx, byvalAttrs);
+        } else {
+          SmallVector<NamedAttribute> indirectAttrs;
+          indirectAttrs.push_back(
+              rewriter.getNamedAttr("llvm.noundef", rewriter.getUnitAttr()));
+          argAttrDicts[idx + sretOff] = DictionaryAttr::get(ctx, indirectAttrs);
         }
-        argAttrDicts[idx + sretOff] = DictionaryAttr::get(ctx, byvalAttrs);
       }
 
       funcOp->setAttr("arg_attrs", ArrayAttr::get(ctx, argAttrDicts));
@@ -548,13 +553,14 @@ LogicalResult CIRABIRewriteContext::rewriteCallSite(
       continue;
     }
 
-    if (argClass.Kind == ArgKind::Indirect && argClass.ByVal) {
+    if (argClass.Kind == ArgKind::Indirect) {
       rewriter.setInsertionPoint(call);
       Type origTy = arg.getType();
       auto ptrTy = cir::PointerType::get(origTy);
       auto alloca = cir::AllocaOp::create(
           rewriter, call.getLoc(), ptrTy, origTy,
-          /*name=*/rewriter.getStringAttr("byval"),
+          /*name=*/
+          rewriter.getStringAttr(argClass.ByVal ? "byval" : "indirect"),
           /*alignment=*/
           rewriter.getI64IntegerAttr(argClass.IndirectAlign.value()));
       cir::StoreOp::create(rewriter, call.getLoc(), arg, alloca,
