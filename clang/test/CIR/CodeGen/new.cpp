@@ -137,10 +137,10 @@ void test_new_with_ctor() {
 // LLVM:   %[[PS2_ADDR:.*]] = alloca ptr, i64 1, align 8
 // LLVM:   %[[PS2_2_ADDR:.*]] = alloca ptr, i64 1, align 8
 // LLVM:   %[[NEW_S2:.*]] = call{{.*}} ptr @_Znwm(i64 8)
-// LLVM:   call{{.*}} void @_ZN2S2C1Ev(ptr %[[NEW_S2]])
+// LLVM:   call{{.*}} void @_ZN2S2C1Ev(ptr noundef nonnull align 4 dereferenceable(8) %[[NEW_S2]])
 // LLVM:   store ptr %[[NEW_S2]], ptr %[[PS2_ADDR]], align 8
 // LLVM:   %[[NEW_S2_2:.*]] = call{{.*}} ptr @_Znwm(i64 8)
-// LLVM:   call{{.*}} void @_ZN2S2C1Eii(ptr %[[NEW_S2_2]], i32 1, i32 2)
+// LLVM:   call{{.*}} void @_ZN2S2C1Eii(ptr noundef nonnull align 4 dereferenceable(8) %[[NEW_S2_2]], i32 1, i32 2)
 // LLVM:   store ptr %[[NEW_S2_2]], ptr %[[PS2_2_ADDR]], align 8
 // LLVM:   ret void
 

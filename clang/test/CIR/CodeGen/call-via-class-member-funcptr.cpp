@@ -61,7 +61,7 @@ void fn2() { C c1; c1.call_indirect(2); }
 // CIR:   %[[V:.*]] = cir.load{{.*}} %[[V_ADDR]] : !cir.ptr<!s32i>, !s32i
 // CIR:   %[[RET:.*]] = cir.call %[[INDIRECT_CALLEE]](%[[V]])
 
-// LLVM: define {{.*}} i32 @_ZN1C13call_indirectEi(ptr %[[THIS_ARG:.*]], i32 %[[V_ARG:.*]])
+// LLVM: define {{.*}} i32 @_ZN1C13call_indirectEi(ptr noundef nonnull align 8 dereferenceable(8) %[[THIS_ARG:.*]], i32 %[[V_ARG:.*]])
 // LLVM:   %[[THIS_ADDR:.*]] = alloca ptr
 // LLVM:   %[[V_ADDR:.*]] = alloca i32
 // LLVM:   store ptr %[[THIS_ARG]], ptr %[[THIS_ADDR]]

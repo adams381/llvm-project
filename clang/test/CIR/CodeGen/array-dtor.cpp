@@ -57,7 +57,7 @@ void test_cleanup_array() {
 // LLVM:   br i1 %[[DONE]], label %[[LOOP]], label %[[EXIT:.*]]
 // LLVM: [[LOOP]]:
 // LLVM:   %[[CURRENT:.*]] = load ptr, ptr %[[ITER]]
-// LLVM:   call void @_ZN1SD1Ev(ptr %[[CURRENT]])
+// LLVM:   call void @_ZN1SD1Ev(ptr noundef nonnull align 1 dereferenceable(1) %[[CURRENT]])
 // LLVM:   %[[NEXT:.*]] = getelementptr %struct.S, ptr %[[CURRENT]], i64 -1
 // LLVM:   store ptr %[[NEXT]], ptr %[[ITER]]
 // LLVM:   br label %[[COND]]
@@ -152,7 +152,7 @@ void multi_dimensional() {
 // LLVM:       br i1 %[[DONE]], label %[[LOOP]], label %[[EXIT:.*]]
 // LLVM: [[LOOP]]:
 // LLVM:       %[[CUR:.*]] = load ptr, ptr %[[ITER]]
-// LLVM:       call void @_ZN1SD1Ev(ptr %[[CUR]])
+// LLVM:       call void @_ZN1SD1Ev(ptr noundef nonnull align 1 dereferenceable(1) %[[CUR]])
 // LLVM:       %[[PREV:.*]] = getelementptr %struct.S, ptr %[[CUR]], i64 -1
 // LLVM:       store ptr %[[PREV]], ptr %[[ITER]]
 // LLVM:       br label %[[COND]]

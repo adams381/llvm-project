@@ -70,7 +70,7 @@ Container::~Container() { delete contents; }
 // LLVM:   %[[THIS:.*]] = load ptr, ptr %{{.*}}
 // LLVM:   %[[CONTENTS_PTR_ADDR:.*]] = getelementptr %struct.Container, ptr %[[THIS]], i32 0, i32 0
 // LLVM:   %[[CONTENTS_PTR:.*]] = load ptr, ptr %[[CONTENTS_PTR_ADDR]]
-// LLVM:   call void @_ZN8ContentsD2Ev(ptr %[[CONTENTS_PTR]])
+// LLVM:   call void @_ZN8ContentsD2Ev(ptr noundef nonnull align 1 dereferenceable(1) %[[CONTENTS_PTR]])
 // LLVM:   call void @_ZdlPvm(ptr %[[CONTENTS_PTR]], i64 1)
 
 // OGCG: define dso_local void @_ZN9ContainerD2Ev

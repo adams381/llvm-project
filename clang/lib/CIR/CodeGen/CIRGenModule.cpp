@@ -174,6 +174,21 @@ CharUnits CIRGenModule::getClassPointerAlignment(const CXXRecordDecl *rd) {
   return layout.getNonVirtualAlignment();
 }
 
+CharUnits CIRGenModule::getMinimumClassObjectSize(const CXXRecordDecl *rd) {
+  if (!rd->hasDefinition())
+    return CharUnits::One();
+
+  auto &layout = astContext.getASTRecordLayout(rd);
+
+  // If the class is final, then we know that the pointer points to an
+  // object of that type and can use the full alignment.
+  if (rd->isEffectivelyFinal())
+    return layout.getSize();
+
+  // Otherwise, we have to assume it could be a subclass.
+  return std::max(layout.getNonVirtualSize(), CharUnits::One());
+}
+
 CharUnits CIRGenModule::getNaturalTypeAlignment(QualType t,
                                                 LValueBaseInfo *baseInfo) {
   assert(!cir::MissingFeatures::opTBAA());
@@ -2210,6 +2225,63 @@ void CIRGenModule::setTLSMode(mlir::Operation *op, const VarDecl &d) {
   global.setTlsModel(tlm);
 }
 
+void CIRGenModule::setThisArgumentAttributes(cir::FuncOp func,
+                                             GlobalDecl globalDecl,
+                                             const CXXMethodDecl *md) {
+  mlir::MLIRContext *ctx = &getMLIRContext();
+  mlir::Builder b(ctx);
+
+  QualType thisTy = md->getThisType()->getPointeeType();
+
+  SmallVector<mlir::NamedAttribute> thisAttrs;
+
+  if (codeGenOpts.EnableNoundefAttrs)
+    thisAttrs.push_back(b.getNamedAttr("llvm.noundef", b.getUnitAttr()));
+
+  uint64_t derefBytes = getMinimumObjectSize(thisTy).getQuantity();
+  if (!codeGenOpts.NullPointerIsValid) {
+    thisAttrs.push_back(b.getNamedAttr("llvm.nonnull", b.getUnitAttr()));
+    thisAttrs.push_back(b.getNamedAttr("llvm.dereferenceable",
+                                       b.getI64IntegerAttr(derefBytes)));
+  } else {
+    thisAttrs.push_back(b.getNamedAttr("llvm.dereferenceable_or_null",
+                                       b.getI64IntegerAttr(derefBytes)));
+  }
+
+  CharUnits alignment = getNaturalTypeAlignment(thisTy, /*baseInfo=*/nullptr);
+  thisAttrs.push_back(b.getNamedAttr(
+      "llvm.align", b.getI64IntegerAttr(alignment.getQuantity())));
+
+  // Add dead_on_return to destructor this pointers when
+  // -flifetime-dse is enabled (StrictLifetimes, the default).
+  const auto *dd = dyn_cast<CXXDestructorDecl>(md);
+  if (dd && codeGenOpts.StrictLifetimes) {
+    const auto *classDecl = cast<CXXRecordDecl>(dd->getDeclContext());
+    if (classDecl->getNumBases() == 0 && classDecl->getNumVBases() == 0) {
+      uint64_t dataSize =
+          astContext.getASTRecordLayout(classDecl).getDataSize().getQuantity();
+      if (dataSize > 0)
+        thisAttrs.push_back(b.getNamedAttr("llvm.dead_on_return",
+                                           b.getI64IntegerAttr(dataSize)));
+    }
+  }
+
+  unsigned numArgs = func.getNumArguments();
+  if (thisAttrs.empty() || numArgs == 0)
+    return;
+
+  // Verify arg 0 is the this pointer.  Forward declarations may
+  // not have this in the signature yet.
+  if (!mlir::isa<cir::PointerType>(func.getArgumentTypes()[0]))
+    return;
+
+  // Build the arg_attrs array.  The this pointer is always arg 0.
+  SmallVector<mlir::Attribute> argAttrDicts(numArgs,
+                                            mlir::DictionaryAttr::get(ctx));
+  argAttrDicts[0] = mlir::DictionaryAttr::get(ctx, thisAttrs);
+  func->setAttr("arg_attrs", mlir::ArrayAttr::get(ctx, argAttrDicts));
+}
+
 void CIRGenModule::setCIRFunctionAttributes(GlobalDecl globalDecl,
                                             const CIRGenFunctionInfo &info,
                                             cir::FuncOp func, bool isThunk) {
@@ -2229,6 +2301,16 @@ void CIRGenModule::setCIRFunctionAttributes(GlobalDecl globalDecl,
 
   for (mlir::NamedAttribute attr : pal)
     func->setAttr(attr.getName(), attr.getValue());
+
+  // Apply noundef, nonnull, dereferenceable(N), and align N to the
+  // this argument, unless this is a thunk function.  Add
+  // dead_on_return to the this argument in base class destructors to
+  // aid in DSE.
+  const Decl *targetDecl = globalDecl.getDecl();
+  if (!isThunk)
+    if (const auto *md = dyn_cast_if_present<CXXMethodDecl>(targetDecl))
+      if (md->isInstance())
+        setThisArgumentAttributes(func, globalDecl, md);
 
   // TODO(cir): Check X86_VectorCall incompatibility wiht WinARM64EC
 

@@ -47,7 +47,7 @@ void test_ctor_defaultarg() {
 
 // LLVM: define{{.*}} @_Z20test_ctor_defaultargv()
 // LLVM:   %[[S:.*]] = alloca %struct.S
-// LLVM:   call void @_ZN1SC1Ei(ptr %[[S]], i32 2)
+// LLVM:   call void @_ZN1SC1Ei(ptr noundef nonnull align 1 dereferenceable(1) %[[S]], i32 2)
 
 // OGCG: define{{.*}} @_Z20test_ctor_defaultargv()
 // OGCG:   %[[S:.*]] = alloca %struct.S

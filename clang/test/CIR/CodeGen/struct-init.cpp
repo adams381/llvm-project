@@ -221,7 +221,7 @@ void cxx_default_init_with_struct_field() {
 
 // LLVM: %[[P_ADDR:.*]] = alloca %struct.Parent, i64 1, align 4
 // LLVM: %[[P_ELEM_0_PTR:.*]] = getelementptr %struct.Parent, ptr %[[P_ADDR]], i32 0, i32 0
-// LLVM: %[[METHOD_CALL:.*]] = call i32 @_ZZ34cxx_default_init_with_struct_fieldvEN6Parent4getAEv(ptr %[[P_ADDR]])
+// LLVM: %[[METHOD_CALL:.*]] = call i32 @_ZZ34cxx_default_init_with_struct_fieldvEN6Parent4getAEv(ptr noundef nonnull align 4 dereferenceable(4) %[[P_ADDR]])
 // LLVM: store i32 %[[METHOD_CALL]], ptr %[[P_ELEM_0_PTR]], align 4
 
 // OGCG: %[[P_ADDR:.*]] = alloca %struct.Parent, align 4

@@ -39,7 +39,7 @@ struct S f1() {
 // FIXME: Update this when calling convetnion lowering is implemented.
 // LLVM:      define{{.*}} i64 @_Z2f1v()
 // LLVM-NEXT:   %[[RETVAL:.*]] = alloca %struct.S
-// LLVM-NEXT:   call void @_ZN1SC1Ev(ptr %[[RETVAL]])
+// LLVM-NEXT:   call void @_ZN1SC1Ev(ptr noundef nonnull align 4 dereferenceable(8) %[[RETVAL]])
 // LLVM-NEXT:   %{{.+}} = load %struct.S, ptr %[[RETVAL]]
 // LLVM:        ret i64 %{{.+}}
 
@@ -92,7 +92,7 @@ NonTrivial test_nrvo() {
 // LLVM:   %[[NOT_NRVO_VAL:.*]] = xor i1 %[[NRVO_VAL_TRUNC]], true
 // LLVM:   br i1 %[[NOT_NRVO_VAL]], label %[[NRVO_UNUSED:.*]], label %[[NRVO_USED:.*]]
 // LLVM: [[NRVO_UNUSED]]:
-// LLVM:   call void @_ZN10NonTrivialD1Ev(ptr %[[RESULT]])
+// LLVM:   call void @_ZN10NonTrivialD1Ev(ptr noundef nonnull align 1 dereferenceable(1) %[[RESULT]])
 // LLVM:   br label %[[NRVO_USED]]
 // LLVM: [[NRVO_USED]]:
 // LLVM:   %[[RET:.*]] = load %struct.NonTrivial, ptr %[[RESULT]]

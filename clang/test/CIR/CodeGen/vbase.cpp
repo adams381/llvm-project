@@ -91,7 +91,7 @@ void ppp() { B b; }
 
 // LLVM: define {{.*}}void @_Z1fv(){{.*}}
 // LLVM:   %[[D:.+]] = alloca {{.*}}
-// LLVM:   call void @_ZN7DerivedC1Ev(ptr %[[D]])
+// LLVM:   call void @_ZN7DerivedC1Ev(ptr noundef nonnull align 8 dereferenceable(8) %[[D]])
 // LLVM:   %[[VPTR_ADDR:.+]] = load ptr, ptr %[[D]]
 // LLVM:   %[[NEG32_PTR:.+]] = getelementptr i8, ptr %[[VPTR_ADDR]], i64 -32
 // LLVM:   %[[OFF:.+]] = load i64, ptr %[[NEG32_PTR]]
@@ -104,7 +104,7 @@ void ppp() { B b; }
 
 // LLVM: define {{.*}}void @_Z1gv(){{.*}}
 // LLVM:   %[[DF:.+]] = alloca {{.*}}
-// LLVM:   call void @_ZN12DerivedFinalC1Ev(ptr %[[DF]])
+// LLVM:   call void @_ZN12DerivedFinalC1Ev(ptr noundef nonnull align 8 dereferenceable(8) %[[DF]])
 // LLVM:   %[[VPTR2:.+]] = load ptr, ptr %[[DF]]
 // LLVM:   %[[SLOT0_2:.+]] = getelementptr inbounds ptr, ptr %[[VPTR2]], i32 0
 // LLVM:   %[[VFN2:.+]] = load ptr, ptr %[[SLOT0_2]]
@@ -138,7 +138,7 @@ void ppp() { B b; }
 // CIR:   cir.store align(8) %[[VTABLE]], %[[B_VPTR]] : !cir.vptr, !cir.ptr<!cir.vptr>
 // CIR:   cir.return
 
-// LLVM: define{{.*}} void @_ZN1BC1Ev(ptr %[[THIS_ARG:.*]]){{.*}} {
+// LLVM: define{{.*}} void @_ZN1BC1Ev(ptr noundef nonnull align 8 dereferenceable(12) %[[THIS_ARG:.*]]){{.*}} {
 // LLVM:   %[[THIS_ADDR:.*]] = alloca ptr
 // LLVM:   store ptr %[[THIS_ARG]], ptr %[[THIS_ADDR]]
 // LLVM:   %[[THIS:.*]] = load ptr, ptr %[[THIS_ADDR]]

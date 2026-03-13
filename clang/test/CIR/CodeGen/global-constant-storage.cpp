@@ -100,7 +100,7 @@ const C c;
 
 // LLVM checks for 'a' (no optimization)
 // LLVM: define internal void @__cxx_global_var_init() {
-// LLVM:   call void @_ZN1AC1Ev(ptr @a)
+// LLVM:   call void @_ZN1AC1Ev(ptr noundef nonnull align 4 dereferenceable(4) @a)
 // LLVM:   ret void
 // LLVM: }
 
@@ -121,7 +121,7 @@ const C c;
 
 // LLVM checks for 'a2' (no optimization)
 // LLVM: define internal void @__cxx_global_var_init.1() {
-// LLVM:   call void @_ZN2A2C1Ev(ptr @a2)
+// LLVM:   call void @_ZN2A2C1Ev(ptr noundef nonnull align 4 dereferenceable(4) @a2)
 // LLVM:   ret void
 // LLVM: }
 
@@ -142,7 +142,7 @@ const C c;
 
 // LLVM checks for 'b' (no optimization)
 // LLVM: define internal void @__cxx_global_var_init.2() {
-// LLVM:   call void @_ZN1BC1Ev(ptr @b)
+// LLVM:   call void @_ZN1BC1Ev(ptr noundef nonnull align 4 dereferenceable(4) @b)
 // LLVM:   ret void
 // LLVM: }
 
@@ -163,7 +163,7 @@ const C c;
 
 // LLVM checks for 'c' (no optimization)
 // LLVM: define internal void @__cxx_global_var_init.3() {
-// LLVM:   call void @_ZN1CC1Ev(ptr @_ZL1c)
+// LLVM:   call void @_ZN1CC1Ev(ptr noundef nonnull align 4 dereferenceable(8) @_ZL1c)
 // LLVM:   ret void
 // LLVM: }
 
@@ -188,7 +188,7 @@ const C c;
 
 // Test case 'a' - optimized checks
 // LLVM-OPT: define internal void @__cxx_global_var_init() {
-// LLVM-OPT:   call void @_ZN1AC1Ev(ptr @a)
+// LLVM-OPT:   call void @_ZN1AC1Ev(ptr noundef nonnull align 4 dereferenceable(4) @a)
 // LLVM-OPT:   call {{.*}}@llvm.invariant.start.p0(i64 4, ptr @a)
 // LLVM-OPT:   ret void
 // LLVM-OPT: }
@@ -201,7 +201,7 @@ const C c;
 
 // Test case 'a2' - optimized checks
 // LLVM-OPT: define internal void @__cxx_global_var_init.1() {
-// LLVM-OPT:   call void @_ZN2A2C1Ev(ptr @a2)
+// LLVM-OPT:   call void @_ZN2A2C1Ev(ptr noundef nonnull align 4 dereferenceable(4) @a2)
 // LLVM-OPT:   call {{.*}}@llvm.invariant.start.p0(i64 4, ptr @a2)
 // LLVM-OPT:   ret void
 // LLVM-OPT: }
@@ -214,7 +214,7 @@ const C c;
 
 // Test case 'b' - optimized checks (should NOT emit invariant.start)
 // LLVM-OPT: define internal void @__cxx_global_var_init.2() {
-// LLVM-OPT:   call void @_ZN1BC1Ev(ptr @b)
+// LLVM-OPT:   call void @_ZN1BC1Ev(ptr noundef nonnull align 4 dereferenceable(4) @b)
 // LLVM-OPT-NOT: call {{.*}}@llvm.invariant.start.p0(i64 {{.*}}, ptr @b)
 // LLVM-OPT:   ret void
 // LLVM-OPT: }
@@ -227,7 +227,7 @@ const C c;
 
 // Test case 'c' - optimized checks
 // LLVM-OPT: define internal void @__cxx_global_var_init.3() {
-// LLVM-OPT:   call void @_ZN1CC1Ev(ptr @_ZL1c)
+// LLVM-OPT:   call void @_ZN1CC1Ev(ptr noundef nonnull align 4 dereferenceable(8) @_ZL1c)
 // LLVM-OPT:   call {{.*}}@llvm.invariant.start.p0(i64 8, ptr @_ZL1c)
 // LLVM-OPT:   ret void
 // LLVM-OPT: }

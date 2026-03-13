@@ -7,7 +7,7 @@ struct Struk {
 
 // CHECK: !rec_Struk = !cir.record<struct "Struk" padded {!u8i}>
 
-// CHECK: cir.func{{.*}} @_ZN5StrukD1Ev(!cir.ptr<!rec_Struk>)
+// CHECK: cir.func{{.*}} @_ZN5StrukD1Ev(!cir.ptr<!rec_Struk> {llvm.align = 1 : i64, llvm.dereferenceable = 1 : i64, llvm.nonnull, llvm.noundef})
 
 void test_cleanup() {
   Struk s;

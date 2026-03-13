@@ -290,6 +290,11 @@ public:
                                     bool attrOnCallSite,
                                     mlir::NamedAttrList &attrs);
 
+  /// Sets nonnull, dereferenceable, align, and dead_on_return attributes
+  /// on the this pointer of instance methods.
+  void setThisArgumentAttributes(cir::FuncOp func, clang::GlobalDecl globalDecl,
+                                 const clang::CXXMethodDecl *md);
+
   /// Will return a global variable of the given type. If a variable with a
   /// different type already exists then a new variable with the right type
   /// will be created and all uses of the old variable will be replaced with a
@@ -364,6 +369,17 @@ public:
   /// Return the best known alignment for an unknown pointer to a
   /// particular class.
   clang::CharUnits getClassPointerAlignment(const clang::CXXRecordDecl *rd);
+
+  /// Returns the minimum object size for an object of the given class type
+  /// (or a class derived from it).
+  clang::CharUnits getMinimumClassObjectSize(const clang::CXXRecordDecl *rd);
+
+  /// Returns the minimum object size for an object of the given type.
+  clang::CharUnits getMinimumObjectSize(clang::QualType ty) {
+    if (clang::CXXRecordDecl *rd = ty->getAsCXXRecordDecl())
+      return getMinimumClassObjectSize(rd);
+    return astContext.getTypeSizeInChars(ty);
+  }
 
   /// FIXME: this could likely be a common helper and not necessarily related
   /// with codegen.

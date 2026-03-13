@@ -41,7 +41,7 @@ NeedsCtor needsCtor;
 // CIR:   cir.call @_ZN9NeedsCtorC1Ev(%0) : (!cir.ptr<!rec_NeedsCtor>) -> ()
 
 // LLVM: define internal void @__cxx_global_var_init()
-// LLVM:   call void @_ZN9NeedsCtorC1Ev(ptr @needsCtor)
+// LLVM:   call void @_ZN9NeedsCtorC1Ev(ptr noundef nonnull align 1 dereferenceable(1) @needsCtor)
 
 // OGCG: define internal void @__cxx_global_var_init() {{.*}} section ".text.startup" {
 // OGCG:   call void @_ZN9NeedsCtorC1Ev(ptr noundef nonnull align 1 dereferenceable(1) @needsCtor)
@@ -98,7 +98,7 @@ NeedsCtorDtor needsCtorDtor;
 // CIR:   cir.call @__cxa_atexit(%[[DTOR_CAST]], %[[OBJ_CAST]], %[[HANDLE]]) : (!cir.ptr<!cir.func<(!cir.ptr<!void>)>>, !cir.ptr<!void>, !cir.ptr<i8>) -> ()
 
 // LLVM: define internal void @__cxx_global_var_init.2() {
-// LLVM:   call void @_ZN13NeedsCtorDtorC1Ev(ptr @needsCtorDtor)
+// LLVM:   call void @_ZN13NeedsCtorDtorC1Ev(ptr noundef nonnull align 1 dereferenceable(1) @needsCtorDtor)
 // LLVM:   call void @__cxa_atexit(ptr @_ZN13NeedsCtorDtorD1Ev, ptr @needsCtorDtor, ptr @__dso_handle)
 
 // OGCG: define internal void @__cxx_global_var_init.2() {{.*}} section ".text.startup" {
@@ -229,7 +229,7 @@ ArrayDtor arrDtor[16];
 // LLVM:   br i1 %[[CMP]], label %[[LOOP_BODY]], label %[[LOOP_END:.*]]
 // LLVM: [[LOOP_BODY]]:
 // LLVM:   %[[CUR:.*]] = load ptr, ptr %[[CUR_ADDR]]
-// LLVM:   call void @_ZN9ArrayDtorD1Ev(ptr %[[CUR]]) #0
+// LLVM:   call void @_ZN9ArrayDtorD1Ev(ptr noundef nonnull align 1 dereferenceable(1) %[[CUR]]) #0
 // LLVM:   %[[PREV:.*]] = getelementptr %struct.ArrayDtor, ptr %[[CUR]], i64 -1
 // LLVM:   store ptr %[[PREV]], ptr %[[CUR_ADDR]]
 // LLVM:   br label %[[LOOP_COND]]

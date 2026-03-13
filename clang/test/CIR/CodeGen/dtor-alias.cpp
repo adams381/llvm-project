@@ -22,7 +22,7 @@ B::~B() {
 
 // CHECK: cir.func{{.*}} private dso_local @_ZN1BD1Ev(!cir.ptr<!rec_B>) alias(@_ZN1BD2Ev)
 
-// LLVM: define{{.*}} @_ZN1BD2Ev(ptr %[[THIS_ARG:.*]])
+// LLVM: define{{.*}} @_ZN1BD2Ev(ptr noundef nonnull align 1 dereferenceable(1) %[[THIS_ARG:.*]])
 // LLVM:   %[[THIS_ADDR:.*]] = alloca ptr
 // LLVM:   store ptr %[[THIS_ARG]], ptr %[[THIS_ADDR]]
 // LLVM:   %[[THIS:.*]] = load ptr, ptr %[[THIS_ADDR]]
@@ -53,7 +53,7 @@ void baz() {
 // CHECK:     %[[S_ADDR:.*]] = cir.alloca !rec_Struk, !cir.ptr<!rec_Struk>, ["s"]
 // CHECK:     cir.call @_ZN5StrukD2Ev(%[[S_ADDR]]) nothrow : (!cir.ptr<!rec_Struk>) -> ()
 
-// LLVM: define linkonce_odr void @_ZN5StrukD2Ev(ptr %[[THIS_ARG]])
+// LLVM: define linkonce_odr void @_ZN5StrukD2Ev(ptr noundef nonnull align 1 dereferenceable(1) %[[THIS_ARG]])
 // LLVM:   %[[THIS_ADDR:.*]] = alloca ptr
 // LLVM:   store ptr %[[THIS_ARG]], ptr %[[THIS_ADDR]]
 // LLVM:   %[[THIS:.*]] = load ptr, ptr %[[THIS_ADDR]]

@@ -68,7 +68,7 @@ ArrayDtor arrDtor[16];
 // LLVM:   br i1 %[[CMP]], label %[[LOOP_BODY]], label %[[LOOP_END:.*]]
 // LLVM: [[LOOP_BODY]]:
 // LLVM:   %[[CUR:.*]] = load ptr, ptr %[[CUR_ADDR]]
-// LLVM:   call void @_ZN9ArrayDtorD1Ev(ptr %[[CUR]]) #0
+// LLVM:   call void @_ZN9ArrayDtorD1Ev(ptr noundef nonnull align 1 dereferenceable(1) %[[CUR]]) #0
 // LLVM:   %[[PREV:.*]] = getelementptr %struct.ArrayDtor, ptr %[[CUR]], i64 -1
 // LLVM:   store ptr %[[PREV]], ptr %[[CUR_ADDR]]
 // LLVM:   br label %[[LOOP_COND]]

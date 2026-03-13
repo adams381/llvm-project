@@ -12,6 +12,7 @@
 #include "clang/CIR/Dialect/IR/CIRAttrs.h"
 #include "clang/CIR/Dialect/IR/CIRDialect.h"
 #include "clang/CIR/Dialect/IR/CIROpsEnums.h"
+#include <limits>
 
 using namespace cir;
 using namespace mlir;
@@ -480,6 +481,15 @@ LogicalResult CIRABIRewriteContext::rewriteFunctionDefinition(
     if (needsAttrs) {
       SmallVector<Attribute> argAttrDicts(numArgs, DictionaryAttr::get(ctx));
 
+      // Preserve existing arg_attrs from CodeGen (e.g. this pointer
+      // nonnull/dereferenceable/align/dead_on_return), shifting by
+      // sretOff to account for the inserted sret argument.
+      unsigned sretOff = hasSRet ? 1 : 0;
+      if (auto existingAttrs = funcOp->getAttrOfType<ArrayAttr>("arg_attrs"))
+        for (unsigned i = 0;
+             i < existingAttrs.size() && (i + sretOff) < numArgs; ++i)
+          argAttrDicts[i + sretOff] = existingAttrs[i];
+
       if (hasSRet) {
         SmallVector<NamedAttribute> sretAttrs;
         sretAttrs.push_back(rewriter.getNamedAttr(
@@ -496,7 +506,6 @@ LogicalResult CIRABIRewriteContext::rewriteFunctionDefinition(
         argAttrDicts[0] = DictionaryAttr::get(ctx, sretAttrs);
       }
 
-      unsigned sretOff = hasSRet ? 1 : 0;
       for (auto [idx, argClass] : llvm::enumerate(fc.ArgInfos)) {
         if (argClass.Kind != ArgKind::Indirect)
           continue;

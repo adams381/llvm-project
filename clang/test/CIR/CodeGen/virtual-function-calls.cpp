@@ -31,7 +31,7 @@ A::A() {}
 // CIR:    cir.store{{.*}} align(8) %[[VPTR]], %[[THIS_VPTR_PTR]] : !cir.vptr, !cir.ptr<!cir.vptr>
 // CIR:    cir.return
 
-// LLVM: define{{.*}} void @_ZN1AC2Ev(ptr %[[ARG0:.*]])
+// LLVM: define{{.*}} void @_ZN1AC2Ev(ptr noundef nonnull align 8 dereferenceable(8) %[[ARG0:.*]])
 // LLVM:   %[[THIS_ADDR:.*]] = alloca ptr
 // LLVM:   store ptr %[[ARG0]], ptr %[[THIS_ADDR]]
 // LLVM:   %[[THIS:.*]] = load ptr, ptr %[[THIS_ADDR]]

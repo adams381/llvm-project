@@ -19,7 +19,7 @@ void test_temporary_dtor() {
 
 // LLVM: define dso_local void @_Z19test_temporary_dtorv(){{.*}}
 // LLVM:   %[[ALLOCA:.*]] = alloca %struct.A, i64 1, align 1
-// LLVM:   call void @_ZN1AD1Ev(ptr %[[ALLOCA]])
+// LLVM:   call void @_ZN1AD1Ev(ptr noundef nonnull align 1 dereferenceable(1) %[[ALLOCA]])
 
 // OGCG: define dso_local void @_Z19test_temporary_dtorv()
 // OGCG:   %[[ALLOCA:.*]] = alloca %struct.A, align 1
@@ -60,21 +60,21 @@ bool test_temp_or() { return make_temp(1) || make_temp(2); }
 // LLVM:   %[[REF_TMP1:.*]] = alloca %struct.B
 // LLVM:   br label %[[LOR_BEGIN:.*]]
 // LLVM: [[LOR_BEGIN]]:
-// LLVM:   call void @_ZN1BC2Ei(ptr %[[REF_TMP0]], i32 1)
+// LLVM:   call void @_ZN1BC2Ei(ptr noundef nonnull align 4 dereferenceable(4) %[[REF_TMP0]], i32 1)
 // LLVM:   %[[MAKE_TEMP0:.*]] = call i1 @_Z9make_tempRK1B(ptr %[[REF_TMP0]])
 // LLVM:   br i1 %[[MAKE_TEMP0]], label %[[LHS_TRUE_BLOCK:.*]], label %[[LHS_FALSE_BLOCK:.*]]
 // LLVM: [[LHS_TRUE_BLOCK]]:
 // LLVM:   br label %[[RESULT_BLOCK:.*]]
 // LLVM: [[LHS_FALSE_BLOCK]]:
-// LLVM:   call void @_ZN1BC2Ei(ptr %[[REF_TMP1]], i32 2)
+// LLVM:   call void @_ZN1BC2Ei(ptr noundef nonnull align 4 dereferenceable(4) %[[REF_TMP1]], i32 2)
 // LLVM:   %[[MAKE_TEMP1:.*]] = call i1 @_Z9make_tempRK1B(ptr %[[REF_TMP1]])
-// LLVM:   call void @_ZN1BD2Ev(ptr %[[REF_TMP1]])
+// LLVM:   call void @_ZN1BD2Ev(ptr noundef nonnull align 4 dead_on_return(4) dereferenceable(4) %[[REF_TMP1]])
 // LLVM:   br label %[[RESULT_BLOCK]]
 // LLVM: [[RESULT_BLOCK]]:
 // LLVM:   %[[RESULT:.*]] = phi i1 [ %[[MAKE_TEMP1]], %[[LHS_FALSE_BLOCK]] ], [ true, %[[LHS_TRUE_BLOCK]] ]
 // LLVM:   br label %[[LOR_END:.*]]
 // LLVM: [[LOR_END]]:
-// LLVM:   call void @_ZN1BD2Ev(ptr %[[REF_TMP0]])
+// LLVM:   call void @_ZN1BD2Ev(ptr noundef nonnull align 4 dead_on_return(4) dereferenceable(4) %[[REF_TMP0]])
 
 // OGCG: define {{.*}} i1 @_Z12test_temp_orv()
 // OGCG: [[ENTRY:.*]]:
@@ -130,13 +130,13 @@ bool test_temp_and() { return make_temp(1) && make_temp(2); }
 // LLVM:   %[[REF_TMP1:.*]] = alloca %struct.B
 // LLVM:   br label %[[LAND_BEGIN:.*]]
 // LLVM: [[LAND_BEGIN]]:
-// LLVM:   call void @_ZN1BC2Ei(ptr %[[REF_TMP0]], i32 1)
+// LLVM:   call void @_ZN1BC2Ei(ptr noundef nonnull align 4 dereferenceable(4) %[[REF_TMP0]], i32 1)
 // LLVM:   %[[MAKE_TEMP0:.*]] = call i1 @_Z9make_tempRK1B(ptr %[[REF_TMP0]])
 // LLVM:   br i1 %[[MAKE_TEMP0]], label %[[LHS_TRUE_BLOCK:.*]], label %[[LHS_FALSE_BLOCK:.*]]
 // LLVM: [[LHS_TRUE_BLOCK]]:
-// LLVM:   call void @_ZN1BC2Ei(ptr %[[REF_TMP1]], i32 2)
+// LLVM:   call void @_ZN1BC2Ei(ptr noundef nonnull align 4 dereferenceable(4) %[[REF_TMP1]], i32 2)
 // LLVM:   %[[MAKE_TEMP1:.*]] = call i1 @_Z9make_tempRK1B(ptr %[[REF_TMP1]])
-// LLVM:   call void @_ZN1BD2Ev(ptr %[[REF_TMP1]])
+// LLVM:   call void @_ZN1BD2Ev(ptr noundef nonnull align 4 dead_on_return(4) dereferenceable(4) %[[REF_TMP1]])
 // LLVM:   br label %[[RESULT_BLOCK:.*]]
 // LLVM: [[LHS_FALSE_BLOCK]]:
 // LLVM:   br label %[[RESULT_BLOCK]]
@@ -144,7 +144,7 @@ bool test_temp_and() { return make_temp(1) && make_temp(2); }
 // LLVM:   %[[RESULT:.*]] = phi i1 [ false, %[[LHS_FALSE_BLOCK]] ], [ %[[MAKE_TEMP1]], %[[LHS_TRUE_BLOCK]] ]
 // LLVM:   br label %[[LAND_END:.*]]
 // LLVM: [[LAND_END]]:
-// LLVM:   call void @_ZN1BD2Ev(ptr %[[REF_TMP0]])
+// LLVM:   call void @_ZN1BD2Ev(ptr noundef nonnull align 4 dead_on_return(4) dereferenceable(4) %[[REF_TMP0]])
 
 // OGCG: define {{.*}} i1 @_Z13test_temp_andv()
 // OGCG: [[ENTRY:.*]]:
@@ -200,7 +200,7 @@ void test_nested_dtor() {
 // CIR:   cir.call @_ZN1DD2Ev(%{{.*}})
 
 // LLVM: define {{.*}} void @_Z16test_nested_dtorv(){{.*}}
-// LLVM:   call void @_ZN1DD2Ev(ptr %{{.*}})
+// LLVM:   call void @_ZN1DD2Ev(ptr noundef nonnull align 4 dead_on_return(5) dereferenceable(5) %{{.*}})
 
 // OGCG: define {{.*}} void @_Z16test_nested_dtorv()
 // OGCG:   call void @_ZN1DD2Ev(ptr {{.*}} %{{.*}})
@@ -237,7 +237,7 @@ void test_base_dtor_call() {
 //   cir.call @_ZN1FD2Ev(%{{.*}}) nothrow : (!cir.ptr<!rec_F>) -> ()
 
 // LLVM: define {{.*}} void @_Z19test_base_dtor_callv(){{.*}}
-// LLVM:   call void @_ZN1FD2Ev(ptr %{{.*}})
+// LLVM:   call void @_ZN1FD2Ev(ptr noundef nonnull align 4 dereferenceable(4) %{{.*}})
 
 // OGCG: define {{.*}} void @_Z19test_base_dtor_callv()
 // OGCG:   call void @_ZN1FD2Ev(ptr {{.*}} %{{.*}})
@@ -277,8 +277,8 @@ void test_base_dtor_call_virtual_base() {
 // CIR:   cir.call @_ZN11VirtualBaseD2Ev(%[[VIRTUAL_BASE]])
 
 // LLVM: define {{.*}} void @_ZN7DerivedD1Ev
-// LLVM:   call void @_ZN7DerivedD2Ev(ptr %{{.*}}, ptr @_ZTT7Derived)
-// LLVM:   call void @_ZN11VirtualBaseD2Ev(ptr %{{.*}})
+// LLVM:   call void @_ZN7DerivedD2Ev(ptr noundef nonnull align 8 dereferenceable(8) %{{.*}}, ptr @_ZTT7Derived)
+// LLVM:   call void @_ZN11VirtualBaseD2Ev(ptr noundef nonnull align 1 dereferenceable(1) %{{.*}})
 
 // OGCG emits these destructors in reverse order
 

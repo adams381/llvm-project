@@ -33,8 +33,8 @@ void f() {
 
 // LLVM: define {{.*}}void @_Z1fv()
 // LLVM:   %[[D:.*]] = alloca %struct.Derived
-// LLVM:   call void @_ZN7DerivedC1Ev(ptr %[[D]])
-// LLVM:   call void @_ZN4Base1fEv(ptr %[[D]])
+// LLVM:   call void @_ZN7DerivedC1Ev(ptr noundef nonnull align 8 dereferenceable(16) %[[D]])
+// LLVM:   call void @_ZN4Base1fEv(ptr noundef nonnull align 4 dereferenceable(4) %[[D]])
 
 // OGCG: define {{.*}}void @_Z1fv()
 // OGCG:   %[[D:.*]] = alloca %struct.Derived

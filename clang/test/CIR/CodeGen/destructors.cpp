@@ -22,7 +22,7 @@ out_of_line_destructor::~out_of_line_destructor() {
 // CIR:   cir.call @_Z13some_functionv() nothrow : () -> () 
 // CIR:   cir.return 
 
-// LLVM: define dso_local void @_ZN22out_of_line_destructorD2Ev(ptr %{{.+}})
+// LLVM: define dso_local void @_ZN22out_of_line_destructorD2Ev(ptr noundef nonnull align 4 dead_on_return(4) dereferenceable(4) %{{.+}})
 // LLVM:   call void @_Z13some_functionv()
 // LLVM:   ret void
 
@@ -34,7 +34,7 @@ out_of_line_destructor::~out_of_line_destructor() {
 // CIR:  cir.call @_ZN22out_of_line_destructorD2Ev(%{{.*}}) nothrow : (!cir.ptr<!rec_out_of_line_destructor>)
 // CIR:  cir.return
 
-// LLVM: define dso_local void @_ZN22out_of_line_destructorD1Ev(ptr %{{.+}})
+// LLVM: define dso_local void @_ZN22out_of_line_destructorD1Ev(ptr noundef nonnull align 4 dead_on_return(4) dereferenceable(4) %{{.+}})
 // LLVM:   call void @_ZN22out_of_line_destructorD2Ev
 // LLVM:   ret void
 
@@ -125,7 +125,7 @@ void test_array_destructor() {
 // LLVM:   br i1 %[[CMP]], label %[[DESTROY_LOOP_BODY]], label %[[DESTROY_LOOP_END:.*]]
 // LLVM: [[DESTROY_LOOP_BODY]]:
 // LLVM:   %[[CUR:.*]] = load ptr, ptr %[[ARR_CUR]]
-// LLVM:   call void @_ZN13array_elementD1Ev(ptr %[[CUR]])
+// LLVM:   call void @_ZN13array_elementD1Ev(ptr noundef nonnull align 1 dereferenceable(1) %[[CUR]])
 // LLVM:   %[[PREV:.*]] = getelementptr %struct.array_element, ptr %[[CUR]], i64 -1
 // LLVM:   store ptr %[[PREV]], ptr %[[ARR_CUR]]
 // LLVM:   br label %[[DESTROY_LOOP_NEXT]]

@@ -29,7 +29,7 @@ void test_reserved_placement_new(void *p) {
 // LLVM:         %[[P:.*]] = alloca ptr
 // LLVM:         store ptr %[[ARG0:.*]], ptr %[[P]]
 // LLVM:         %[[PTR:.*]] = load ptr, ptr %[[P]]
-// LLVM:         call void @_ZN1AC1Ev(ptr %[[PTR]])
+// LLVM:         call void @_ZN1AC1Ev(ptr noundef nonnull align 1 dereferenceable(1) %[[PTR]])
 
 // OGCG-LABEL: define dso_local void @_Z27test_reserved_placement_newPv(
 // OGCG-SAME:                                   ptr {{.*}} %[[ARG0:.*]]

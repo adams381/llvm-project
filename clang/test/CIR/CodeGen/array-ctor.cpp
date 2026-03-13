@@ -59,7 +59,7 @@ void foo() {
 // LLVM: br i1 %[[DONE]], label %[[LOOP]], label %[[EXIT:.*]]
 // LLVM: [[LOOP]]:
 // LLVM: %[[CURRENT:.*]] = load ptr, ptr %[[ITER]]
-// LLVM: call void @_ZN1SC1Ev(ptr %[[CURRENT]])
+// LLVM: call void @_ZN1SC1Ev(ptr noundef nonnull align 1 dereferenceable(1) %[[CURRENT]])
 // LLVM: %[[NEXT:.*]] = getelementptr %struct.S, ptr %[[CURRENT]], i64 1
 // LLVM: store ptr %[[NEXT]], ptr %[[ITER]]
 // LLVM: br label %[[COND]]
@@ -153,7 +153,7 @@ void multi_dimensional() {
 // LLVM:       br i1 %[[DONE]], label %[[LOOP]], label %[[EXIT:.*]]
 // LLVM:     [[LOOP]]:
 // LLVM:       %[[CURRENT:.*]] = load ptr, ptr %[[ITER]]
-// LLVM:       call void @_ZN1SC1Ev(ptr %[[CURRENT]])
+// LLVM:       call void @_ZN1SC1Ev(ptr noundef nonnull align 1 dereferenceable(1) %[[CURRENT]])
 // LLVM:       %[[NEXT:.*]] = getelementptr %struct.S, ptr %[[CURRENT]], i64 1
 // LLVM:       store ptr %[[NEXT]], ptr %[[ITER]]
 // LLVM:       br label %[[COND]]
