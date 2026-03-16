@@ -694,10 +694,13 @@ CIRGenTypes::computeRecordLayout(const RecordDecl *rd, cir::RecordType *ty) {
   assert(!cir::MissingFeatures::astRecordDeclAttr());
   bool triviallyCopyable = rd->canPassInRegisters();
   bool triviallyDestructible = true;
-  if (auto *cxxRD = dyn_cast<CXXRecordDecl>(rd))
+  bool empty = rd->field_empty();
+  if (auto *cxxRD = dyn_cast<CXXRecordDecl>(rd)) {
     triviallyDestructible = cxxRD->hasTrivialDestructor();
+    empty = cxxRD->isEmpty();
+  }
   ty->complete(lowering.fieldTypes, lowering.packed, lowering.padded,
-               triviallyCopyable, triviallyDestructible);
+               triviallyCopyable, triviallyDestructible, empty);
 
   auto rl = std::make_unique<CIRGenRecordLayout>(
       ty ? *ty : cir::RecordType{}, baseTy ? baseTy : cir::RecordType{},

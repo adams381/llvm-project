@@ -462,6 +462,18 @@ LogicalResult CIRABIRewriteContext::rewriteFunctionDefinition(
     if (returnCoerced)
       insertReturnCoercion(funcOp, oldResultTypes[0], fc.ReturnInfo.CoercedType,
                            rewriter);
+
+    // When the return type is Ignore (empty struct), rewrite all
+    // return ops to drop their operand so they return void.
+    if (fc.ReturnInfo.Kind == ArgKind::Ignore && !oldResultTypes.empty()) {
+      funcOp.walk([&](cir::ReturnOp retOp) {
+        if (retOp.getNumOperands() > 0) {
+          rewriter.setInsertionPoint(retOp);
+          auto voidRet = cir::ReturnOp::create(rewriter, retOp.getLoc());
+          retOp->erase();
+        }
+      });
+    }
   }
 
   Type newFnTy = funcOp.cloneTypeWith(newArgTypes, newResultTypes);
@@ -474,21 +486,36 @@ LogicalResult CIRABIRewriteContext::rewriteFunctionDefinition(
     MLIRContext *ctx = funcOp->getContext();
     unsigned numArgs = newArgTypes.size();
     bool needsAttrs = hasSRet;
-    for (auto &argClass : fc.ArgInfos)
+    bool hasIgnoredArgs = false;
+    for (auto &argClass : fc.ArgInfos) {
       if (argClass.Kind == ArgKind::Indirect)
         needsAttrs = true;
+      if (argClass.Kind == ArgKind::Ignore)
+        hasIgnoredArgs = true;
+    }
+    // Also rebuild arg_attrs when args were dropped (Ignore) and
+    // existing arg_attrs would have the wrong count.
+    if (hasIgnoredArgs && funcOp->hasAttr("arg_attrs"))
+      needsAttrs = true;
 
     if (needsAttrs) {
       SmallVector<Attribute> argAttrDicts(numArgs, DictionaryAttr::get(ctx));
 
       // Preserve existing arg_attrs from CodeGen (e.g. this pointer
       // nonnull/dereferenceable/align/dead_on_return), shifting by
-      // sretOff to account for the inserted sret argument.
+      // sretOff and skipping Ignore'd args.
       unsigned sretOff = hasSRet ? 1 : 0;
-      if (auto existingAttrs = funcOp->getAttrOfType<ArrayAttr>("arg_attrs"))
-        for (unsigned i = 0;
-             i < existingAttrs.size() && (i + sretOff) < numArgs; ++i)
-          argAttrDicts[i + sretOff] = existingAttrs[i];
+      if (auto existingAttrs = funcOp->getAttrOfType<ArrayAttr>("arg_attrs")) {
+        unsigned newIdx = sretOff;
+        for (unsigned oldIdx = 0; oldIdx < existingAttrs.size(); ++oldIdx) {
+          if (oldIdx < fc.ArgInfos.size() &&
+              fc.ArgInfos[oldIdx].Kind == ArgKind::Ignore)
+            continue;
+          if (newIdx < numArgs)
+            argAttrDicts[newIdx] = existingAttrs[oldIdx];
+          ++newIdx;
+        }
+      }
 
       if (hasSRet) {
         SmallVector<NamedAttribute> sretAttrs;
@@ -704,6 +731,38 @@ LogicalResult CIRABIRewriteContext::rewriteCallSite(
     return success();
   }
 
+  // Handle Ignore return (e.g. empty struct): replace the call
+  // with a void call and substitute an undef for any uses.
+  if (fc.ReturnInfo.Kind == ArgKind::Ignore && call.getNumResults() > 0) {
+    rewriter.setInsertionPoint(call);
+    auto voidTy = cir::VoidType::get(call.getContext());
+    auto newCall = cir::CallOp::create(rewriter, call.getLoc(),
+                                       call.getCalleeAttr(), voidTy, newArgs);
+    for (NamedAttribute attr : call->getAttrs())
+      if (!newCall->hasAttr(attr.getName()))
+        newCall->setAttr(attr.getName(), attr.getValue());
+
+    if (!call.getResult().use_empty()) {
+      rewriter.setInsertionPointAfter(newCall);
+      Type origRetTy = call.getResult().getType();
+      auto ptrTy = cir::PointerType::get(origRetTy);
+      auto alloca =
+          cir::AllocaOp::create(rewriter, call.getLoc(), ptrTy, origRetTy,
+                                /*name=*/rewriter.getStringAttr("ignored"),
+                                /*alignment=*/rewriter.getI64IntegerAttr(1));
+      auto load =
+          cir::LoadOp::create(rewriter, call.getLoc(), origRetTy, alloca,
+                              /*isDeref=*/mlir::UnitAttr(),
+                              /*isVolatile=*/mlir::UnitAttr(),
+                              /*alignment=*/mlir::IntegerAttr(),
+                              /*sync_scope=*/cir::SyncScopeKindAttr(),
+                              /*mem_order=*/cir::MemOrderAttr());
+      call.getResult().replaceAllUsesWith(load);
+    }
+    call->erase();
+    return success();
+  }
+
   // Handle direct return coercion.
   bool returnCoerced = false;
   Type coercedRetTy;
@@ -731,7 +790,6 @@ LogicalResult CIRABIRewriteContext::rewriteCallSite(
   rewriter.setInsertionPoint(call);
   auto newCall = cir::CallOp::create(rewriter, call.getLoc(),
                                      call.getCalleeAttr(), callRetTy, newArgs);
-  // Preserve call attributes (noreturn, side_effect, etc.).
   for (NamedAttribute attr : call->getAttrs())
     if (!newCall->hasAttr(attr.getName()))
       newCall->setAttr(attr.getName(), attr.getValue());

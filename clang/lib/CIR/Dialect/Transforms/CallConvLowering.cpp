@@ -113,7 +113,19 @@ static mlir::Type abiTypeToCIR(const llvm::abi::Type *ty, MLIRContext *ctx) {
 /// original to avoid spurious signedness mismatches.
 static ArgClassification convertABIArgInfo(const llvm::abi::ABIArgInfo &info,
                                            MLIRContext *ctx, mlir::Type origTy,
-                                           bool recordCoercionEnabled) {
+                                           bool recordCoercionEnabled,
+                                           bool isArgument = true) {
+  // Empty trivially-copyable record arguments are not passed
+  // per the x86_64 ABI.  Non-trivially-copyable empty records
+  // (e.g. struct with only a destructor) must still be passed
+  // indirectly.  Return types are NOT handled here because
+  // dropping empty struct returns requires coordinating with
+  // the coroutine pass.
+  if (isArgument && origTy)
+    if (auto recTy = dyn_cast<cir::RecordType>(origTy))
+      if (recTy.isEmpty() && recTy.isTriviallyCopyable())
+        return ArgClassification::getIgnore();
+
   switch (info.getKind()) {
   case llvm::abi::ABIArgInfo::Direct: {
     mlir::Type coerced = abiTypeToCIR(info.getCoerceToType(), ctx);
@@ -322,7 +334,8 @@ FunctionClassification classifyWithABILibrary(FunctionOpInterface funcOp,
   // Convert return classification.
   Type origRetTy = resultTypes.empty() ? Type() : resultTypes[0];
   fc.ReturnInfo = convertABIArgInfo(abiFI->getReturnInfo(), ctx, origRetTy,
-                                    recordCoercionEnabled);
+                                    recordCoercionEnabled,
+                                    /*isArgument=*/false);
 
   // Convert argument classifications.
   ArrayRef<Type> argTypes = funcOp.getArgumentTypes();

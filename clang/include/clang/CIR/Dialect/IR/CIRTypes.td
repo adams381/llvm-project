@@ -733,7 +733,8 @@ def CIR_RecordType : CIR_Type<"Record", "record", [
 
     void complete(llvm::ArrayRef<mlir::Type> members, bool packed,
                   bool isPadded, bool triviallyCopyable = false,
-                  bool triviallyDestructible = true);
+                  bool triviallyDestructible = true,
+                  bool empty = false);
 
     /// Returns true if the record can be passed in registers according
     /// to the C++ ABI.  Always true for C structs.  Set during
@@ -744,6 +745,11 @@ def CIR_RecordType : CIR_Type<"Record", "record", [
     /// during completion from RecordDecl.  Anonymous records
     /// default to true.
     bool isTriviallyDestructible() const;
+
+    /// Returns true if the record has no data-carrying members.
+    /// Set during completion from ASTContext::isEmptyRecord().
+    /// Anonymous records default to true.
+    bool isEmpty() const;
 
     uint64_t getElementOffset(const mlir::DataLayout &dataLayout,
               unsigned idx) const;

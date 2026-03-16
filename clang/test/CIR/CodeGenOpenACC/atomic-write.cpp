@@ -11,7 +11,9 @@ struct ConvertsToScalar {
 
 // OGCG: define {{.*}} void @_Z3useijf16ConvertsToScalar(i32 {{.*}}, i32 {{.*}}, float {{.*}})
 void use(int x, unsigned int y, float f, ConvertsToScalar cts) {
-  // CHECK: cir.func{{.*}}(%[[X_ARG:.*]]: !s32i{{.*}}, %[[Y_ARG:.*]]: !u32i{{.*}}, %[[F_ARG:.*]]: !cir.float{{.*}}){{.*}}, %[[CTS_ARG:.*]]: !rec_ConvertsToScalar{{.*}}) {
+  // CHECK: cir.func{{.*}}(%[[X_ARG:.*]]: !s32i{{.*}}, %[[Y_ARG:.*]]: !u32i{{.*}}, %[[F_ARG:.*]]: !cir.float{{.*}}) {
+  // CHECK-NEXT: %[[IGNORED_ALLOC:.*]] = cir.alloca !rec_ConvertsToScalar, !cir.ptr<!rec_ConvertsToScalar>, ["ignored"]
+  // CHECK-NEXT: %[[IGNORED_LOAD:.*]] = cir.load %[[IGNORED_ALLOC]] : !cir.ptr<!rec_ConvertsToScalar>, !rec_ConvertsToScalar
   // CHECK-NEXT: %[[X_ALLOC:.*]] = cir.alloca !s32i, !cir.ptr<!s32i>, ["x", init]
   // CHECK-NEXT: %[[Y_ALLOC:.*]] = cir.alloca !u32i, !cir.ptr<!u32i>, ["y", init]
   // CHECK-NEXT: %[[F_ALLOC:.*]] = cir.alloca !cir.float, !cir.ptr<!cir.float>, ["f", init]
@@ -20,7 +22,7 @@ void use(int x, unsigned int y, float f, ConvertsToScalar cts) {
   // CHECK-NEXT: cir.store %[[X_ARG]], %[[X_ALLOC]] : !s32i, !cir.ptr<!s32i>
   // CHECK-NEXT: cir.store %[[Y_ARG]], %[[Y_ALLOC]] : !u32i, !cir.ptr<!u32i>
   // CHECK-NEXT: cir.store %[[F_ARG]], %[[F_ALLOC]] : !cir.float, !cir.ptr<!cir.float>
-  // CHECK-NEXT: cir.store %[[CTS_ARG]], %[[CTS_ALLOC]] : !rec_ConvertsToScalar, !cir.ptr<!rec_ConvertsToScalar>
+  // CHECK-NEXT: cir.store %[[IGNORED_LOAD]], %[[CTS_ALLOC]] : !rec_ConvertsToScalar, !cir.ptr<!rec_ConvertsToScalar>
 
   // CHECK-NEXT: %[[Y_LOAD:.*]] = cir.load {{.*}}%[[Y_ALLOC]] : !cir.ptr<!u32i>, !u32i
   // CHECK-NEXT: %[[Y_TO_FLOAT:.*]] = cir.cast int_to_float %[[Y_LOAD]] : !u32i -> !cir.float

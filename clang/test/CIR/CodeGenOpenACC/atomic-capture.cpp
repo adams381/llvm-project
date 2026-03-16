@@ -11,7 +11,9 @@ struct HasOps {
 
 // OGCG: define {{.*}} void @_Z3useiif6HasOps(i32 {{.*}}, i32 {{.*}}, float {{.*}})
 void use(int x, int v, float f, HasOps ops) {
-  // CHECK: cir.func{{.*}}(%[[X_ARG:.*]]: !s32i{{.*}}, %[[V_ARG:.*]]: !s32i{{.*}}, %[[F_ARG:.*]]: !cir.float{{.*}}){{.*}}, %[[OPS_ARG:.*]]: !rec_HasOps{{.*}}) {
+  // CHECK: cir.func{{.*}}(%[[X_ARG:.*]]: !s32i{{.*}}, %[[V_ARG:.*]]: !s32i{{.*}}, %[[F_ARG:.*]]: !cir.float{{.*}}) {
+  // CHECK-NEXT: %[[IGNORED_ALLOC:.*]] = cir.alloca !rec_HasOps, !cir.ptr<!rec_HasOps>, ["ignored"]
+  // CHECK-NEXT: %[[IGNORED_LOAD:.*]] = cir.load %[[IGNORED_ALLOC]] : !cir.ptr<!rec_HasOps>, !rec_HasOps
   // CHECK-NEXT: %[[X_ALLOCA:.*]] = cir.alloca !s32i, !cir.ptr<!s32i>, ["x", init]
   // CHECK-NEXT: %[[V_ALLOCA:.*]] = cir.alloca !s32i, !cir.ptr<!s32i>, ["v", init]
   // CHECK-NEXT: %[[F_ALLOCA:.*]] = cir.alloca !cir.float, !cir.ptr<!cir.float>, ["f", init]
@@ -19,7 +21,7 @@ void use(int x, int v, float f, HasOps ops) {
   // CHECK-NEXT: cir.store %[[X_ARG]], %[[X_ALLOCA]] : !s32i, !cir.ptr<!s32i>
   // CHECK-NEXT: cir.store %[[V_ARG]], %[[V_ALLOCA]] : !s32i, !cir.ptr<!s32i>
   // CHECK-NEXT: cir.store %[[F_ARG]], %[[F_ALLOCA]] : !cir.float, !cir.ptr<!cir.float>
-  // CHECK-NEXT: cir.store %[[OPS_ARG]], %[[OPS_ALLOCA]] : !rec_HasOps, !cir.ptr<!rec_HasOps>
+  // CHECK-NEXT: cir.store %[[IGNORED_LOAD]], %[[OPS_ALLOCA]] : !rec_HasOps, !cir.ptr<!rec_HasOps>
 
   // CHECK-NEXT: %[[X_LOAD:.*]] = cir.load{{.*}} %[[X_ALLOCA]] : !cir.ptr<!s32i>, !s32i
   // CHECK-NEXT: %[[V_LOAD:.*]] = cir.load{{.*}} %[[V_ALLOCA]] : !cir.ptr<!s32i>, !s32i

@@ -49,6 +49,7 @@ struct RecordTypeStorage : public mlir::TypeStorage {
   bool padded;
   bool triviallyCopyable;
   bool triviallyDestructible;
+  bool empty;
   RecordType::RecordKind kind;
 
   RecordTypeStorage(llvm::ArrayRef<mlir::Type> members, mlir::StringAttr name,
@@ -56,7 +57,7 @@ struct RecordTypeStorage : public mlir::TypeStorage {
                     RecordType::RecordKind kind)
       : members(members), name(name), incomplete(incomplete), packed(packed),
         padded(padded), triviallyCopyable(!name), triviallyDestructible(!name),
-        kind(kind) {
+        empty(!name), kind(kind) {
     assert((name || !incomplete) && "Incomplete records must have a name");
   }
 
@@ -95,7 +96,7 @@ struct RecordTypeStorage : public mlir::TypeStorage {
   llvm::LogicalResult mutate(mlir::TypeStorageAllocator &allocator,
                              llvm::ArrayRef<mlir::Type> members, bool packed,
                              bool padded, bool triviallyCopyable,
-                             bool triviallyDestructible) {
+                             bool triviallyDestructible, bool empty) {
     // Anonymous records cannot mutate.
     if (!name)
       return llvm::failure();
@@ -112,6 +113,7 @@ struct RecordTypeStorage : public mlir::TypeStorage {
     this->padded = padded;
     this->triviallyCopyable = triviallyCopyable;
     this->triviallyDestructible = triviallyDestructible;
+    this->empty = empty;
 
     incomplete = false;
     return llvm::success();
