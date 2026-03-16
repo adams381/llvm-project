@@ -231,11 +231,16 @@ static const llvm::abi::Type *mapCIRType(mlir::Type type,
   if (auto recTy = dyn_cast<cir::RecordType>(type)) {
     SmallVector<llvm::abi::FieldInfo> fields;
     bool isUnion = recTy.isUnion();
+    bool isPacked = recTy.getPacked();
     uint64_t offsetBits = 0;
     for (mlir::Type fieldTy : recTy.getMembers()) {
       const llvm::abi::Type *mappedField =
           mapCIRType(fieldTy, typeMapper, dl, recordCoercionEnabled);
       uint64_t fieldSize = dl.getTypeSizeInBits(fieldTy);
+      if (!isUnion && !isPacked) {
+        uint64_t fieldAlignBits = dl.getTypeABIAlignment(fieldTy) * 8;
+        offsetBits = llvm::alignTo(offsetBits, fieldAlignBits);
+      }
       fields.push_back({mappedField, isUnion ? 0 : offsetBits,
                         /*BitFieldWidth=*/0,
                         /*IsBitField=*/false,
