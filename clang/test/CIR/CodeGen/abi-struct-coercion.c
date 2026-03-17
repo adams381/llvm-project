@@ -24,8 +24,8 @@ div_t call_div(int a, int b) {
 // CIR:         cir.call @do_div({{.*}}) : (!s32i, !s32i) -> !u64i
 // CIR:         cir.return %{{.+}} : !u64i
 
-// LLVM-LABEL: define{{.*}} i64 @call_div(i32 %{{.*}}, i32 %{{.*}})
-// LLVM:         %{{.+}} = call i64 @do_div(i32 %{{.*}}, i32 %{{.*}})
+// LLVM-LABEL: define{{.*}} i64 @call_div(i32 noundef %{{.*}}, i32 noundef %{{.*}})
+// LLVM:         %{{.+}} = call i64 @do_div(i32 noundef %{{.*}}, i32 noundef %{{.*}})
 // LLVM:         ret i64 %{{.+}}
 
 // OGCG-LABEL: define{{.*}} i64 @call_div(i32 {{.*}}, i32 {{.*}})
@@ -41,8 +41,8 @@ int get_quot(int a, int b) {
 // CIR:         cir.call @do_div({{.*}}) : (!s32i, !s32i) -> !u64i
 // CIR:         cir.get_member %{{.+}}[0] {name = "quot"}
 
-// LLVM-LABEL: define{{.*}} i32 @get_quot(i32 %{{.*}}, i32 %{{.*}})
-// LLVM:         %{{.+}} = call i64 @do_div(i32 %{{.*}}, i32 %{{.*}})
+// LLVM-LABEL: define{{.*}} i32 @get_quot(i32 noundef %{{.*}}, i32 noundef %{{.*}})
+// LLVM:         %{{.+}} = call i64 @do_div(i32 noundef %{{.*}}, i32 noundef %{{.*}})
 // LLVM:         %{{.+}} = getelementptr %struct.div_t, ptr %{{.*}}, i32 0, i32 0
 
 // OGCG-LABEL: define{{.*}} i32 @get_quot(i32 {{.*}}, i32 {{.*}})
@@ -68,8 +68,8 @@ Big call_make_big(int x) {
 // CIR:         cir.store %{{.+}}, %arg0 : !rec_Big
 // CIR:         cir.return
 
-// LLVM-LABEL: define{{.*}} void @call_make_big(ptr dead_on_unwind noalias writable sret(%struct.Big) align 4 %{{.*}}, i32 %{{.*}})
-// LLVM:         call void @make_big(ptr dead_on_unwind noalias writable sret(%struct.Big) align 4 %{{.*}}, i32 %{{.*}})
+// LLVM-LABEL: define{{.*}} void @call_make_big(ptr dead_on_unwind noalias writable sret(%struct.Big) align 4 %{{.*}}, i32 noundef %{{.*}})
+// LLVM:         call void @make_big(ptr dead_on_unwind noalias writable sret(%struct.Big) align 4 %{{.*}}, i32 noundef %{{.*}})
 // LLVM:         ret void
 
 // OGCG-LABEL: define{{.*}} void @call_make_big(ptr {{.*}} sret(%struct.Big) align 4 %{{.*}}, i32 {{.*}})
@@ -89,7 +89,7 @@ void pass_big(int x) {
 // CIR-LABEL: cir.func{{.*}} @pass_big
 // CIR:         cir.call @use_big(%{{.+}}) : (!cir.ptr<!rec_Big>) -> ()
 
-// LLVM-LABEL: define{{.*}} void @pass_big(i32 %{{.*}})
+// LLVM-LABEL: define{{.*}} void @pass_big(i32 noundef %{{.*}})
 // LLVM:         call void @use_big(ptr noundef byval(%struct.Big) align 8 %{{.*}})
 
 // OGCG-LABEL: define{{.*}} void @pass_big(i32 {{.*}})

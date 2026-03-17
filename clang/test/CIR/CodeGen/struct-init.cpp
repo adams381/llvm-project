@@ -103,7 +103,7 @@ void init_var(int a, int b) {
 // CIR:   cir.store{{.*}} %[[B]], %[[S_B]]
 // CIR:   cir.return
 
-// LLVM: define{{.*}} void @_Z8init_varii(i32 %[[A_ARG:.*]], i32 %[[B_ARG:.*]])
+// LLVM: define{{.*}} void @_Z8init_varii(i32 noundef %[[A_ARG:.*]], i32 noundef %[[B_ARG:.*]])
 // LLVM:   %[[A_PTR:.*]] = alloca i32
 // LLVM:   %[[B_PTR:.*]] = alloca i32
 // LLVM:   %[[S:.*]] = alloca %struct.S
@@ -162,7 +162,7 @@ void init_expr(int a, int b, int c) {
 // CIR:   cir.store{{.*}} %[[C_PLUS_THREE]], %[[S_C]]
 // CIR:   cir.return
 
-// LLVM: define{{.*}} void @_Z9init_expriii(i32 %[[A_ARG:.*]], i32 %[[B_ARG:.*]], i32 %[[C_ARG:.*]])
+// LLVM: define{{.*}} void @_Z9init_expriii(i32 noundef %[[A_ARG:.*]], i32 noundef %[[B_ARG:.*]], i32 noundef %[[C_ARG:.*]])
 // LLVM:   %[[A_PTR:.*]] = alloca i32
 // LLVM:   %[[B_PTR:.*]] = alloca i32
 // LLVM:   %[[C_PTR:.*]] = alloca i32

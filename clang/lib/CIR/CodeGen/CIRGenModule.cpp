@@ -2225,6 +2225,77 @@ void CIRGenModule::setTLSMode(mlir::Operation *op, const VarDecl &d) {
   global.setTlsModel(tlm);
 }
 
+/// Return true if a CIR type should get the noundef attribute.
+/// Scalars, pointers, and booleans are always noundef.  Records
+/// and arrays may have padding and are not noundef.
+static bool shouldAddNoundef(mlir::Type ty) {
+  return !mlir::isa<cir::RecordType, cir::ArrayType>(ty);
+}
+
+/// Return true if the return value of this function should get
+/// noundef.  C++ makes returning undefined values UB; C does not
+/// (only the use of the value is UB), so C returns never get
+/// noundef.
+static bool hasStrictReturn(const CodeGenOptions &cgo,
+                            const LangOptions &langOpts,
+                            const Decl *targetDecl) {
+  if (!langOpts.CPlusPlus)
+    return false;
+  if (targetDecl)
+    if (const auto *fd = dyn_cast<FunctionDecl>(targetDecl))
+      if (fd->isExternC())
+        return false;
+  return true;
+}
+
+void CIRGenModule::setNoundefOnArguments(cir::FuncOp func,
+                                         GlobalDecl globalDecl) {
+  mlir::MLIRContext *ctx = &getMLIRContext();
+  mlir::Builder b(ctx);
+  unsigned numArgs = func.getNumArguments();
+
+  // Read existing arg_attrs (may have been set by
+  // setThisArgumentAttributes).
+  SmallVector<mlir::Attribute> argAttrDicts;
+  if (auto existing = func->getAttrOfType<mlir::ArrayAttr>("arg_attrs")) {
+    argAttrDicts.assign(existing.begin(), existing.end());
+  } else {
+    argAttrDicts.assign(numArgs, mlir::DictionaryAttr::get(ctx));
+  }
+
+  bool changed = false;
+  for (unsigned i = 0; i < numArgs; ++i) {
+    mlir::Type argTy = func.getArgumentTypes()[i];
+    if (!shouldAddNoundef(argTy))
+      continue;
+
+    auto dict = mlir::cast<mlir::DictionaryAttr>(argAttrDicts[i]);
+    if (dict.get("llvm.noundef"))
+      continue;
+
+    SmallVector<mlir::NamedAttribute> attrs(dict.begin(), dict.end());
+    attrs.push_back(b.getNamedAttr("llvm.noundef", b.getUnitAttr()));
+    argAttrDicts[i] = mlir::DictionaryAttr::get(ctx, attrs);
+    changed = true;
+  }
+
+  if (changed)
+    func->setAttr("arg_attrs", mlir::ArrayAttr::get(ctx, argAttrDicts));
+
+  // Add noundef to the return value for C++ functions.
+  const Decl *targetDecl = globalDecl.getDecl();
+  auto resultTypes = func.getResultTypes();
+  if (!resultTypes.empty() && !mlir::isa<cir::VoidType>(resultTypes[0]) &&
+      shouldAddNoundef(resultTypes[0]) &&
+      hasStrictReturn(codeGenOpts, langOpts, targetDecl)) {
+    SmallVector<mlir::NamedAttribute> retAttrs;
+    retAttrs.push_back(b.getNamedAttr("llvm.noundef", b.getUnitAttr()));
+    SmallVector<mlir::Attribute> resAttrDicts;
+    resAttrDicts.push_back(mlir::DictionaryAttr::get(ctx, retAttrs));
+    func->setAttr("res_attrs", mlir::ArrayAttr::get(ctx, resAttrDicts));
+  }
+}
+
 void CIRGenModule::setThisArgumentAttributes(cir::FuncOp func,
                                              GlobalDecl globalDecl,
                                              const CXXMethodDecl *md) {
@@ -2311,6 +2382,10 @@ void CIRGenModule::setCIRFunctionAttributes(GlobalDecl globalDecl,
     if (const auto *md = dyn_cast_if_present<CXXMethodDecl>(targetDecl))
       if (md->isInstance())
         setThisArgumentAttributes(func, globalDecl, md);
+
+  // Add noundef to scalar/pointer arguments and (for C++) returns.
+  if (codeGenOpts.EnableNoundefAttrs)
+    setNoundefOnArguments(func, globalDecl);
 
   // TODO(cir): Check X86_VectorCall incompatibility wiht WinARM64EC
 

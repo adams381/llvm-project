@@ -18,7 +18,7 @@ unsigned char cxxstaticcast_0(unsigned int x) {
 // CIR:    cir.return %[[R]] : !u8i
 // CIR:  }
 
-// LLVM: define{{.*}} i8 @_Z15cxxstaticcast_0j(i32 %{{[0-9]+}})
+// LLVM: define{{.*}} noundef i8 @_Z15cxxstaticcast_0j(i32 noundef %{{[0-9]+}})
 // LLVM: %[[LOAD:[0-9]+]] = load i32, ptr %{{[0-9]+}}, align 4
 // LLVM: %[[TRUNC:[0-9]+]] = trunc i32 %[[LOAD]] to i8
 // LLVM: store i8 %[[TRUNC]], ptr %[[RV:[0-9]+]], align 1
@@ -27,7 +27,7 @@ unsigned char cxxstaticcast_0(unsigned int x) {
 
 int cStyleCasts_0(unsigned x1, int x2, float x3, short x4, double x5) {
 // CIR: cir.func{{.*}} @_Z13cStyleCasts_0jifsd
-// LLVM: define{{.*}} i32 @_Z13cStyleCasts_0jifsd
+// LLVM: define{{.*}} noundef i32 @_Z13cStyleCasts_0jifsd
 
   char a = (char)x1; // truncate
   // CIR: %{{[0-9]+}} = cir.cast integral %{{[0-9]+}} : !u32i -> !s8i
@@ -95,7 +95,7 @@ bool cptr(void *d) {
 // CIR:   %[[DVAL:[0-9]+]] = cir.load{{.*}} %[[DPTR]] : !cir.ptr<!cir.ptr<!void>>, !cir.ptr<!void>
 // CIR:   %{{[0-9]+}} = cir.cast ptr_to_bool %[[DVAL]] : !cir.ptr<!void> -> !cir.bool
 
-// LLVM-LABEL: define{{.*}} i1 @_Z4cptrPv(ptr %0)
+// LLVM-LABEL: define{{.*}} noundef i1 @_Z4cptrPv(ptr noundef %0)
 // LLVM:         %[[ARG_STORAGE:.*]] = alloca ptr, i64 1
 // LLVM:         %[[RETVAL:.*]] = alloca i8, i64 1
 // LLVM:         %[[X_STORAGE:.*]] = alloca i8, i64 1
@@ -139,7 +139,7 @@ void f(long int start) {
 // CIR: %[[MID:.*]] = cir.cast integral %[[L]] : !s64i -> !u64i
 // CIR:          cir.cast int_to_ptr %[[MID]] : !u64i -> !cir.ptr<!void>
 
-// LLVM-LABEL: define{{.*}} void @_Z1fl(i64 %0)
+// LLVM-LABEL: define{{.*}} void @_Z1fl(i64 noundef %0)
 // LLVM: %[[ADDR:.*]] = alloca i64, i64 1, align 8
 // LLVM: %[[PADDR:.*]] = alloca ptr, i64 1, align 8
 // LLVM: store i64 %0, ptr %[[ADDR]], align 8

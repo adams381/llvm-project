@@ -11,7 +11,7 @@ long double ret_ld(void) { return 0; }
 // OGCG: define {{.*}} x86_fp80 @ret_ld()
 
 void take_ld(long double x) {}
-// LLVM: define {{.*}} void @take_ld(x86_fp80 %{{.*}})
+// LLVM: define {{.*}} void @take_ld(x86_fp80 noundef %{{.*}})
 // OGCG: define {{.*}} void @take_ld(x86_fp80 {{.*}} %{{.*}})
 
 // Struct with long double: X87 class -> returned in x87 register

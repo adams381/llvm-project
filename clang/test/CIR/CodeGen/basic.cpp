@@ -31,7 +31,7 @@ int f1() {
   return i;
 }
 
-// CHECK: cir.func{{.*}} @_Z2f1v() -> !s32i
+// CHECK: cir.func{{.*}} @_Z2f1v() -> (!s32i {llvm.noundef})
 // CHECK:    %[[RV:.*]] = cir.alloca !s32i, !cir.ptr<!s32i>, ["__retval"] {alignment = 4 : i64}
 // CHECK:    %[[I_PTR:.*]] = cir.alloca !s32i, !cir.ptr<!s32i>, ["i"] {alignment = 4 : i64}
 // CHECK:    %[[I:.*]] = cir.load{{.*}} %[[I_PTR]] : !cir.ptr<!s32i>, !s32i
@@ -44,7 +44,7 @@ int f2() {
   return i;
 }
 
-// CHECK: cir.func{{.*}} @_Z2f2v() -> !s32i
+// CHECK: cir.func{{.*}} @_Z2f2v() -> (!s32i {llvm.noundef})
 // CHECK:    %[[RV:.*]] = cir.alloca !s32i, !cir.ptr<!s32i>, ["__retval"] {alignment = 4 : i64}
 // CHECK:    %[[I_PTR:.*]] = cir.alloca !s32i, !cir.ptr<!s32i>, ["i", init, const] {alignment = 4 : i64}
 // CHECK:    %[[TWO:.*]] = cir.const #cir.int<2> : !s32i
@@ -58,7 +58,7 @@ int f3(int i) {
   return i;
 }
 
-// CHECK: cir.func{{.*}} @_Z2f3i(%[[ARG:.*]]: !s32i loc({{.*}})) -> !s32i
+// CHECK: cir.func{{.*}} @_Z2f3i(%[[ARG:.*]]: !s32i {llvm.noundef} loc({{.*}})) -> (!s32i {llvm.noundef})
 // CHECK:   %[[ARG_ALLOCA:.*]] = cir.alloca !s32i, !cir.ptr<!s32i>, ["i", init] {alignment = 4 : i64}
 // CHECK:   %[[RV:.*]] = cir.alloca !s32i, !cir.ptr<!s32i>, ["__retval"] {alignment = 4 : i64}
 // CHECK:   cir.store{{.*}} %[[ARG]], %[[ARG_ALLOCA]] : !s32i, !cir.ptr<!s32i>
@@ -71,7 +71,7 @@ int f4(const int i) {
   return i;
 }
 
-// CHECK: cir.func{{.*}} @_Z2f4i(%[[ARG:.*]]: !s32i loc({{.*}})) -> !s32i
+// CHECK: cir.func{{.*}} @_Z2f4i(%[[ARG:.*]]: !s32i {llvm.noundef} loc({{.*}})) -> (!s32i {llvm.noundef})
 // CHECK:   %[[ARG_ALLOCA:.*]] = cir.alloca !s32i, !cir.ptr<!s32i>, ["i", init, const] {alignment = 4 : i64}
 // CHECK:   %[[RV:.*]] = cir.alloca !s32i, !cir.ptr<!s32i>, ["__retval"] {alignment = 4 : i64}
 // CHECK:   cir.store{{.*}} %[[ARG]], %[[ARG_ALLOCA]] : !s32i, !cir.ptr<!s32i>
@@ -91,7 +91,7 @@ int *f5() {
   return p;
 }
 
-// CHECK:      cir.func{{.*}} @_Z2f5v() -> !cir.ptr<!s32i>
+// CHECK:      cir.func{{.*}} @_Z2f5v() -> (!cir.ptr<!s32i> {llvm.noundef})
 // CHECK-NEXT:   %[[RET_ADDR:.*]] = cir.alloca !cir.ptr<!s32i>, !cir.ptr<!cir.ptr<!s32i>>, ["__retval"] {alignment = 8 : i64}
 // CHECK-NEXT:   %[[P_ADDR:.*]] = cir.alloca !cir.ptr<!s32i>, !cir.ptr<!cir.ptr<!s32i>>, ["p", init] {alignment = 8 : i64}
 // CHECK-NEXT:   %[[NULLPTR:.*]] = cir.const #cir.ptr<null> : !cir.ptr<!s32i>
@@ -120,7 +120,7 @@ size_type max_size() {
   return size_type(~0) / sizeof(_Tp);
 }
 
-// CHECK: cir.func{{.*}} @_Z8max_sizev() -> !u64i
+// CHECK: cir.func{{.*}} @_Z8max_sizev() -> (!u64i {llvm.noundef})
 // CHECK:   %[[NOT_ZERO:.*]] = cir.const #cir.int<18446744073709551615> : !u64i
 // CHECK:   %[[SIZE_OF_TP:.*]] = cir.const #cir.int<8> : !u64i
 // CHECK:   %[[RESULT:.*]] = cir.binop(div, %[[NOT_ZERO]], %[[SIZE_OF_TP]]) : !u64i
@@ -130,7 +130,7 @@ void ref_arg(int &x) {
   x = 3;
 }
 
-// CHECK: cir.func{{.*}} @_Z7ref_argRi(%[[ARG:.*]]: !cir.ptr<!s32i> {{.*}})
+// CHECK: cir.func{{.*}} @_Z7ref_argRi(%[[ARG:.*]]: !cir.ptr<!s32i> {llvm.noundef} {{.*}})
 // CHECK:   %[[X_REF_ADDR:.*]] = cir.alloca !cir.ptr<!s32i>, !cir.ptr<!cir.ptr<!s32i>>, ["x", init, const] {alignment = 8 : i64}
 // CHECK:   %[[Y_ADDR:.*]] = cir.alloca !s32i, !cir.ptr<!s32i>, ["y", init] {alignment = 4 : i64}
 // CHECK:   cir.store{{.*}} %[[ARG]], %[[X_REF_ADDR]] : !cir.ptr<!s32i>, !cir.ptr<!cir.ptr<!s32i>>
@@ -147,7 +147,7 @@ short &return_ref() {
   return gs;
 }
 
-// CHECK: cir.func{{.*}} @_Z10return_refv() -> !cir.ptr<!s16i>
+// CHECK: cir.func{{.*}} @_Z10return_refv() -> (!cir.ptr<!s16i> {llvm.noundef})
 // CHECK:   %[[RETVAL_ADDR:.*]] = cir.alloca !cir.ptr<!s16i>, !cir.ptr<!cir.ptr<!s16i>>, ["__retval"] {alignment = 8 : i64}
 // CHECK:   %[[GS_ADDR:.*]] = cir.get_global @gs : !cir.ptr<!s16i>
 // CHECK:   cir.store{{.*}} %[[GS_ADDR]], %[[RETVAL_ADDR]] : !cir.ptr<!s16i>, !cir.ptr<!cir.ptr<!s16i>>
@@ -158,7 +158,7 @@ void ref_local(short x) {
   short &y = x;
 }
 
-// CHECK: cir.func{{.*}} @_Z9ref_locals(%[[ARG:.*]]: !s16i {{.*}})
+// CHECK: cir.func{{.*}} @_Z9ref_locals(%[[ARG:.*]]: !s16i {llvm.noundef} {{.*}})
 // CHECK:   %[[X_ADDR:.*]] = cir.alloca !s16i, !cir.ptr<!s16i>, ["x", init] {alignment = 2 : i64}
 // CHECK:   %[[Y_REF_ADDR:.*]] = cir.alloca !cir.ptr<!s16i>, !cir.ptr<!cir.ptr<!s16i>>, ["y", init, const] {alignment = 8 : i64}
 // CHECK:   cir.store{{.*}} %[[ARG]], %[[X_ADDR]] : !s16i, !cir.ptr<!s16i>

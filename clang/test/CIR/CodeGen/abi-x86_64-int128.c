@@ -10,7 +10,7 @@ __int128 ret_int128(void) { return 0; }
 // OGCG: define {{.*}} i128 @ret_int128()
 
 void take_int128(__int128 x) {}
-// LLVM: define {{.*}} void @take_int128(i128 %{{.*}})
+// LLVM: define {{.*}} void @take_int128(i128 noundef %{{.*}})
 // OGCG: define {{.*}} void @take_int128(i128 {{.*}} %{{.*}})
 
 unsigned __int128 ret_uint128(void) { return 0; }

@@ -62,7 +62,7 @@ void f1(A *a) {
 // CIR:   %[[FN_PTR:.*]] = cir.load{{.*}} %[[FN_PTR_PTR:.*]] : !cir.ptr<!cir.ptr<!cir.func<(!cir.ptr<!rec_A>, !s8i)>>>, !cir.ptr<!cir.func<(!cir.ptr<!rec_A>, !s8i)>>
 // CIR:   cir.call %[[FN_PTR]](%[[A]], %[[C_LITERAL]]) : (!cir.ptr<!cir.func<(!cir.ptr<!rec_A>, !s8i)>>, !cir.ptr<!rec_A>, !s8i) -> ()
 
-// LLVM: define{{.*}} void @_Z2f1P1A(ptr %[[ARG0:.*]])
+// LLVM: define{{.*}} void @_Z2f1P1A(ptr noundef %[[ARG0:.*]])
 // LLVM:   %[[A_ADDR:.*]] = alloca ptr
 // LLVM:   store ptr %[[ARG0]], ptr %[[A_ADDR]]
 // LLVM:   %[[A:.*]] = load ptr, ptr %[[A_ADDR]]

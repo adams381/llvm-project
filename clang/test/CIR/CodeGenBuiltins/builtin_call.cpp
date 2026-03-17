@@ -27,10 +27,10 @@ int is_constant_evaluated() {
   return __builtin_is_constant_evaluated();
 }
 
-// CIR: cir.func{{.*}} @_Z21is_constant_evaluatedv() -> !s32i
+// CIR: cir.func{{.*}} @_Z21is_constant_evaluatedv() -> (!s32i {llvm.noundef})
 // CIR: %[[ZERO:.+]] = cir.const #cir.int<0>
 
-// LLVM: define {{.*}}i32 @_Z21is_constant_evaluatedv()
+// LLVM: define {{.*}}noundef i32 @_Z21is_constant_evaluatedv()
 // LLVM: %[[MEM:.+]] = alloca i32
 // LLVM: store i32 0, ptr %[[MEM]]
 // LLVM: %[[RETVAL:.+]] = load i32, ptr %[[MEM]]
@@ -45,10 +45,10 @@ long double constant_fp_builtin_ld() {
   return __builtin_fabsl(-0.1L);
 }
 
-// CIR: cir.func{{.*}} @_Z22constant_fp_builtin_ldv() -> !cir.long_double<!cir.f80>
+// CIR: cir.func{{.*}} @_Z22constant_fp_builtin_ldv() -> (!cir.long_double<!cir.f80> {llvm.noundef})
 // CIR: %[[PONE:.+]] = cir.const #cir.fp<1.000000e-01> : !cir.long_double<!cir.f80>
 
-// LLVM: define {{.*}}x86_fp80 @_Z22constant_fp_builtin_ldv()
+// LLVM: define {{.*}}noundef x86_fp80 @_Z22constant_fp_builtin_ldv()
 // LLVM: %[[MEM:.+]] = alloca x86_fp80
 // LLVM: store x86_fp80 0xK3FFBCCCCCCCCCCCCCCCD, ptr %[[MEM]]
 // LLVM: %[[RETVAL:.+]] = load x86_fp80, ptr %[[MEM]]
@@ -63,10 +63,10 @@ float constant_fp_builtin_single() {
   return __builtin_fabsf(-0.1f);
 }
 
-// CIR: cir.func{{.*}} @_Z26constant_fp_builtin_singlev() -> !cir.float
+// CIR: cir.func{{.*}} @_Z26constant_fp_builtin_singlev() -> (!cir.float {llvm.noundef})
 // CIR: %[[PONE:.+]] = cir.const #cir.fp<1.000000e-01> : !cir.float
 
-// LLVM: define {{.*}}float @_Z26constant_fp_builtin_singlev()
+// LLVM: define {{.*}}noundef float @_Z26constant_fp_builtin_singlev()
 // LLVM: %[[MEM:.+]] = alloca float
 // LLVM: store float 0x3FB99999A0000000, ptr %[[MEM]]
 // LLVM: %[[RETVAL:.+]] = load float, ptr %[[MEM]]
@@ -88,7 +88,7 @@ void library_builtins() {
 // CIR: cir.call @abort() nothrow {noreturn} : () -> ()
 
 // LLVM: define{{.*}} void @_Z16library_builtinsv()
-// LLVM: call i32 (ptr, ...) @printf(ptr null)
+// LLVM: call i32 (ptr, ...) @printf(ptr noundef null)
 // LLVM: call void @abort()
 
 // OGCG: define{{.*}} void @_Z16library_builtinsv()
@@ -103,7 +103,7 @@ void assume(bool arg) {
 // CIR:   cir.assume %{{.+}} : !cir.bool
 // CIR: }
 
-// LLVM: define {{.*}}void @_Z6assumeb
+// LLVM: define {{.*}}void @_Z6assumeb(i1 noundef %{{.*}})
 // LLVM:   call void @llvm.assume(i1 %{{.+}})
 // LLVM: }
 

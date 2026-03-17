@@ -14,8 +14,8 @@ void test_builtins_basic() {
   // CIR: cir.return
 
   // LLVM-LABEL: test_builtins_basic
-  // LLVM: [[P:%.*]] = call ptr @_Znwm(i64 4)
-  // LLVM: call void @_ZdlPv(ptr [[P]])
+  // LLVM: [[P:%.*]] = call ptr @_Znwm(i64 noundef 4)
+  // LLVM: call void @_ZdlPv(ptr noundef [[P]])
   // LLVM: ret void
 
   // OGCG-LABEL: test_builtins_basic
@@ -33,8 +33,8 @@ void test_sized_delete() {
   // CIR: cir.return
 
   // LLVM-LABEL: test_sized_delete
-  // LLVM: [[P:%.*]] = call ptr @_Znwm(i64 4)
-  // LLVM: call void @_ZdlPvm(ptr [[P]], i64 4)
+  // LLVM: [[P:%.*]] = call ptr @_Znwm(i64 noundef 4)
+  // LLVM: call void @_ZdlPvm(ptr noundef [[P]], i64 noundef 4)
   // LLVM: ret void
 
   // OGCG-LABEL: test_sized_delete

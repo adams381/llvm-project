@@ -25,7 +25,7 @@ void test_reserved_placement_new(void *p) {
 // CIR:           cir.call @_ZN1AC1Ev(%[[PTR_A]]) : (!cir.ptr<!rec_A>) -> ()
 
 // LLVM-LABEL: define dso_local void @_Z27test_reserved_placement_newPv(
-// LLVM-SAME:                                   ptr %[[ARG0:.*]]
+// LLVM-SAME:                                   ptr noundef %[[ARG0:.*]]
 // LLVM:         %[[P:.*]] = alloca ptr
 // LLVM:         store ptr %[[ARG0:.*]], ptr %[[P]]
 // LLVM:         %[[PTR:.*]] = load ptr, ptr %[[P]]

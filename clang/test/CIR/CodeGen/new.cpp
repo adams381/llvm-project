@@ -40,11 +40,11 @@ void test_basic_new() {
 // LLVM:   %[[PS_ADDR:.*]] = alloca ptr, i64 1, align 8
 // LLVM:   %[[PN_ADDR:.*]] = alloca ptr, i64 1, align 8
 // LLVM:   %[[PD_ADDR:.*]] = alloca ptr, i64 1, align 8
-// LLVM:   %[[NEW_S:.*]] = call{{.*}} ptr @_Znwm(i64 8)
+// LLVM:   %[[NEW_S:.*]] = call{{.*}} ptr @_Znwm(i64 noundef 8)
 // LLVM:   store ptr %[[NEW_S]], ptr %[[PS_ADDR]], align 8
-// LLVM:   %[[NEW_INT:.*]] = call{{.*}} ptr @_Znwm(i64 4)
+// LLVM:   %[[NEW_INT:.*]] = call{{.*}} ptr @_Znwm(i64 noundef 4)
 // LLVM:   store ptr %[[NEW_INT]], ptr %[[PN_ADDR]], align 8
-// LLVM:   %[[NEW_DOUBLE:.*]] = call{{.*}} ptr @_Znwm(i64 8)
+// LLVM:   %[[NEW_DOUBLE:.*]] = call{{.*}} ptr @_Znwm(i64 noundef 8)
 // LLVM:   store ptr %[[NEW_DOUBLE]], ptr %[[PD_ADDR]], align 8
 // LLVM:   ret void
 
@@ -85,10 +85,10 @@ void test_new_with_init() {
 // LLVM: define{{.*}} void @_Z18test_new_with_initv
 // LLVM:   %[[PN_ADDR:.*]] = alloca ptr, i64 1, align 8
 // LLVM:   %[[PD_ADDR:.*]] = alloca ptr, i64 1, align 8
-// LLVM:   %[[NEW_INT:.*]] = call{{.*}} ptr @_Znwm(i64 4)
+// LLVM:   %[[NEW_INT:.*]] = call{{.*}} ptr @_Znwm(i64 noundef 4)
 // LLVM:   store i32 2, ptr %[[NEW_INT]], align 4
 // LLVM:   store ptr %[[NEW_INT]], ptr %[[PN_ADDR]], align 8
-// LLVM:   %[[NEW_DOUBLE:.*]] = call{{.*}} ptr @_Znwm(i64 8)
+// LLVM:   %[[NEW_DOUBLE:.*]] = call{{.*}} ptr @_Znwm(i64 noundef 8)
 // LLVM:   store double 3.000000e+00, ptr %[[NEW_DOUBLE]], align 8
 // LLVM:   store ptr %[[NEW_DOUBLE]], ptr %[[PD_ADDR]], align 8
 // LLVM:   ret void
@@ -136,11 +136,11 @@ void test_new_with_ctor() {
 // LLVM: define{{.*}} void @_Z18test_new_with_ctorv
 // LLVM:   %[[PS2_ADDR:.*]] = alloca ptr, i64 1, align 8
 // LLVM:   %[[PS2_2_ADDR:.*]] = alloca ptr, i64 1, align 8
-// LLVM:   %[[NEW_S2:.*]] = call{{.*}} ptr @_Znwm(i64 8)
+// LLVM:   %[[NEW_S2:.*]] = call{{.*}} ptr @_Znwm(i64 noundef 8)
 // LLVM:   call{{.*}} void @_ZN2S2C1Ev(ptr noundef nonnull align 4 dereferenceable(8) %[[NEW_S2]])
 // LLVM:   store ptr %[[NEW_S2]], ptr %[[PS2_ADDR]], align 8
-// LLVM:   %[[NEW_S2_2:.*]] = call{{.*}} ptr @_Znwm(i64 8)
-// LLVM:   call{{.*}} void @_ZN2S2C1Eii(ptr noundef nonnull align 4 dereferenceable(8) %[[NEW_S2_2]], i32 1, i32 2)
+// LLVM:   %[[NEW_S2_2:.*]] = call{{.*}} ptr @_Znwm(i64 noundef 8)
+// LLVM:   call{{.*}} void @_ZN2S2C1Eii(ptr noundef nonnull align 4 dereferenceable(8) %[[NEW_S2_2]], i32 noundef 1, i32 noundef 2)
 // LLVM:   store ptr %[[NEW_S2_2]], ptr %[[PS2_2_ADDR]], align 8
 // LLVM:   ret void
 
@@ -170,7 +170,7 @@ void test_new_with_complex_type() {
 
 // LLVM: define{{.*}} void @_Z26test_new_with_complex_typev
 // LLVM:   %[[A_ADDR:.*]] = alloca ptr, i64 1, align 8
-// LLVM:   %[[NEW_COMPLEX:.*]] = call ptr @_Znwm(i64 8)
+// LLVM:   %[[NEW_COMPLEX:.*]] = call ptr @_Znwm(i64 noundef 8)
 // LLVM:   store { float, float } { float 1.000000e+00, float 2.000000e+00 }, ptr %[[NEW_COMPLEX]], align 8
 // LLVM:   store ptr %[[NEW_COMPLEX]], ptr %[[A_ADDR]], align 8
 
@@ -198,7 +198,7 @@ void t_new_constant_size() {
 
 // LLVM: define{{.*}} void @_Z19t_new_constant_sizev
 // LLVM:   %[[P_ADDR:.*]] = alloca ptr, i64 1, align 8
-// LLVM:   %[[CALL:.*]] = call ptr @_Znam(i64 128)
+// LLVM:   %[[CALL:.*]] = call ptr @_Znam(i64 noundef 128)
 // LLVM:   store ptr %[[CALL]], ptr %[[P_ADDR]], align 8
 
 // OGCG: define{{.*}} void @_Z19t_new_constant_sizev
@@ -233,7 +233,7 @@ void t_constant_size_nontrivial() {
 
 // LLVM: @_Z26t_constant_size_nontrivialv()
 // LLVM:   %[[ALLOCA:.*]] = alloca ptr, i64 1, align 8
-// LLVM:   %[[COOKIE_PTR:.*]] = call ptr @_Znam(i64 11)
+// LLVM:   %[[COOKIE_PTR:.*]] = call ptr @_Znam(i64 noundef 11)
 // LLVM:   store i64 3, ptr %[[COOKIE_PTR]], align 8
 // LLVM:   %[[ALLOCATED_PTR:.*]] = getelementptr ptr, ptr %[[COOKIE_PTR]], i64 8
 // LLVM:   store ptr %[[ALLOCATED_PTR]], ptr %[[ALLOCA]], align 8
@@ -273,7 +273,7 @@ void t_constant_size_nontrivial2() {
 
 // LLVM: @_Z27t_constant_size_nontrivial2v()
 // LLVM:   %[[ALLOCA:.*]] = alloca ptr, i64 1, align 8
-// LLVM:   %[[COOKIE_PTR:.*]] = call ptr @_Znam(i64 20)
+// LLVM:   %[[COOKIE_PTR:.*]] = call ptr @_Znam(i64 noundef 20)
 // LLVM:   store i64 3, ptr %[[COOKIE_PTR]], align 8
 // LLVM:   %[[ALLOCATED_PTR:.*]] = getelementptr ptr, ptr %[[COOKIE_PTR]], i64 8
 // LLVM:   store ptr %[[ALLOCATED_PTR]], ptr %[[ALLOCA]], align 8
@@ -307,7 +307,7 @@ void t_align16_nontrivial() {
 
 // LLVM: @_Z20t_align16_nontrivialv()
 // LLVM:   %[[ALLOCA:.*]] = alloca ptr, i64 1, align 8
-// LLVM:   %[[RAW_PTR:.*]] = call ptr @_Znam(i64 48)
+// LLVM:   %[[RAW_PTR:.*]] = call ptr @_Znam(i64 noundef 48)
 // LLVM:   %[[COOKIE_PTR:.*]] = getelementptr ptr, ptr %[[RAW_PTR]], i64 8
 // LLVM:   store i64 2, ptr %[[COOKIE_PTR]], align 8
 // LLVM:   %[[ALLOCATED_PTR:.*]] = getelementptr ptr, ptr %[[RAW_PTR]], i64 16
@@ -336,7 +336,7 @@ void t_new_multidim_constant_size() {
 
 // LLVM: define{{.*}} void @_Z28t_new_multidim_constant_sizev
 // LLVM:   %[[P_ADDR:.*]] = alloca ptr, i64 1, align 8
-// LLVM:   %[[CALL:.*]] = call ptr @_Znam(i64 192)
+// LLVM:   %[[CALL:.*]] = call ptr @_Znam(i64 noundef 192)
 // LLVM:   store ptr %[[CALL]], ptr %[[P_ADDR]], align 8
 
 // OGCG: define{{.*}} void @_Z28t_new_multidim_constant_sizev
@@ -357,7 +357,7 @@ void t_constant_size_memset_init() {
 // CHECK:    cir.libc.memset %[[ALLOCATION_SIZE]] bytes at %[[VOID_PTR]] to %[[ZERO]] : !cir.ptr<!void>, !u8i, !u64i
 
 // LLVM: define {{.*}} void @_Z27t_constant_size_memset_initv()
-// LLVM:   %[[P:.*]] = call ptr @_Znam(i64 64)
+// LLVM:   %[[P:.*]] = call ptr @_Znam(i64 noundef 64)
 // LLVM:   call void @llvm.memset.p0.i64(ptr %[[P]], i8 0, i64 64, i1 false)
 
 // OGCG: define {{.*}} void @_Z27t_constant_size_memset_initv()
@@ -388,7 +388,7 @@ void t_constant_size_full_init() {
 // CHECK:    cir.store{{.*}} %[[CONST_FOUR]], %[[ELEM_3_PTR]] : !s32i, !cir.ptr<!s32i>
 
 // LLVM: define {{.*}} void @_Z25t_constant_size_full_initv()
-// LLVM:   %[[P:.*]] = call ptr @_Znam(i64 16)
+// LLVM:   %[[P:.*]] = call ptr @_Znam(i64 noundef 16)
 // LLVM:   store i32 1, ptr %[[CALL]]
 // LLVM:   %[[ELEM_1:.*]] = getelementptr i32, ptr %[[P]], i64 1
 // LLVM:   store i32 2, ptr %[[ELEM_1]]
@@ -434,7 +434,7 @@ void t_constant_size_partial_init() {
 // CHECK:    cir.libc.memset %[[REMAINING_SIZE]] bytes at %[[VOID_PTR]] to %[[ZERO]] : !cir.ptr<!void>, !u8i, !u64i
 
 // LLVM: define {{.*}} void @_Z28t_constant_size_partial_initv()
-// LLVM:   %[[P:.*]] = call ptr @_Znam(i64 64)
+// LLVM:   %[[P:.*]] = call ptr @_Znam(i64 noundef 64)
 // LLVM:   store i32 1, ptr %[[P]]
 // LLVM:   %[[ELEM_1:.*]] = getelementptr i32, ptr %[[P]], i64 1
 // LLVM:   store i32 2, ptr %[[ELEM_1]]
@@ -463,7 +463,7 @@ void t_new_var_size(size_t n) {
 
 // LLVM: define{{.*}} void @_Z14t_new_var_sizem
 // LLVM:   %[[N:.*]] = load i64, ptr %{{.+}}
-// LLVM:   %[[PTR:.*]] = call ptr @_Znam(i64 %[[N]])
+// LLVM:   %[[PTR:.*]] = call ptr @_Znam(i64 noundef %[[N]])
 
 // OGCG: define{{.*}} void @_Z14t_new_var_sizem
 // OGCG:   %[[N:.*]] = load i64, ptr %{{.+}}
@@ -481,7 +481,7 @@ void t_new_var_size2(int n) {
 // LLVM: define{{.*}} void @_Z15t_new_var_size2i
 // LLVM:   %[[N:.*]] = load i32, ptr %{{.+}}
 // LLVM:   %[[N_SIZE_T:.*]] = sext i32 %[[N]] to i64
-// LLVM:   %[[PTR:.*]] = call ptr @_Znam(i64 %[[N_SIZE_T]])
+// LLVM:   %[[PTR:.*]] = call ptr @_Znam(i64 noundef %[[N_SIZE_T]])
 
 // OGCG: define{{.*}} void @_Z15t_new_var_size2i
 // OGCG:   %[[N:.*]] = load i32, ptr %{{.+}}
@@ -506,7 +506,7 @@ void t_new_var_size3(size_t n) {
 // LLVM:   %[[ELEMENT_SIZE:.*]] = extractvalue { i64, i1 } %[[MUL_OVERFLOW]], 0
 // LLVM:   %[[OVERFLOW:.*]] = extractvalue { i64, i1 } %[[MUL_OVERFLOW]], 1
 // LLVM:   %[[ALLOC_SIZE:.*]] = select i1 %[[OVERFLOW]], i64 -1, i64 %[[ELEMENT_SIZE]]
-// LLVM:   %[[RESULT:.*]] = call ptr @_Znam(i64 %[[ALLOC_SIZE]])
+// LLVM:   %[[RESULT:.*]] = call ptr @_Znam(i64 noundef %[[ALLOC_SIZE]])
 
 // OGCG: define{{.*}} void @_Z15t_new_var_size3m
 // OGCG:   %[[N:.*]] = load i64, ptr %{{.+}}
@@ -536,7 +536,7 @@ void t_new_var_size4(int n) {
 // LLVM:   %[[ELEMENT_SIZE:.*]] = extractvalue { i64, i1 } %[[MUL_OVERFLOW]], 0
 // LLVM:   %[[OVERFLOW:.*]] = extractvalue { i64, i1 } %[[MUL_OVERFLOW]], 1
 // LLVM:   %[[ALLOC_SIZE:.*]] = select i1 %[[OVERFLOW]], i64 -1, i64 %[[ELEMENT_SIZE]]
-// LLVM:   %[[PTR:.*]] = call ptr @_Znam(i64 %[[ALLOC_SIZE]])
+// LLVM:   %[[PTR:.*]] = call ptr @_Znam(i64 noundef %[[ALLOC_SIZE]])
 
 // OGCG: define{{.*}} void @_Z15t_new_var_size4i
 // OGCG:   %[[N:.*]] = load i32, ptr %{{.+}}
@@ -575,7 +575,7 @@ void t_new_var_size5(int n) {
 // LLVM:   %[[ELEMENT_SIZE:.*]] = extractvalue { i64, i1 } %[[MUL_OVERFLOW]], 0
 // LLVM:   %[[OVERFLOW:.*]] = extractvalue { i64, i1 } %[[MUL_OVERFLOW]], 1
 // LLVM:   %[[ALLOC_SIZE:.*]] = select i1 %[[OVERFLOW]], i64 -1, i64 %[[ELEMENT_SIZE]]
-// LLVM:   %[[PTR:.*]] = call ptr @_Znam(i64 %[[ALLOC_SIZE]])
+// LLVM:   %[[PTR:.*]] = call ptr @_Znam(i64 noundef %[[ALLOC_SIZE]])
 
 // OGCG: define{{.*}} void @_Z15t_new_var_size5i
 // OGCG:   %[[N:.*]] = load i32, ptr %{{.+}}
@@ -629,7 +629,7 @@ void t_new_var_size6(int n) {
 // LLVM:   %[[OVERFLOW:.*]] = extractvalue { i64, i1 } %[[MUL_OVERFLOW]], 1
 // LLVM:   %[[ANY_OVERFLOW:.*]] = or i1 %[[LT_MIN_SIZE]], %[[OVERFLOW]]
 // LLVM:   %[[ALLOC_SIZE:.*]] = select i1 %[[ANY_OVERFLOW]], i64 -1, i64 %[[ELEMENT_SIZE]]
-// LLVM:   %[[PTR:.*]] = call ptr @_Znam(i64 %[[ALLOC_SIZE]])
+// LLVM:   %[[PTR:.*]] = call ptr @_Znam(i64 noundef %[[ALLOC_SIZE]])
 // LLVM:   store double 1.000000e+00, ptr %[[PTR]], align 8
 // LLVM:   %[[ELEM_1:.*]] = getelementptr double, ptr %[[PTR]], i64 1
 // LLVM:   store double 2.000000e+00, ptr %[[ELEM_1]], align 8
@@ -678,7 +678,7 @@ void t_new_var_size7(__int128 n) {
 // LLVM:   %[[ELEMENT_SIZE:.*]] = extractvalue { i64, i1 } %[[MUL_OVERFLOW]], 0
 // LLVM:   %[[OVERFLOW:.*]] = extractvalue { i64, i1 } %[[MUL_OVERFLOW]], 1
 // LLVM:   %[[ALLOC_SIZE:.*]] = select i1 %[[OVERFLOW]], i64 -1, i64 %[[ELEMENT_SIZE]]
-// LLVM:   %[[PTR:.*]] = call ptr @_Znam(i64 %[[ALLOC_SIZE]])
+// LLVM:   %[[PTR:.*]] = call ptr @_Znam(i64 noundef %[[ALLOC_SIZE]])
 
 // OGCG: define{{.*}} void @_Z15t_new_var_size7n
 // OGCG:   %[[N:.*]] = load i128, ptr %{{.+}}
@@ -714,7 +714,7 @@ void t_new_var_size_nontrivial(size_t n) {
 // LLVM:   %[[OVERFLOW_ADD:.*]] = extractvalue { i64, i1 } %[[ADD_OVERFLOW]], 1
 // LLVM:   %[[ANY_OVERFLOW:.*]] = or i1 %[[OVERFLOW]], %[[OVERFLOW_ADD]]
 // LLVM:   %[[ALLOC_SIZE:.*]] = select i1 %[[ANY_OVERFLOW]], i64 -1, i64 %[[ELEMENT_SIZE]]
-// LLVM:   %[[PTR:.*]] = call ptr @_Znam(i64 %[[ALLOC_SIZE]])
+// LLVM:   %[[PTR:.*]] = call ptr @_Znam(i64 noundef %[[ALLOC_SIZE]])
 
 // OGCG: define{{.*}} void @_Z25t_new_var_size_nontrivialm
 // OGCG:   %[[N:.*]] = load i64, ptr %{{.+}}

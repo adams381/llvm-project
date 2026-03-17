@@ -39,9 +39,9 @@ void test(const char *fmt, __builtin_va_list ap) {
 
 
 // LLVM: define internal i32 @__vprintfieee128.inline({{.*}}) #[[ALWAYS_INLINE_ATTR:.*]] {
-// LLVM:   call i32 @__vfprintf_chkieee128(ptr %{{.*}}, i32 1, ptr %{{.*}}, ptr %{{.*}})
+// LLVM:   call i32 @__vfprintf_chkieee128(ptr noundef %{{.*}}, i32 noundef 1, ptr noundef %{{.*}}, ptr noundef %{{.*}})
 //
-// LLVM: define {{.*}} void @test{{.*}}
+// LLVM: define {{.*}} void @test(ptr noundef %{{.*}}, ptr noundef %{{.*}})
 // LLVM:   call i32 @__vprintfieee128.inline(ptr %{{.*}}, ptr %{{.*}})
 //
 // LLVM: attributes #[[ALWAYS_INLINE_ATTR]] = { alwaysinline }

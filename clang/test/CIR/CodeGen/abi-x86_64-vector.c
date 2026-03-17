@@ -16,7 +16,7 @@ __m128 ret_m128(void) { __m128 v = {0}; return v; }
 // OGCG: define {{.*}} <4 x float> @ret_m128()
 
 void take_m128(__m128 v) {}
-// LLVM: define {{.*}} void @take_m128(<4 x float> %{{.*}})
+// LLVM: define {{.*}} void @take_m128(<4 x float> noundef %{{.*}})
 // OGCG: define {{.*}} void @take_m128(<4 x float> {{.*}} %{{.*}})
 
 // __m256: larger than SSE -> byval on default target
@@ -34,7 +34,7 @@ v4si ret_v4si(void) { v4si v = {0}; return v; }
 // OGCG: define {{.*}} <4 x i32> @ret_v4si()
 
 void take_v4si(v4si v) {}
-// LLVM: define {{.*}} void @take_v4si(<4 x i32> %{{.*}})
+// LLVM: define {{.*}} void @take_v4si(<4 x i32> noundef %{{.*}})
 // OGCG: define {{.*}} void @take_v4si(<4 x i32> {{.*}} %{{.*}})
 
 // v2si (64-bit int vector): coerced to double per ABI

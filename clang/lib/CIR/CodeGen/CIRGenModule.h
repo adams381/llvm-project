@@ -295,6 +295,9 @@ public:
   void setThisArgumentAttributes(cir::FuncOp func, clang::GlobalDecl globalDecl,
                                  const clang::CXXMethodDecl *md);
 
+  /// Adds noundef to scalar/pointer arguments and (for C++) return values.
+  void setNoundefOnArguments(cir::FuncOp func, clang::GlobalDecl globalDecl);
+
   /// Will return a global variable of the given type. If a variable with a
   /// different type already exists then a new variable with the right type
   /// will be created and all uses of the old variable will be replaced with a

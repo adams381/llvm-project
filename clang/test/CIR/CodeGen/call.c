@@ -124,8 +124,8 @@ int f12(void) {
 // CIR-NEXT:    %{{.+}} = cir.call @f11(%[[B]]) side_effect(const) : (!s32i) -> !s32i
 
 // LLVM-LABEL: define{{.*}} i32 @f12(){{.*}}
-// LLVM:         %{{.+}} = call i32 @f10(i32 1) #[[ATTR0:.+]]
-// LLVM-NEXT:    %{{.+}} = call i32 @f11(i32 2) #[[ATTR1:.+]]
+// LLVM:         %{{.+}} = call i32 @f10(i32 noundef 1) #[[ATTR0:.+]]
+// LLVM-NEXT:    %{{.+}} = call i32 @f11(i32 noundef 2) #[[ATTR1:.+]]
 
 // OGCG-LABEL: define{{.*}} i32 @f12()
 // OGCG:         %{{.+}} = call i32 @f10(i32 noundef 1) #[[ATTR0:.+]]

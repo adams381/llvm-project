@@ -1346,7 +1346,7 @@ void complex_type_argument() {
 // LLVM: %[[TMP_A:.*]] = load { float, float }, ptr %[[A_ADDR]], align 4
 // LLVM: store { float, float } %[[TMP_A]], ptr %[[ARG_ADDR]], align 4
 // LLVM: %[[TMP_ARG:.*]] = load { float, float }, ptr %[[ARG_ADDR]], align 4
-// LLVM: call void @_Z22complex_type_parameterCf({ float, float } %[[TMP_ARG]])
+// LLVM: call void @_Z22complex_type_parameterCf({ float, float } noundef %[[TMP_ARG]])
 
 // OGCG: %[[A_ADDR:.*]] = alloca { float, float }, align 4
 // OGCG: %[[ARG_ADDR:.*]] = alloca { float, float }, align 4
@@ -1460,7 +1460,7 @@ void calling_function_with_default_arg() {
 // LLVM: %[[DEFAULT_ARG_ADDR:.*]] = alloca { float, float }, i64 1, align 4
 // LLVM: store { float, float } { float 1.000000e+00, float 0x40019999A0000000 }, ptr %[[DEFAULT_ARG_ADDR]], align 4
 // LLVM: %[[TMP_DEFAULT_ARG:.*]] = load { float, float }, ptr %[[DEFAULT_ARG_ADDR]], align 4
-// LLVM: call void @_Z33function_with_complex_default_argCf({ float, float } %[[TMP_DEFAULT_ARG]])
+// LLVM: call void @_Z33function_with_complex_default_argCf({ float, float } noundef %[[TMP_DEFAULT_ARG]])
 
 // OGCG: %[[DEFAULT_ARG_ADDR:.*]] = alloca { float, float }, align 4
 // OGCG: %[[DEFAULT_ARG_REAL_PTR:.*]] = getelementptr inbounds nuw { float, float }, ptr %[[DEFAULT_ARG_ADDR]], i32 0, i32 0

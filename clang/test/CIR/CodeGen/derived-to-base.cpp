@@ -54,11 +54,11 @@ void callBaseUsingDerived(Derived *derived) {
 // CIR:   %[[DERIVED_BASE:.*]] = cir.base_class_addr %[[DERIVED]] : !cir.ptr<!rec_Derived> nonnull [0] -> !cir.ptr<!rec_Base>
 // CIR:   cir.call @_Z7useBaseP4Base(%[[DERIVED_BASE]]) : (!cir.ptr<!rec_Base>) -> ()
 
-// LLVM: define {{.*}} void @_Z20callBaseUsingDerivedP7Derived(ptr %[[DERIVED_ARG:.*]])
+// LLVM: define {{.*}} void @_Z20callBaseUsingDerivedP7Derived(ptr noundef %[[DERIVED_ARG:.*]])
 // LLVM:   %[[DERIVED_ADDR:.*]] = alloca ptr
 // LLVM:   store ptr %[[DERIVED_ARG]], ptr %[[DERIVED_ADDR]]
 // LLVM:   %[[DERIVED:.*]] = load ptr, ptr %[[DERIVED_ADDR]]
-// LLVM:   call void @_Z7useBaseP4Base(ptr %[[DERIVED]])
+// LLVM:   call void @_Z7useBaseP4Base(ptr noundef %[[DERIVED]])
 
 // OGCG: define {{.*}} void @_Z20callBaseUsingDerivedP7Derived(ptr {{.*}} %[[DERIVED_ARG:.*]])
 // OGCG:   %[[DERIVED_ADDR:.*]] = alloca ptr
@@ -70,7 +70,7 @@ Base *returnBaseFromDerived(Derived* derived) {
   return derived;
 }
 
-// CIR: cir.func {{.*}} @_Z21returnBaseFromDerivedP7Derived(%[[DERIVED_ARG:.*]]: !cir.ptr<!rec_Derived> {{.*}}) -> !cir.ptr<!rec_Base>
+// CIR: cir.func {{.*}} @_Z21returnBaseFromDerivedP7Derived(%[[DERIVED_ARG:.*]]: !cir.ptr<!rec_Derived> {{.*}}) -> (!cir.ptr<!rec_Base> {llvm.noundef})
 // CIR:   %[[DERIVED_ADDR:.*]] = cir.alloca !cir.ptr<!rec_Derived>, !cir.ptr<!cir.ptr<!rec_Derived>>, ["derived", init]
 // CIR:   %[[BASE_ADDR:.*]] = cir.alloca !cir.ptr<!rec_Base>, !cir.ptr<!cir.ptr<!rec_Base>>, ["__retval"]
 // CIR:   cir.store %[[DERIVED_ARG]], %[[DERIVED_ADDR]]
@@ -80,7 +80,7 @@ Base *returnBaseFromDerived(Derived* derived) {
 // CIR:   %[[BASE:.*]] = cir.load{{.*}} %[[BASE_ADDR]]
 // CIR:   cir.return %[[BASE]] : !cir.ptr<!rec_Base>
 
-// LLVM: define {{.*}} ptr @_Z21returnBaseFromDerivedP7Derived(ptr %[[DERIVED_ARG:.*]])
+// LLVM: define {{.*}} noundef ptr @_Z21returnBaseFromDerivedP7Derived(ptr noundef %[[DERIVED_ARG:.*]])
 // LLVM:   %[[DERIVED_ADDR:.*]] = alloca ptr
 // LLVM:   store ptr %[[DERIVED_ARG]], ptr %[[DERIVED_ADDR]]
 // LLVM:   %[[DERIVED:.*]] = load ptr, ptr %[[DERIVED_ADDR]]

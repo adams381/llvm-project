@@ -27,7 +27,7 @@ void test() {
   x = o;
 }
 
-// CIR: cir.func {{.*}} @_ZN20out_of_line_operatorcviEv(%[[THIS_ARG:.+]]: !cir.ptr<!rec_out_of_line_operator>{{.*}}) -> !s32i
+// CIR: cir.func {{.*}} @_ZN20out_of_line_operatorcviEv(%[[THIS_ARG:.+]]: !cir.ptr<!rec_out_of_line_operator>{{.*}}) -> (!s32i {llvm.noundef})
 // CIR:   %[[THIS_ALLOCA:.+]] = cir.alloca !cir.ptr<!rec_out_of_line_operator>, !cir.ptr<!cir.ptr<!rec_out_of_line_operator>>, ["this", init]
 // CIR:   %[[RETVAL:.+]] = cir.alloca !s32i, !cir.ptr<!s32i>, ["__retval"]
 // CIR:   cir.store %[[THIS_ARG]], %[[THIS_ALLOCA]] : !cir.ptr<!rec_out_of_line_operator>, !cir.ptr<!cir.ptr<!rec_out_of_line_operator>>
@@ -38,7 +38,7 @@ void test() {
 // CIR:   cir.return %[[RET_LOAD]] : !s32i
 // CIR: }
 
-// CIR: cir.func no_inline comdat linkonce_odr @_ZNK15inline_operatorcviEv(%[[INLINE_THIS_ARG:.+]]: !cir.ptr<!rec_inline_operator>{{.*}}) -> !s32i
+// CIR: cir.func no_inline comdat linkonce_odr @_ZNK15inline_operatorcviEv(%[[INLINE_THIS_ARG:.+]]: !cir.ptr<!rec_inline_operator>{{.*}}) -> (!s32i {llvm.noundef})
 // CIR:   %[[INLINE_THIS_ALLOCA:.+]] = cir.alloca !cir.ptr<!rec_inline_operator>, !cir.ptr<!cir.ptr<!rec_inline_operator>>, ["this", init]
 // CIR:   %[[INLINE_RETVAL:.+]] = cir.alloca !s32i, !cir.ptr<!s32i>, ["__retval"]
 // CIR:   cir.store %[[INLINE_THIS_ARG]], %[[INLINE_THIS_ALLOCA]] : !cir.ptr<!rec_inline_operator>, !cir.ptr<!cir.ptr<!rec_inline_operator>>
@@ -62,7 +62,7 @@ void test() {
 // CIR:   cir.return
 // CIR: }
 
-// LLVM: define dso_local i32 @_ZN20out_of_line_operatorcviEv(ptr noundef nonnull align 1 dereferenceable(1) %[[PARAM0:.+]])
+// LLVM: define dso_local noundef i32 @_ZN20out_of_line_operatorcviEv(ptr noundef nonnull align 1 dereferenceable(1) %[[PARAM0:.+]])
 // LLVM:   %[[THIS_ALLOCA:.+]] = alloca ptr, i64 1
 // LLVM:   %[[RETVAL:.+]] = alloca i32, i64 1
 // LLVM:   store ptr %[[PARAM0]], ptr %[[THIS_ALLOCA]]
@@ -72,7 +72,7 @@ void test() {
 // LLVM:   ret i32 %[[RET_LOAD]]
 // LLVM: }
 
-// LLVM: define linkonce_odr i32 @_ZNK15inline_operatorcviEv(ptr noundef nonnull align 1 dereferenceable(1) %[[INLINE_PARAM0:.+]])
+// LLVM: define linkonce_odr noundef i32 @_ZNK15inline_operatorcviEv(ptr noundef nonnull align 1 dereferenceable(1) %[[INLINE_PARAM0:.+]])
 // LLVM:   %[[INLINE_THIS_ALLOCA:.+]] = alloca ptr, i64 1
 // LLVM:   %[[INLINE_RETVAL:.+]] = alloca i32, i64 1
 // LLVM:   store ptr %[[INLINE_PARAM0]], ptr %[[INLINE_THIS_ALLOCA]]

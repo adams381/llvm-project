@@ -25,7 +25,7 @@ Delegating::Delegating() : Delegating(0) {}
 // LLVM:   %[[THIS_ADDR:.*]] = alloca ptr
 // LLVM:   store ptr %[[THIS_ARG]], ptr %[[THIS_ADDR]]
 // LLVM:   %[[THIS:.*]] = load ptr, ptr %[[THIS_ADDR]]
-// LLVM:   call void @_ZN10DelegatingC2Ei(ptr noundef nonnull align 1 dereferenceable(1) %[[THIS]], i32 0)
+// LLVM:   call void @_ZN10DelegatingC2Ei(ptr noundef nonnull align 1 dereferenceable(1) %[[THIS]], i32 noundef 0)
 
 // OGCG: define {{.*}} @_ZN10DelegatingC2Ev(ptr {{.*}} %[[THIS_ARG:.*]])
 // OGCG:   %[[THIS_ADDR:.*]] = alloca ptr
@@ -53,7 +53,7 @@ DelegatingWithZeroing::DelegatingWithZeroing(int) : DelegatingWithZeroing() {}
 // CIR:   %[[ZERO:.*]] = cir.const #cir.zero : !rec_DelegatingWithZeroing
 // CIR:   cir.store{{.*}} %[[ZERO]], %[[THIS]] : !rec_DelegatingWithZeroing, !cir.ptr<!rec_DelegatingWithZeroing>
 
-// LLVM: define {{.*}} void @_ZN21DelegatingWithZeroingC2Ei(ptr noundef nonnull align 4 dereferenceable(4) %[[THIS_ARG:.*]], i32 %[[I_ARG:.*]])
+// LLVM: define {{.*}} void @_ZN21DelegatingWithZeroingC2Ei(ptr noundef nonnull align 4 dereferenceable(4) %[[THIS_ARG:.*]], i32 noundef %[[I_ARG:.*]])
 // LLVM:   %[[THIS_ADDR:.*]] = alloca ptr
 // LLVM:   %[[I_ADDR:.*]] = alloca i32
 // LLVM:   store ptr %[[THIS_ARG]], ptr %[[THIS_ADDR]]
@@ -142,7 +142,7 @@ Derived::Derived(const void *inVoid) { squawk(); }
 // CIR:        cir.call %[[SQUAWK]](%[[THIS]]) : (!cir.ptr<!cir.func<(!cir.ptr<!rec_Derived>)>>, !cir.ptr<!rec_Derived>) -> ()
 // CIR:        cir.return
 
-// LLVM: define {{.*}} void @_ZN7DerivedC2EPKv(ptr noundef nonnull align 8 dereferenceable(8) %[[THIS_ARG:.*]], ptr %[[VTT_ARG:.*]], ptr %[[INVOID_ARG:.*]])
+// LLVM: define {{.*}} void @_ZN7DerivedC2EPKv(ptr noundef nonnull align 8 dereferenceable(8) %[[THIS_ARG:.*]], ptr noundef %[[VTT_ARG:.*]], ptr noundef %[[INVOID_ARG:.*]])
 // LLVM:   %[[THIS_ADDR:.*]] = alloca ptr
 // LLVM:   %[[VTT_ADDR:.*]] = alloca ptr
 // LLVM:   %[[INVOID_ADDR:.*]] = alloca ptr
@@ -202,14 +202,14 @@ Derived::Derived(const void *inVoid) { squawk(); }
 // CIR:   cir.call @_Z5otherv() : () -> ()
 // CIR:   cir.return
 
-// LLVM: define {{.*}} void @_ZN7DerivedC2Ev(ptr noundef nonnull align 8 dereferenceable(8) %[[THIS_ARG:.*]], ptr %[[VTT_ARG:.*]])
+// LLVM: define {{.*}} void @_ZN7DerivedC2Ev(ptr noundef nonnull align 8 dereferenceable(8) %[[THIS_ARG:.*]], ptr noundef %[[VTT_ARG:.*]])
 // LLVM:   %[[THIS_ADDR:.*]] = alloca ptr
 // LLVM:   %[[VTT_ADDR:.*]] = alloca ptr
 // LLVM:   store ptr %[[THIS_ARG]], ptr %[[THIS_ADDR]]
 // LLVM:   store ptr %[[VTT_ARG]], ptr %[[VTT_ADDR]]
 // LLVM:   %[[THIS:.*]] = load ptr, ptr %[[THIS_ADDR]]
 // LLVM:   %[[VTT:.*]] = load ptr, ptr %[[VTT_ADDR]]
-// LLVM:   call void @_ZN7DerivedC2EPKv(ptr noundef nonnull align 8 dereferenceable(8) %[[THIS]], ptr %[[VTT]], ptr null)
+// LLVM:   call void @_ZN7DerivedC2EPKv(ptr noundef nonnull align 8 dereferenceable(8) %[[THIS]], ptr noundef %[[VTT]], ptr noundef null)
 // LLVM:   call void @_Z5otherv()
 // LLVM:   ret void
 
@@ -272,7 +272,7 @@ Derived::Derived(const void *inVoid) { squawk(); }
 // CIR:   cir.call %[[SQUAWK]](%[[THIS]])
 // CIR:   cir.return
 
-// LLVM: define {{.*}} void @_ZN7DerivedC1EPKv(ptr noundef nonnull align 8 dereferenceable(8) %[[THIS_ARG:.*]], ptr %[[INVOID_ARG:.*]])
+// LLVM: define {{.*}} void @_ZN7DerivedC1EPKv(ptr noundef nonnull align 8 dereferenceable(8) %[[THIS_ARG:.*]], ptr noundef %[[INVOID_ARG:.*]])
 // LLVM:   %[[THIS_ADDR:.*]] = alloca ptr
 // LLVM:   %[[INVOID_ADDR:.*]] = alloca ptr
 // LLVM:   store ptr %[[THIS_ARG]], ptr %[[THIS_ADDR]]
@@ -315,7 +315,7 @@ Derived::Derived(const void *inVoid) { squawk(); }
 // LLVM:   %[[THIS_ADDR:.*]] = alloca ptr
 // LLVM:   store ptr %[[THIS_ARG]], ptr %[[THIS_ADDR]]
 // LLVM:   %[[THIS:.*]] = load ptr, ptr %[[THIS_ADDR]]
-// LLVM:   call void @_ZN7DerivedC1EPKv(ptr noundef nonnull align 8 dereferenceable(8) %[[THIS]], ptr null)
+// LLVM:   call void @_ZN7DerivedC1EPKv(ptr noundef nonnull align 8 dereferenceable(8) %[[THIS]], ptr noundef null)
 // LLVM:   call void @_Z5otherv()
 // LLVM:   ret void
 

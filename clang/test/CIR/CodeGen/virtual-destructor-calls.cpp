@@ -64,7 +64,7 @@ B::~B() { }
 
 // LLVM: define{{.*}} void @_ZN1BD0Ev
 // LLVM:   call void @_ZN1BD1Ev(ptr %[[THIS:.*]])
-// LLVM:   call void @_ZdlPvm(ptr %[[THIS]], i64 16)
+// LLVM:   call void @_ZdlPvm(ptr noundef %[[THIS]], i64 noundef 16)
 
 // OGCG: define{{.*}} @_ZN1BD0Ev
 // OGCG:   call void @_ZN1BD1Ev(ptr{{.*}} %[[THIS:.*]])
@@ -104,7 +104,7 @@ C::~C() { }
 
 // LLVM: define{{.*}} void @_ZN1CD0Ev
 // LLVM:   call void @_ZN1CD1Ev(ptr %[[THIS:.*]])
-// LLVM:   call void @_ZdlPvm(ptr %[[THIS]], i64 16)
+// LLVM:   call void @_ZdlPvm(ptr noundef %[[THIS]], i64 noundef 16)
 
 // OGCG: define{{.*}} @_ZN1CD0Ev
 // OGCG:   call void @_ZN1CD1Ev(ptr{{.*}} %[[THIS:.*]])
