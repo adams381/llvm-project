@@ -38,7 +38,7 @@ StructWithCtorArg withArg = 0.0;
 // LLVM: define {{.*}} void @__cxx_global_var_init()
 // LLVM:   %[[TMP0:.*]] = alloca double
 // LLVM:   store double 0.000000e+00, ptr %[[TMP0]]
-// LLVM:   call void @_ZN17StructWithCtorArgC1ERKd(ptr noundef nonnull align 8 dereferenceable(8) @withArg, ptr noundef %[[TMP0]])
+// LLVM:   call void @_ZN17StructWithCtorArgC1ERKd(ptr noundef nonnull align 8 dereferenceable(8) @withArg, ptr noundef nonnull align 8 dereferenceable(8) %[[TMP0]])
 
 // OGCG: define {{.*}} void @__cxx_global_var_init()
 // OGCG:   %[[TMP0:.*]] = alloca double

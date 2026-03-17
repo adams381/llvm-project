@@ -24,7 +24,7 @@ void foo() {
 // LLVM:   br label %[[SCOPE_LABEL:.*]]
 // LLVM: [[SCOPE_LABEL]]:
 // LLVM:   store i32 42, ptr %[[TMP0]]
-// LLVM:   call void @_Z3barRKi(ptr noundef %[[TMP0]])
+// LLVM:   call void @_Z3barRKi(ptr noundef nonnull align 4 dereferenceable(4) %[[TMP0]])
 
 // OGCG: define{{.*}} @_Z3foov()
 // OGCG:   %[[TMP0:.*]] = alloca i32

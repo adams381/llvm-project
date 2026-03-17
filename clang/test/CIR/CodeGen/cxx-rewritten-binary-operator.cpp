@@ -25,7 +25,7 @@ void cxx_rewritten_binary_operator_scalar_expr() {
 // LLVM: %[[A_ADDR:.*]] = alloca %struct.HasOpEq, i64 1, align 1
 // LLVM: %[[B_ADDR:.*]] = alloca %struct.HasOpEq, i64 1, align 1
 // LLVM: %[[NEQ_ADDR:.*]] = alloca i8, i64 1, align 1
-// LLVM: %[[EQ:.*]] = call i1 @_ZNK7HasOpEqeqERKS_(ptr noundef nonnull align 1 dereferenceable(1) %[[A_ADDR]], ptr noundef %[[B_ADDR]])
+// LLVM: %[[EQ:.*]] = call i1 @_ZNK7HasOpEqeqERKS_(ptr noundef nonnull align 1 dereferenceable(1) %[[A_ADDR]], ptr noundef nonnull align 1 dereferenceable(1) %[[B_ADDR]])
 // LLVM: %[[NEQ_I1:.*]] = xor i1 %[[EQ]], true
 // LLVM: %[[NEQ:.*]] = zext i1 %[[NEQ_I1]] to i8
 // LLVM: store i8 %[[NEQ]], ptr %[[NEQ_ADDR]], align 1

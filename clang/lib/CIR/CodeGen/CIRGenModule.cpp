@@ -2296,6 +2296,103 @@ void CIRGenModule::setNoundefOnArguments(cir::FuncOp func,
   }
 }
 
+void CIRGenModule::setReferenceParameterAttributes(cir::FuncOp func,
+                                                   GlobalDecl globalDecl) {
+  const auto *fd = dyn_cast_if_present<FunctionDecl>(globalDecl.getDecl());
+  if (!fd)
+    return;
+
+  mlir::MLIRContext *ctx = &getMLIRContext();
+  mlir::Builder b(ctx);
+  unsigned numArgs = func.getNumArguments();
+
+  // Read existing arg_attrs.
+  SmallVector<mlir::Attribute> argAttrDicts;
+  if (auto existing = func->getAttrOfType<mlir::ArrayAttr>("arg_attrs"))
+    argAttrDicts.assign(existing.begin(), existing.end());
+  else
+    argAttrDicts.assign(numArgs, mlir::DictionaryAttr::get(ctx));
+
+  // Determine the CIR arg index offset for instance methods
+  // (this pointer is arg 0, not in the FunctionDecl params).
+  unsigned paramOffset = 0;
+  if (const auto *md = dyn_cast<CXXMethodDecl>(fd))
+    if (md->isInstance())
+      paramOffset = 1;
+
+  bool changed = false;
+  for (unsigned i = 0; i < fd->getNumParams(); ++i) {
+    unsigned argIdx = i + paramOffset;
+    if (argIdx >= numArgs)
+      break;
+
+    QualType paramType = fd->getParamDecl(i)->getType();
+    const auto *refTy = paramType->getAs<ReferenceType>();
+    if (!refTy)
+      continue;
+
+    QualType pointeeTy = refTy->getPointeeType();
+    if (pointeeTy->isIncompleteType() || !pointeeTy->isConstantSizeType())
+      continue;
+
+    auto dict = mlir::cast<mlir::DictionaryAttr>(argAttrDicts[argIdx]);
+    SmallVector<mlir::NamedAttribute> attrs(dict.begin(), dict.end());
+
+    uint64_t derefBytes = getMinimumObjectSize(pointeeTy).getQuantity();
+    if (!codeGenOpts.NullPointerIsValid) {
+      if (!dict.get("llvm.nonnull"))
+        attrs.push_back(b.getNamedAttr("llvm.nonnull", b.getUnitAttr()));
+      if (!dict.get("llvm.dereferenceable"))
+        attrs.push_back(b.getNamedAttr("llvm.dereferenceable",
+                                       b.getI64IntegerAttr(derefBytes)));
+    }
+
+    if (pointeeTy->isObjectType()) {
+      CharUnits alignment =
+          getNaturalTypeAlignment(pointeeTy, /*baseInfo=*/nullptr);
+      if (!dict.get("llvm.align"))
+        attrs.push_back(b.getNamedAttr(
+            "llvm.align", b.getI64IntegerAttr(alignment.getQuantity())));
+    }
+
+    argAttrDicts[argIdx] = mlir::DictionaryAttr::get(ctx, attrs);
+    changed = true;
+  }
+
+  if (changed)
+    func->setAttr("arg_attrs", mlir::ArrayAttr::get(ctx, argAttrDicts));
+
+  // Handle reference return types.
+  QualType retType = fd->getReturnType();
+  if (const auto *refTy = retType->getAs<ReferenceType>()) {
+    QualType pointeeTy = refTy->getPointeeType();
+    if (!pointeeTy->isIncompleteType() && pointeeTy->isConstantSizeType()) {
+      SmallVector<mlir::NamedAttribute> retAttrs;
+      if (auto existing = func->getAttrOfType<mlir::ArrayAttr>("res_attrs"))
+        if (existing.size() > 0)
+          for (auto attr : mlir::cast<mlir::DictionaryAttr>(existing[0]))
+            retAttrs.push_back(attr);
+
+      uint64_t derefBytes = getMinimumObjectSize(pointeeTy).getQuantity();
+      if (!codeGenOpts.NullPointerIsValid) {
+        retAttrs.push_back(b.getNamedAttr("llvm.nonnull", b.getUnitAttr()));
+        retAttrs.push_back(b.getNamedAttr("llvm.dereferenceable",
+                                          b.getI64IntegerAttr(derefBytes)));
+      }
+      if (pointeeTy->isObjectType()) {
+        CharUnits alignment =
+            getNaturalTypeAlignment(pointeeTy, /*baseInfo=*/nullptr);
+        retAttrs.push_back(b.getNamedAttr(
+            "llvm.align", b.getI64IntegerAttr(alignment.getQuantity())));
+      }
+
+      SmallVector<mlir::Attribute> resAttrDicts;
+      resAttrDicts.push_back(mlir::DictionaryAttr::get(ctx, retAttrs));
+      func->setAttr("res_attrs", mlir::ArrayAttr::get(ctx, resAttrDicts));
+    }
+  }
+}
+
 void CIRGenModule::setThisArgumentAttributes(cir::FuncOp func,
                                              GlobalDecl globalDecl,
                                              const CXXMethodDecl *md) {
@@ -2386,6 +2483,10 @@ void CIRGenModule::setCIRFunctionAttributes(GlobalDecl globalDecl,
   // Add noundef to scalar/pointer arguments and (for C++) returns.
   if (codeGenOpts.EnableNoundefAttrs)
     setNoundefOnArguments(func, globalDecl);
+
+  // Add nonnull, dereferenceable, align to reference params/returns.
+  if (!isThunk)
+    setReferenceParameterAttributes(func, globalDecl);
 
   // TODO(cir): Check X86_VectorCall incompatibility wiht WinARM64EC
 

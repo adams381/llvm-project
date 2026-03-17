@@ -13,8 +13,8 @@ void for_range() {
     ;
 }
 
-// CIR: cir.func{{.*}} @_Z5beginR9Container(!cir.ptr<!rec_Container> {llvm.noundef}) -> (!cir.ptr<!rec_Element> {llvm.noundef})
-// CIR: cir.func{{.*}} @_Z3endR9Container(!cir.ptr<!rec_Container> {llvm.noundef}) -> (!cir.ptr<!rec_Element> {llvm.noundef})
+// CIR: cir.func{{.*}} @_Z5beginR9Container(!cir.ptr<!rec_Container> {llvm.align = 1 : i64, llvm.dereferenceable = 1 : i64, llvm.nonnull, llvm.noundef}) -> (!cir.ptr<!rec_Element> {llvm.noundef})
+// CIR: cir.func{{.*}} @_Z3endR9Container(!cir.ptr<!rec_Container> {llvm.align = 1 : i64, llvm.dereferenceable = 1 : i64, llvm.nonnull, llvm.noundef}) -> (!cir.ptr<!rec_Element> {llvm.noundef})
 
 // CIR: cir.func{{.*}} @_Z9for_rangev()
 // CIR:    %[[C_ADDR:.*]] = cir.alloca !rec_Container{{.*}} ["c"]

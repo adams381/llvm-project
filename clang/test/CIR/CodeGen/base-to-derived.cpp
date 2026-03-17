@@ -84,7 +84,7 @@ X &castBReftoXRef(B &b) {
 // CIR:   %[[B:.*]] = cir.load{{.*}} %[[B_ADDR]] : !cir.ptr<!cir.ptr<!rec_B>>, !cir.ptr<!rec_B>
 // CIR:   %[[X:.*]] = cir.derived_class_addr %[[B]] : !cir.ptr<!rec_B> nonnull [4] -> !cir.ptr<!rec_X>
 
-// LLVM: define {{.*}} noundef ptr @_Z14castBReftoXRefR1B(ptr noundef %[[ARG0:.*]])
+// LLVM: define {{.*}} noundef nonnull align 4 dereferenceable(12) ptr @_Z14castBReftoXRefR1B(ptr noundef nonnull align 4 dereferenceable(4) %[[ARG0:.*]])
 // LLVM:   %[[B_ADDR:.*]] = alloca ptr
 // LLVM:   store ptr %[[ARG0]], ptr %[[B_ADDR]]
 // LLVM:   %[[B:.*]] = load ptr, ptr %[[B_ADDR]]

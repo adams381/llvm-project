@@ -50,7 +50,7 @@ int g3() {
 // CIR:   %[[RET:.*]] = cir.load %[[RETVAL]]
 // CIR:   cir.return %[[RET]]
 
-// LLVM: define internal noundef i32 @"_ZZ2g3vENK3$_0clERKi"(ptr noundef nonnull align 1 dereferenceable(1) %[[THIS_ARG:.*]], ptr noundef %[[REF_I_ARG:.*]]){{.*}} {
+// LLVM: define internal noundef i32 @"_ZZ2g3vENK3$_0clERKi"(ptr noundef nonnull align 1 dereferenceable(1) %[[THIS_ARG:.*]], ptr noundef nonnull align 4 dereferenceable(4) %[[REF_I_ARG:.*]]){{.*}} {
 // LLVM:   %[[THIS_ALLOCA:.*]] = alloca ptr
 // LLVM:   %[[REF_I_ALLOCA:.*]] = alloca ptr
 // LLVM:   %[[RETVAL:.*]] = alloca i32
@@ -77,13 +77,13 @@ int g3() {
 // CIR:   %[[RET:.*]] = cir.load %[[RETVAL]]
 // CIR:   cir.return %[[RET]]
 
-// LLVM: define internal noundef i32 @"_ZZ2g3vEN3$_08__invokeERKi"(ptr noundef %[[REF_I_ARG:.*]]){{.*}} {
+// LLVM: define internal noundef i32 @"_ZZ2g3vEN3$_08__invokeERKi"(ptr noundef nonnull align 4 dereferenceable(4) %[[REF_I_ARG:.*]]){{.*}} {
 // LLVM:   %[[REF_I_ALLOCA:.*]] = alloca ptr
 // LLVM:   %[[RETVAL:.*]] = alloca i32
 // LLVM:   %[[LAM_ALLOCA:.*]] = alloca %[[REC_LAM_G3:.*]],
 // LLVM:   store ptr %[[REF_I_ARG]], ptr %[[REF_I_ALLOCA]]
 // LLVM:   %[[REF_I:.*]] = load ptr, ptr %[[REF_I_ALLOCA]]
-// LLVM:   %[[LAM_RESULT:.*]] = call i32 @"_ZZ2g3vENK3$_0clERKi"(ptr noundef nonnull align 1 dereferenceable(1) %[[LAM_ALLOCA]], ptr noundef %[[REF_I]])
+// LLVM:   %[[LAM_RESULT:.*]] = call i32 @"_ZZ2g3vENK3$_0clERKi"(ptr noundef nonnull align 1 dereferenceable(1) %[[LAM_ALLOCA]], ptr noundef nonnull align 4 dereferenceable(4) %[[REF_I]])
 // LLVM:   store i32 %[[LAM_RESULT]], ptr %[[RETVAL]]
 // LLVM:   %[[RET:.*]] = load i32, ptr %[[RETVAL]]
 // LLVM:   ret i32 %[[RET]]

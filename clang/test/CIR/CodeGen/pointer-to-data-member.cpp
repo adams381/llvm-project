@@ -112,7 +112,7 @@ int test2(const Point &pt, int Point::*member) {
 // CIR-AFTER:        %[[RET:.*]] = cir.load{{.*}} %[[RETVAL_ADDR]] : !cir.ptr<!s32i>, !s32i
 // CIR-AFTER:        cir.return %[[RET]] : !s32i
 
-// LLVM: define {{.*}} noundef i32 @_Z5test2RK5PointMS_i(ptr noundef %[[PT_ARG:.*]], i64 noundef %[[MEMBER_ARG:.*]])
+// LLVM: define {{.*}} noundef i32 @_Z5test2RK5PointMS_i(ptr noundef nonnull align 4 dereferenceable(12) %[[PT_ARG:.*]], i64 noundef %[[MEMBER_ARG:.*]])
 // LLVM:   %[[PT_ADDR:.*]] = alloca ptr
 // LLVM:   %[[MEMBER_ADDR:.*]] = alloca i64
 // LLVM:   %[[RETVAL_ADDR:.*]] = alloca i32

@@ -130,7 +130,7 @@ void ref_arg(int &x) {
   x = 3;
 }
 
-// CHECK: cir.func{{.*}} @_Z7ref_argRi(%[[ARG:.*]]: !cir.ptr<!s32i> {llvm.noundef} {{.*}})
+// CHECK: cir.func{{.*}} @_Z7ref_argRi(%[[ARG:.*]]: !cir.ptr<!s32i> {llvm.align = 4 : i64, llvm.dereferenceable = 4 : i64, llvm.nonnull, llvm.noundef} {{.*}})
 // CHECK:   %[[X_REF_ADDR:.*]] = cir.alloca !cir.ptr<!s32i>, !cir.ptr<!cir.ptr<!s32i>>, ["x", init, const] {alignment = 8 : i64}
 // CHECK:   %[[Y_ADDR:.*]] = cir.alloca !s32i, !cir.ptr<!s32i>, ["y", init] {alignment = 4 : i64}
 // CHECK:   cir.store{{.*}} %[[ARG]], %[[X_REF_ADDR]] : !cir.ptr<!s32i>, !cir.ptr<!cir.ptr<!s32i>>
@@ -147,7 +147,7 @@ short &return_ref() {
   return gs;
 }
 
-// CHECK: cir.func{{.*}} @_Z10return_refv() -> (!cir.ptr<!s16i> {llvm.noundef})
+// CHECK: cir.func{{.*}} @_Z10return_refv() -> (!cir.ptr<!s16i> {llvm.align = 2 : i64, llvm.dereferenceable = 2 : i64, llvm.nonnull, llvm.noundef})
 // CHECK:   %[[RETVAL_ADDR:.*]] = cir.alloca !cir.ptr<!s16i>, !cir.ptr<!cir.ptr<!s16i>>, ["__retval"] {alignment = 8 : i64}
 // CHECK:   %[[GS_ADDR:.*]] = cir.get_global @gs : !cir.ptr<!s16i>
 // CHECK:   cir.store{{.*}} %[[GS_ADDR]], %[[RETVAL_ADDR]] : !cir.ptr<!s16i>, !cir.ptr<!cir.ptr<!s16i>>

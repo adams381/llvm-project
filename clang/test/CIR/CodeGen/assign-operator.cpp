@@ -57,12 +57,12 @@ void copy_c(C &c1, C &c2) {
   c1 = c2;
 }
 
-// CIR: cir.func private @_ZN1AaSERKS_(!cir.ptr<!rec_A> {llvm.align = 1 : i64, llvm.dereferenceable = 1 : i64, llvm.nonnull, llvm.noundef}, !cir.ptr<!rec_A> {llvm.noundef}) -> (!cir.ptr<!rec_A> {llvm.noundef})
+// CIR: cir.func private @_ZN1AaSERKS_(!cir.ptr<!rec_A> {llvm.align = 1 : i64, llvm.dereferenceable = 1 : i64, llvm.nonnull, llvm.noundef}, !cir.ptr<!rec_A> {llvm.align = 1 : i64, llvm.dereferenceable = 1 : i64, llvm.nonnull, llvm.noundef}) -> (!cir.ptr<!rec_A> {llvm.align = 1 : i64, llvm.dereferenceable = 1 : i64, llvm.nonnull, llvm.noundef})
 // CIR: cir.func private @memcpy(!cir.ptr<!void> {llvm.noundef}, !cir.ptr<!void> {llvm.noundef}, !u64i {llvm.noundef}) -> !cir.ptr<!void>
 
 // Implicit assignment operator for C.
 
-// CIR: cir.func {{.*}} @_ZN1CaSERKS_(%arg0: !cir.ptr<!rec_C> {{.*}}, %arg1: !cir.ptr<!rec_C> {{.*}}) -> (!cir.ptr<!rec_C> {llvm.noundef})
+// CIR: cir.func {{.*}} @_ZN1CaSERKS_(%arg0: !cir.ptr<!rec_C> {{.*}}, %arg1: !cir.ptr<!rec_C> {{.*}}) -> (!cir.ptr<!rec_C> {llvm.align = 4 : i64, llvm.dereferenceable = 68 : i64, llvm.nonnull, llvm.noundef})
 // CIR:   %[[THIS_ADDR:.*]] = cir.alloca !cir.ptr<!rec_C>, !cir.ptr<!cir.ptr<!rec_C>>, ["this", init]
 // CIR:   %[[ARG1_ADDR:.*]] = cir.alloca !cir.ptr<!rec_C>, !cir.ptr<!cir.ptr<!rec_C>>, ["", init, const]
 // CIR:   %[[RET_ADDR:.*]] = cir.alloca !cir.ptr<!rec_C>, !cir.ptr<!cir.ptr<!rec_C>>, ["__retval"]
@@ -120,7 +120,7 @@ void copy_ref_to_ref(E &e1, E &e2) {
 // CIR:   %[[D1_REF_2:.*]] = cir.call @_ZN1DaSERKS_(%[[D1_REF]], %[[D2_REF]])
 // CIR:   cir.return
 
-// LLVM: define{{.*}} void @_Z15copy_ref_to_refR1ES0_(ptr noundef %[[ARG0:.*]], ptr noundef %[[ARG1:.*]]){{.*}} {
+// LLVM: define{{.*}} void @_Z15copy_ref_to_refR1ES0_(ptr noundef nonnull align 1 dereferenceable(1) %[[ARG0:.*]], ptr noundef nonnull align 1 dereferenceable(1) %[[ARG1:.*]]){{.*}} {
 // LLVM:   %[[E1_ADDR:.*]] = alloca ptr
 // LLVM:   %[[E2_ADDR:.*]] = alloca ptr
 // LLVM:   store ptr %[[ARG0]], ptr %[[E1_ADDR]]
@@ -129,7 +129,7 @@ void copy_ref_to_ref(E &e1, E &e2) {
 // LLVM:   %[[D2_REF:.*]] = call ptr @_ZN1E9get_d_refEv(ptr noundef nonnull align 1 dereferenceable(1) %[[E2]])
 // LLVM:   %[[E1:.*]] = load ptr, ptr %[[E1_ADDR]]
 // LLVM:   %[[D1_REF:.*]] = call ptr @_ZN1E9get_d_refEv(ptr noundef nonnull align 1 dereferenceable(1) %[[E1]])
-// LLVM:   %[[D1_REF_2:.*]] = call ptr @_ZN1DaSERKS_(ptr noundef nonnull align 1 dereferenceable(1) %[[D1_REF]], ptr noundef %[[D2_REF]])
+// LLVM:   %[[D1_REF_2:.*]] = call ptr @_ZN1DaSERKS_(ptr noundef nonnull align 1 dereferenceable(1) %[[D1_REF]], ptr noundef nonnull align 1 dereferenceable(1) %[[D2_REF]])
 
 // OGCG: define{{.*}} void @_Z15copy_ref_to_refR1ES0_(ptr{{.*}} %[[ARG0:.*]], ptr{{.*}} %[[ARG1:.*]])
 // OGCG:   %[[E1_ADDR:.*]] = alloca ptr
