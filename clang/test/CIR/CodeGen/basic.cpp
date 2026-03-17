@@ -158,7 +158,7 @@ void ref_local(short x) {
   short &y = x;
 }
 
-// CHECK: cir.func{{.*}} @_Z9ref_locals(%[[ARG:.*]]: !s16i {llvm.noundef} {{.*}})
+// CHECK: cir.func{{.*}} @_Z9ref_locals(%[[ARG:.*]]: !s16i {llvm.noundef, llvm.signext} {{.*}})
 // CHECK:   %[[X_ADDR:.*]] = cir.alloca !s16i, !cir.ptr<!s16i>, ["x", init] {alignment = 2 : i64}
 // CHECK:   %[[Y_REF_ADDR:.*]] = cir.alloca !cir.ptr<!s16i>, !cir.ptr<!cir.ptr<!s16i>>, ["y", init, const] {alignment = 8 : i64}
 // CHECK:   cir.store{{.*}} %[[ARG]], %[[X_ADDR]] : !s16i, !cir.ptr<!s16i>

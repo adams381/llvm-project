@@ -14,7 +14,7 @@ int if0(bool a) {
 
 }
 
-// CIR: cir.func{{.*}} @_Z3if0b(%arg0: !cir.bool {llvm.noundef} loc({{.*}})) -> (!s32i {llvm.noundef})
+// CIR: cir.func{{.*}} @_Z3if0b(%arg0: !cir.bool {llvm.noundef, llvm.zeroext} loc({{.*}})) -> (!s32i {llvm.noundef})
 // CIR: cir.scope {
 // CIR:   %4 = cir.load{{.*}} %0 : !cir.ptr<!cir.bool>, !cir.bool
 // CIR-NEXT: cir.if %4 {
@@ -26,7 +26,7 @@ int if0(bool a) {
 // CIR-NEXT:  }
 
 
-// LLVM: define{{.*}} noundef i32 @_Z3if0b(i1 noundef %0)
+// LLVM: define{{.*}} noundef i32 @_Z3if0b(i1 noundef zeroext %0)
 // LLVM:   br label %[[ENTRY:.*]]
 // LLVM: [[ENTRY]]:
 // LLVM:   %6 = load i8, ptr %2, align 1
@@ -138,7 +138,7 @@ void if2(int a, bool b, bool c) {
   }
 }
 
-// CIR: cir.func{{.*}} @_Z3if2ibb(%arg0: !s32i {llvm.noundef} loc({{.*}}), %arg1: !cir.bool {llvm.noundef} loc({{.*}}), %arg2: !cir.bool {llvm.noundef} loc({{.*}}))
+// CIR: cir.func{{.*}} @_Z3if2ibb(%arg0: !s32i {llvm.noundef} loc({{.*}}), %arg1: !cir.bool {llvm.noundef, llvm.zeroext} loc({{.*}}), %arg2: !cir.bool {llvm.noundef, llvm.zeroext} loc({{.*}}))
 // CIR: cir.scope {
 // CIR:   %5 = cir.load{{.*}} %0 : !cir.ptr<!s32i>, !s32i
 // CIR:   %6 = cir.cast int_to_bool %5 : !s32i -> !cir.bool
@@ -165,7 +165,7 @@ void if2(int a, bool b, bool c) {
 // CIR:   }
 // CIR: }
 
-// LLVM: define{{.*}} void @_Z3if2ibb(i32 noundef %[[A:.*]], i1 noundef %[[B:.*]], i1 noundef %[[C:.*]])
+// LLVM: define{{.*}} void @_Z3if2ibb(i32 noundef %[[A:.*]], i1 noundef zeroext %[[B:.*]], i1 noundef zeroext %[[C:.*]])
 // LLVM:   %[[VARA:.*]] = alloca i32, i64 1, align 4
 // LLVM:   %[[VARB:.*]] = alloca i8, i64 1, align 1
 // LLVM:   %[[VARC:.*]] = alloca i8, i64 1, align 1

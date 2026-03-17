@@ -160,10 +160,13 @@ static ArgClassification convertABIArgInfo(const llvm::abi::ABIArgInfo &info,
   }
   case llvm::abi::ABIArgInfo::Extend: {
     mlir::Type coerced = abiTypeToCIR(info.getCoerceToType(), ctx);
-    // Extension only applies to CIR integer types.  Other types
-    // (e.g. cir::BoolType) handle promotion during CIR-to-LLVM
-    // lowering, and inserting cir.cast integral on them would fail
-    // verification.
+    // BoolType: keep Extend classification (for signext/zeroext
+    // attr) but suppress type coercion since cir.cast integral
+    // on BoolType would fail verification.
+    if (origTy && isa<cir::BoolType>(origTy))
+      return ArgClassification::getExtend(nullptr, info.isSignExt());
+    // Other non-integer types: promote during CIR-to-LLVM
+    // lowering, not here.
     if (origTy && !isa<cir::IntType>(origTy))
       return ArgClassification::getDirect(nullptr);
     return ArgClassification::getExtend(coerced, info.isSignExt());

@@ -18,7 +18,7 @@ unsigned char cxxstaticcast_0(unsigned int x) {
 // CIR:    cir.return %[[R]] : !u8i
 // CIR:  }
 
-// LLVM: define{{.*}} noundef i8 @_Z15cxxstaticcast_0j(i32 noundef %{{[0-9]+}})
+// LLVM: define{{.*}} noundef zeroext i8 @_Z15cxxstaticcast_0j(i32 noundef %{{[0-9]+}})
 // LLVM: %[[LOAD:[0-9]+]] = load i32, ptr %{{[0-9]+}}, align 4
 // LLVM: %[[TRUNC:[0-9]+]] = trunc i32 %[[LOAD]] to i8
 // LLVM: store i8 %[[TRUNC]], ptr %[[RV:[0-9]+]], align 1
@@ -95,7 +95,7 @@ bool cptr(void *d) {
 // CIR:   %[[DVAL:[0-9]+]] = cir.load{{.*}} %[[DPTR]] : !cir.ptr<!cir.ptr<!void>>, !cir.ptr<!void>
 // CIR:   %{{[0-9]+}} = cir.cast ptr_to_bool %[[DVAL]] : !cir.ptr<!void> -> !cir.bool
 
-// LLVM-LABEL: define{{.*}} noundef i1 @_Z4cptrPv(ptr noundef %0)
+// LLVM-LABEL: define{{.*}} noundef zeroext i1 @_Z4cptrPv(ptr noundef %0)
 // LLVM:         %[[ARG_STORAGE:.*]] = alloca ptr, i64 1
 // LLVM:         %[[RETVAL:.*]] = alloca i8, i64 1
 // LLVM:         %[[X_STORAGE:.*]] = alloca i8, i64 1

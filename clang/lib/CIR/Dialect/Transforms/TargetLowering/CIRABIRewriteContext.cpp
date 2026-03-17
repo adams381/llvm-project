@@ -279,8 +279,13 @@ LogicalResult CIRABIRewriteContext::rewriteFunctionDefinition(
     newResultTypes = SmallVector<Type>(oldResultTypes);
   }
 
-  // If nothing changed, skip the rewrite.
-  if (!hasSRet && !hasArgChanges &&
+  // If nothing changed, skip the rewrite — unless we have
+  // Extend args/returns that need signext/zeroext attrs.
+  bool hasExtend = fc.ReturnInfo.Kind == ArgKind::Extend;
+  for (auto &argClass : fc.ArgInfos)
+    if (argClass.Kind == ArgKind::Extend)
+      hasExtend = true;
+  if (!hasSRet && !hasArgChanges && !hasExtend &&
       newArgTypes == SmallVector<Type>(oldArgTypes) &&
       newResultTypes == SmallVector<Type>(oldResultTypes))
     return success();
@@ -492,6 +497,8 @@ LogicalResult CIRABIRewriteContext::rewriteFunctionDefinition(
         needsAttrs = true;
       if (argClass.Kind == ArgKind::Ignore)
         hasIgnoredArgs = true;
+      if (argClass.Kind == ArgKind::Extend)
+        needsAttrs = true;
     }
     // Also rebuild arg_attrs when args were dropped (Ignore) and
     // existing arg_attrs would have the wrong count.
@@ -566,7 +573,41 @@ LogicalResult CIRABIRewriteContext::rewriteFunctionDefinition(
         }
       }
 
+      // Add signext/zeroext for Extend args.
+      for (auto [idx, argClass] : llvm::enumerate(fc.ArgInfos)) {
+        if (argClass.Kind != ArgKind::Extend)
+          continue;
+        unsigned newIdx = idx + sretOff;
+        if (newIdx >= numArgs)
+          continue;
+        auto existing = mlir::cast<DictionaryAttr>(argAttrDicts[newIdx]);
+        SmallVector<NamedAttribute> attrs(existing.begin(), existing.end());
+        StringRef attrName =
+            argClass.SignExtend ? "llvm.signext" : "llvm.zeroext";
+        attrs.push_back(
+            rewriter.getNamedAttr(attrName, rewriter.getUnitAttr()));
+        argAttrDicts[newIdx] = DictionaryAttr::get(ctx, attrs);
+      }
+
       funcOp->setAttr("arg_attrs", ArrayAttr::get(ctx, argAttrDicts));
+    }
+
+    // Add signext/zeroext to return value for Extend returns.
+    // This is outside the needsAttrs block because a function
+    // can have an Extend return with no special arg attrs.
+    if (fc.ReturnInfo.Kind == ArgKind::Extend) {
+      SmallVector<NamedAttribute> retAttrs;
+      if (auto existing = funcOp->getAttrOfType<ArrayAttr>("res_attrs"))
+        if (existing.size() > 0)
+          for (auto attr : mlir::cast<DictionaryAttr>(existing[0]))
+            retAttrs.push_back(attr);
+      StringRef attrName =
+          fc.ReturnInfo.SignExtend ? "llvm.signext" : "llvm.zeroext";
+      retAttrs.push_back(
+          rewriter.getNamedAttr(attrName, rewriter.getUnitAttr()));
+      SmallVector<Attribute> resAttrDicts;
+      resAttrDicts.push_back(DictionaryAttr::get(ctx, retAttrs));
+      funcOp->setAttr("res_attrs", ArrayAttr::get(ctx, resAttrDicts));
     }
   }
 

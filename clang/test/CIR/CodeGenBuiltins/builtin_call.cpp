@@ -103,7 +103,7 @@ void assume(bool arg) {
 // CIR:   cir.assume %{{.+}} : !cir.bool
 // CIR: }
 
-// LLVM: define {{.*}}void @_Z6assumeb(i1 noundef %{{.*}})
+// LLVM: define {{.*}}void @_Z6assumeb(i1 noundef zeroext %{{.*}})
 // LLVM:   call void @llvm.assume(i1 %{{.+}})
 // LLVM: }
 

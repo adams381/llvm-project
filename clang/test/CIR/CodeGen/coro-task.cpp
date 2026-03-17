@@ -139,7 +139,7 @@ co_invoke_fn co_invoke;
 // CIR-NEXT: cir.global external @_ZN5folly4coro9co_invokeE = #cir.zero : !rec_folly3A3Acoro3A3Aco_invoke_fn
 
 // CIR: cir.func builtin private @__builtin_coro_id(!u32i, !cir.ptr<!void>, !cir.ptr<!void>, !cir.ptr<!void>) -> !u32i
-// CIR:  cir.func builtin private @__builtin_coro_alloc(!u32i) -> !cir.bool
+// CIR:  cir.func builtin private @__builtin_coro_alloc(!u32i) -> (!cir.bool {llvm.zeroext})
 // CIR:  cir.func builtin private @__builtin_coro_size() -> !u64i
 // CIR:  cir.func builtin private @__builtin_coro_begin(!u32i, !cir.ptr<!void>) -> !cir.ptr<!void>
 

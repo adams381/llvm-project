@@ -41,7 +41,7 @@ int f6() {
 // CIR-NEXT:    %{{.+}} = cir.call @_Z2f5iPib(%[[#a]], %[[#b:]], %[[#c]]) : (!s32i, !cir.ptr<!s32i>, !cir.bool) -> !s32i
 
 // LLVM-LABEL: define{{.*}} i32 @_Z2f6v(){{.*}} {
-// LLVM:         %{{.+}} = call i32 @_Z2f5iPib(i32 noundef 2, ptr noundef %{{.+}}, i1 noundef false)
+// LLVM:         %{{.+}} = call i32 @_Z2f5iPib(i32 noundef 2, ptr noundef %{{.+}}, i1 noundef zeroext false)
 
 int f7(int (*ptr)(int, int)) {
   return ptr(1, 2);

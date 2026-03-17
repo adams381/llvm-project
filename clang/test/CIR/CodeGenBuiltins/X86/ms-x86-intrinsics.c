@@ -19,12 +19,12 @@ unsigned __int64 __shiftright128(unsigned __int64 low, unsigned __int64 high,
 // CIR: cir.return
 
 // LLVM-LABEL: define {{.*}} i64 @test_shiftleft128
-// LLVM-SAME: (i64 noundef %{{.*}}, i64 noundef %{{.*}}, i8 noundef %{{.*}})
+// LLVM-SAME: (i64 noundef %{{.*}}, i64 noundef %{{.*}}, i8 noundef zeroext %{{.*}})
 // LLVM: [[TMP1:%.*]] = zext i8 %{{.*}} to i64
 // LLVM-NEXT: {{.*}} = call i64 @llvm.fshl.i64(i64 %{{.*}}, i64 %{{.*}}, i64 [[TMP1]])
 
 // OGCG-LABEL: define {{.*}} i64 @test_shiftleft128
-// OGCG-SAME: (i64 {{.*}} %{{.*}}, i64 {{.*}} %{{.*}}, i8 {{.*}} %{{.*}})
+// OGCG-SAME: (i64 {{.*}} %{{.*}}, i64 {{.*}} %{{.*}}, i8 {{.*}} zeroext %{{.*}})
 // OGCG-NEXT: entry:
 // OGCG: [[TMP:%.*]] = zext i8 {{.*}} to i64
 // OGCG-NEXT: {{.*}} = call i64 @llvm.fshl.i64(i64 {{.*}}, i64 {{.*}}, i64 [[TMP]])
@@ -41,12 +41,12 @@ unsigned __int64 test_shiftleft128(unsigned __int64 l, unsigned __int64 h,
 // CIR: cir.return
 
 // LLVM-LABEL: define {{.*}} i64 @test_shiftright128
-// LLVM-SAME: (i64 noundef %{{.*}}, i64 noundef %{{.*}}, i8 noundef %{{.*}})
+// LLVM-SAME: (i64 noundef %{{.*}}, i64 noundef %{{.*}}, i8 noundef zeroext %{{.*}})
 // LLVM: [[TMP1:%.*]] = zext i8 %{{.*}} to i64
 // LLVM-NEXT: {{.*}} = call i64 @llvm.fshr.i64(i64 %{{.*}}, i64 %{{.*}}, i64 [[TMP1]])
 
 // OGCG-LABEL: define {{.*}} i64 @test_shiftright128
-// OGCG-SAME: (i64 {{.*}} %{{.*}}, i64 {{.*}} %{{.*}}, i8 {{.*}} %{{.*}})
+// OGCG-SAME: (i64 {{.*}} %{{.*}}, i64 {{.*}} %{{.*}}, i8 {{.*}} zeroext %{{.*}})
 // OGCG-NEXT: entry:
 // OGCG: [[TMP:%.*]] = zext i8 {{.*}} to i64
 // OGCG-NEXT: {{.*}} = call i64 @llvm.fshr.i64(i64 {{.*}}, i64 {{.*}}, i64 [[TMP]])

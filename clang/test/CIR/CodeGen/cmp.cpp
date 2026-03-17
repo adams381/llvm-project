@@ -419,7 +419,7 @@ void bool_cmp(bool a, bool b) {
 // CIR: cir.cmp(eq
 // CIR: cir.cmp(ne
 
-// LLVM-LABEL: define{{.*}} void @_Z8bool_cmpbb(i1 noundef %0, i1 noundef %1){{.*}} {
+// LLVM-LABEL: define{{.*}} void @_Z8bool_cmpbb(i1 noundef zeroext %0, i1 noundef zeroext %1){{.*}} {
 // LLVM: %[[A_PTR:.*]] = alloca i8
 // LLVM: %[[B_PTR:.*]] = alloca i8
 // LLVM: %[[X_PTR:.*]] = alloca i8

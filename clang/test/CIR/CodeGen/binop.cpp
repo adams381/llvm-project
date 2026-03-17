@@ -350,7 +350,7 @@ void zext_shift_example(int a, unsigned char b) {
 // CIR: cir.return
 
 // LLVM-LABEL: define{{.*}} void @_Z18zext_shift_exampleih
-// LLVM-SAME: (i32 noundef %[[A:.*]], i8 noundef %[[B:.*]])
+// LLVM-SAME: (i32 noundef %[[A:.*]], i8 noundef zeroext %[[B:.*]])
 // LLVM:         %[[A_ADDR:.*]] = alloca i32
 // LLVM:         %[[B_ADDR:.*]] = alloca i8
 // LLVM:         %[[X:.*]] = alloca i32
@@ -422,7 +422,7 @@ void sext_shift_example(int a, signed char b) {
 // CIR: cir.return
 
 // LLVM-LABEL: define{{.*}} void @_Z18sext_shift_exampleia
-// LLVM-SAME: (i32 noundef %[[A:.*]], i8 noundef %[[B:.*]])
+// LLVM-SAME: (i32 noundef %[[A:.*]], i8 noundef signext %[[B:.*]])
 // LLVM:         %[[A_ADDR:.*]] = alloca i32
 // LLVM:         %[[B_ADDR:.*]] = alloca i8
 // LLVM:         %[[X:.*]] = alloca i32
@@ -494,7 +494,7 @@ void long_shift_example(long long a, short b) {
 // CIR: cir.return
 
 // LLVM-LABEL: define{{.*}} void @_Z18long_shift_examplexs
-// LLVM-SAME: (i64 noundef %[[A:.*]], i16 noundef %[[B:.*]])
+// LLVM-SAME: (i64 noundef %[[A:.*]], i16 noundef signext %[[B:.*]])
 // LLVM:         %[[A_ADDR:.*]] = alloca i64
 // LLVM:         %[[B_ADDR:.*]] = alloca i16
 // LLVM:         %[[X:.*]] = alloca i64
@@ -575,7 +575,7 @@ void b1(bool a, bool b) {
 
 
 // LLVM-LABEL: define{{.*}} void @_Z2b1bb(
-// LLVM-SAME: i1 noundef %[[ARG0:.+]], i1 noundef %[[ARG1:.+]])
+// LLVM-SAME: i1 noundef zeroext %[[ARG0:.+]], i1 noundef zeroext %[[ARG1:.+]])
 // LLVM: %[[A_ADDR:.*]] = alloca i8
 // LLVM: %[[B_ADDR:.*]] = alloca i8
 // LLVM: %[[X:.*]] = alloca i8
