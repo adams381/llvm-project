@@ -240,6 +240,13 @@ static const llvm::abi::Type *mapCIRType(mlir::Type type,
     return tb.getFloatType(llvm::APFloat::IEEEquad(),
                            safeAlign(dl.getTypeABIAlignment(type)));
 
+  if (auto arrTy = dyn_cast<cir::ArrayType>(type)) {
+    const llvm::abi::Type *elemAbi = mapCIRType(
+        arrTy.getElementType(), typeMapper, dl, recordCoercionEnabled);
+    uint64_t sizeBits = dl.getTypeSizeInBits(type).getFixedValue();
+    return tb.getArrayType(elemAbi, arrTy.getSize(), sizeBits);
+  }
+
   if (auto recTy = dyn_cast<cir::RecordType>(type)) {
     SmallVector<llvm::abi::FieldInfo> fields;
     bool isUnion = recTy.isUnion();
