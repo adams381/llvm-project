@@ -132,13 +132,13 @@ static ArgClassification convertABIArgInfo(const llvm::abi::ABIArgInfo &info,
     // Suppress coercion when it is a no-op:
     //
     // 1. Coerced type equals original (e.g. i32 → i32).
-    // 2. Original is not a record — the mapper fallback produces
-    //    spurious integer coercions for non-record CIR types.
+    // 2. Original is a scalar (not record/complex/vector) — the
+    //    mapper fallback produces spurious integer coercions.
     // 3. Same-width integer signedness difference on records.
     if (coerced && origTy) {
       if (coerced == origTy)
         coerced = nullptr;
-      else if (!isa<cir::RecordType>(origTy))
+      else if (!isa<cir::RecordType, cir::ComplexType, cir::VectorType>(origTy))
         coerced = nullptr;
       else if (auto coercedInt = dyn_cast<cir::IntType>(coerced))
         if (auto origInt = dyn_cast<cir::IntType>(origTy))
@@ -248,6 +248,20 @@ static const llvm::abi::Type *mapCIRType(mlir::Type type,
         arrTy.getElementType(), typeMapper, dl, recordCoercionEnabled);
     uint64_t sizeBits = dl.getTypeSizeInBits(type).getFixedValue();
     return tb.getArrayType(elemAbi, arrTy.getSize(), sizeBits);
+  }
+
+  if (auto complexTy = dyn_cast<cir::ComplexType>(type)) {
+    const llvm::abi::Type *elemAbi = mapCIRType(
+        complexTy.getElementType(), typeMapper, dl, recordCoercionEnabled);
+    return tb.getComplexType(elemAbi, safeAlign(dl.getTypeABIAlignment(type)));
+  }
+
+  if (auto vecTy = dyn_cast<cir::VectorType>(type)) {
+    const llvm::abi::Type *elemAbi = mapCIRType(
+        vecTy.getElementType(), typeMapper, dl, recordCoercionEnabled);
+    llvm::ElementCount ec = llvm::ElementCount::getFixed(vecTy.getSize());
+    return tb.getVectorType(elemAbi, ec,
+                            safeAlign(dl.getTypeABIAlignment(type)));
   }
 
   if (auto recTy = dyn_cast<cir::RecordType>(type)) {

@@ -39,9 +39,9 @@ void take_v4si(v4si v) {}
 
 // v2si (64-bit int vector): coerced to double per ABI
 v2si ret_v2si(void) { v2si v = {0}; return v; }
-// LLVM: define {{.*}} @ret_v2si()
+// LLVM: define {{.*}} double @ret_v2si()
 // OGCG: define {{.*}} double @ret_v2si()
 
 void take_v2si(v2si v) {}
-// LLVM: define {{.*}} void @take_v2si(
+// LLVM: define {{.*}} void @take_v2si(double noundef %{{.*}})
 // OGCG: define {{.*}} void @take_v2si(double {{.*}} %{{.*}})

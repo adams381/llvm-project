@@ -12,7 +12,7 @@ __m128bh test_mm_undefined_pbh(void) {
   // CIR-LABEL: _mm_undefined_pbh
   // CIR: %[[A:.*]] = cir.const #cir.zero : !cir.vector<2 x !cir.double>
   // CIR: %{{.*}} = cir.cast bitcast %[[A]] : !cir.vector<2 x !cir.double> -> !cir.vector<8 x !cir.bf16>
-  // CIR: cir.return %{{.*}} : !cir.vector<8 x !cir.bf16>
+  // CIR: cir.return %{{.*}} : !cir.vector<8 x !u16i>
 
   // CIR-LABEL: cir.func {{.*}}test_mm_undefined_pbh
   // CIR: call @_mm_undefined_pbh
@@ -20,7 +20,7 @@ __m128bh test_mm_undefined_pbh(void) {
   // LLVM-LABEL: @test_mm_undefined_pbh
   // LLVM: store <8 x bfloat> zeroinitializer, ptr %[[A:.*]], align 16
   // LLVM: %{{.*}} = load <8 x bfloat>, ptr %[[A]], align 16
-  // LLVM: ret <8 x bfloat> %{{.*}}
+  // LLVM: ret <8 x i16> %{{.*}}
 
   // OGCG-LABEL: test_mm_undefined_pbh
   // OGCG: ret <8 x bfloat> zeroinitializer

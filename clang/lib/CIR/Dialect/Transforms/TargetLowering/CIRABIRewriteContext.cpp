@@ -30,7 +30,9 @@ static Value emitCoercion(OpBuilder &rewriter, Location loc, Type dstTy,
     return src;
 
   bool needsMemory =
-      mlir::isa<cir::RecordType>(srcTy) || mlir::isa<cir::RecordType>(dstTy);
+      mlir::isa<cir::RecordType, cir::ComplexType>(srcTy) ||
+      mlir::isa<cir::RecordType, cir::ComplexType>(dstTy) ||
+      (mlir::isa<cir::VectorType>(srcTy) != mlir::isa<cir::VectorType>(dstTy));
 
   if (!needsMemory) {
     return cir::CastOp::create(rewriter, loc, dstTy, cir::CastKind::bitcast,
@@ -345,28 +347,11 @@ LogicalResult CIRABIRewriteContext::rewriteFunctionDefinition(
     // and reconstruct the struct at function entry.
     if (!funcOp->getRegion(0).empty()) {
       Block &entry = funcOp->getRegion(0).front();
-      // Compute block index mapping: for each original arg, where
-      // does it start in the new block arg list?
-      SmallVector<unsigned> blockArgStart;
-      unsigned blockIdx = sretOffset;
-      for (auto [idx, argClass] : llvm::enumerate(fc.ArgInfos)) {
-        blockArgStart.push_back(blockIdx);
-        if (argClass.Kind == ArgKind::Ignore) {
-          // Ignore args were not pushed to newArgTypes
-        } else if (argClass.Kind == ArgKind::Direct && argClass.CanFlatten &&
-                   argClass.CoercedType) {
-          if (auto coercedRec = dyn_cast<cir::RecordType>(argClass.CoercedType))
-            if (coercedRec.getMembers().size() > 1) {
-              blockIdx += coercedRec.getMembers().size();
-              continue;
-            }
-          ++blockIdx;
-        } else {
-          ++blockIdx;
-        }
-      }
-
       // Process flattened args in reverse to keep indices stable.
+      // Use the original block index (i + sretOffset) since the block
+      // still has the original arguments at this point.  Reverse
+      // iteration ensures that insertions at higher indices do not
+      // shift the positions of earlier (lower-indexed) arguments.
       for (int i = fc.ArgInfos.size() - 1; i >= 0; --i) {
         auto &argClass = fc.ArgInfos[i];
         if (argClass.Kind != ArgKind::Direct || !argClass.CanFlatten ||
@@ -376,7 +361,7 @@ LogicalResult CIRABIRewriteContext::rewriteFunctionDefinition(
         if (!coercedRec || coercedRec.getMembers().size() <= 1)
           continue;
 
-        unsigned origBlockIdx = blockArgStart[i];
+        unsigned origBlockIdx = i + sretOffset;
         Type origTy = oldArgTypes[i];
         auto members = coercedRec.getMembers();
         unsigned numFields = members.size();
@@ -500,9 +485,10 @@ LogicalResult CIRABIRewriteContext::rewriteFunctionDefinition(
       if (argClass.Kind == ArgKind::Extend)
         needsAttrs = true;
     }
-    // Also rebuild arg_attrs when args were dropped (Ignore) and
-    // existing arg_attrs would have the wrong count.
-    if (hasIgnoredArgs && funcOp->hasAttr("arg_attrs"))
+    // Also rebuild arg_attrs when args were dropped (Ignore) or
+    // expanded (flattened) and existing arg_attrs would have the
+    // wrong count.
+    if ((hasIgnoredArgs || hasArgChanges) && funcOp->hasAttr("arg_attrs"))
       needsAttrs = true;
 
     if (needsAttrs) {
@@ -520,6 +506,16 @@ LogicalResult CIRABIRewriteContext::rewriteFunctionDefinition(
             continue;
           if (newIdx < numArgs)
             argAttrDicts[newIdx] = existingAttrs[oldIdx];
+          // Account for flattened args (one original → N new).
+          if (oldIdx < fc.ArgInfos.size()) {
+            auto &ac = fc.ArgInfos[oldIdx];
+            if (ac.CanFlatten && ac.CoercedType)
+              if (auto coercedRec = dyn_cast<cir::RecordType>(ac.CoercedType))
+                if (coercedRec.getMembers().size() > 1) {
+                  newIdx += coercedRec.getMembers().size();
+                  continue;
+                }
+          }
           ++newIdx;
         }
       }

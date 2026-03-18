@@ -7,11 +7,11 @@
 
 // _Complex float: returned/passed as <2 x float>
 float _Complex ret_cf(void) { float _Complex c = 1.0f; return c; }
-// LLVM: define {{.*}} @ret_cf()
+// LLVM: define {{.*}} <2 x float> @ret_cf()
 // OGCG: define {{.*}} <2 x float> @ret_cf()
 
 void take_cf(float _Complex c) {}
-// LLVM: define {{.*}} void @take_cf(
+// LLVM: define {{.*}} void @take_cf(<2 x float> noundef %{{.*}})
 // OGCG: define {{.*}} void @take_cf(<2 x float> {{.*}} %{{.*}})
 
 // _Complex double: returned as {double, double}, passed as two doubles
@@ -20,5 +20,5 @@ double _Complex ret_cd(void) { double _Complex c = 1.0; return c; }
 // OGCG: define {{.*}} { double, double } @ret_cd()
 
 void take_cd(double _Complex c) {}
-// LLVM: define {{.*}} void @take_cd(
+// LLVM: define {{.*}} void @take_cd(double noundef %{{.*}}, double %{{.*}})
 // OGCG: define {{.*}} void @take_cd(double {{.*}} %{{.*}}, double {{.*}} %{{.*}})
