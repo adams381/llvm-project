@@ -9,18 +9,18 @@
 struct Aligned16 { int a, b; } __attribute__((aligned(16)));
 
 void take_aligned16(struct Aligned16 s) {}
-// LLVM: define {{.*}} void @take_aligned16(
+// LLVM: define {{.*}} void @take_aligned16(i64 %{{.*}})
 // OGCG: define {{.*}} void @take_aligned16(i64 %{{.*}})
 
 struct Aligned16 ret_aligned16(void) { struct Aligned16 s = {1,2}; return s; }
-// LLVM: define {{.*}} @ret_aligned16()
+// LLVM: define {{.*}} i64 @ret_aligned16()
 // OGCG: define {{.*}} i64 @ret_aligned16()
 
-// aligned(32): exceeds 16-byte limit -> memory (byval align 32)
+// aligned(32): exceeds 16-byte limit -> memory (byval)
 struct Aligned32 { int a, b; } __attribute__((aligned(32)));
 
 void take_aligned32(struct Aligned32 s) {}
-// LLVM: define {{.*}} void @take_aligned32(
+// LLVM: define {{.*}} void @take_aligned32(ptr {{.*}} byval(%struct.Aligned32) {{.*}} %{{.*}})
 // OGCG: define {{.*}} void @take_aligned32(ptr {{.*}} byval(%struct.Aligned32) align 32 %{{.*}})
 
 // packed: tightly packed, 5 bytes -> coerced to i40

@@ -734,7 +734,8 @@ def CIR_RecordType : CIR_Type<"Record", "record", [
     void complete(llvm::ArrayRef<mlir::Type> members, bool packed,
                   bool isPadded, bool triviallyCopyable = false,
                   bool triviallyDestructible = true,
-                  bool empty = false);
+                  bool empty = false,
+                  uint64_t dataSizeInBits = 0);
 
     /// Returns true if the record can be passed in registers according
     /// to the C++ ABI.  Always true for C structs.  Set during
@@ -750,6 +751,12 @@ def CIR_RecordType : CIR_Type<"Record", "record", [
     /// Set during completion from ASTContext::isEmptyRecord().
     /// Anonymous records default to true.
     bool isEmpty() const;
+
+    /// Returns the data size in bits (excluding tail alignment
+    /// padding).  Set during completion from
+    /// ASTRecordLayout::getDataSize().  Returns 0 for anonymous
+    /// records or if not set.
+    uint64_t getDataSizeInBits() const;
 
     uint64_t getElementOffset(const mlir::DataLayout &dataLayout,
               unsigned idx) const;

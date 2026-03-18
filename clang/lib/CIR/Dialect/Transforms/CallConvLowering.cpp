@@ -272,8 +272,29 @@ static const llvm::abi::Type *mapCIRType(mlir::Type type,
     SmallVector<llvm::abi::FieldInfo> fields;
     bool isUnion = recTy.isUnion();
     bool isPacked = recTy.getPacked();
+    auto members = recTy.getMembers();
+    // Exclude trailing padding member when it only serves to
+    // satisfy an alignment attribute.  OGCG only passes actual
+    // data fields, so alignment-only padding inflates eightbyte
+    // classification.  Detect by checking if removing the last
+    // member (padding array) would keep the struct within the
+    // same number of eightbytes.
+    bool excludeTrailingPad = false;
+    if (recTy.getPadded() && !isUnion && members.size() > 1) {
+      auto lastTy = members.back();
+      if (isa<cir::ArrayType>(lastTy)) {
+        uint64_t withoutPad = 0;
+        for (unsigned i = 0; i < members.size() - 1; ++i)
+          withoutPad += dl.getTypeSizeInBits(members[i]).getFixedValue();
+        uint64_t withPad =
+            withoutPad + dl.getTypeSizeInBits(lastTy).getFixedValue();
+        excludeTrailingPad = (withoutPad + 63) / 64 < (withPad + 63) / 64;
+      }
+    }
+    auto endIt = excludeTrailingPad ? members.end() - 1 : members.end();
     uint64_t offsetBits = 0;
-    for (mlir::Type fieldTy : recTy.getMembers()) {
+    for (auto it = members.begin(); it != endIt; ++it) {
+      mlir::Type fieldTy = *it;
       const llvm::abi::Type *mappedField =
           mapCIRType(fieldTy, typeMapper, dl, recordCoercionEnabled);
       uint64_t fieldSize = dl.getTypeSizeInBits(fieldTy);
@@ -288,6 +309,11 @@ static const llvm::abi::Type *mapCIRType(mlir::Type type,
       if (!isUnion)
         offsetBits += fieldSize;
     }
+    // Use data size (excluding tail alignment padding) for the
+    // ABI library.  CIR padded records include explicit tail
+    // padding members that inflate the layout size beyond the
+    // data size.  The ABI classifier uses the data size to
+    // determine how many eightbytes to classify.
     llvm::TypeSize size = dl.getTypeSizeInBits(type);
     uint64_t rawAlign = dl.getTypeABIAlignment(type);
     // CIRGen sets the triviallyCopyable flag from
