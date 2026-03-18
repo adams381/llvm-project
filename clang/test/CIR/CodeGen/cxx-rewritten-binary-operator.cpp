@@ -22,6 +22,7 @@ void cxx_rewritten_binary_operator_scalar_expr() {
 // CIR: %[[NEQ:.*]] = cir.unary(not, %[[EQ]]) : !cir.bool, !cir.bool
 // CIR: cir.store{{.*}} %[[NEQ]], %[[NEQ_ADDR]] : !cir.bool, !cir.ptr<!cir.bool>
 
+// LLVM: declare noundef zeroext i1 @_ZNK7HasOpEqeqERKS_(ptr noundef nonnull align 1 dereferenceable(1), ptr noundef nonnull align 1 dereferenceable(1))
 // LLVM: %[[A_ADDR:.*]] = alloca %struct.HasOpEq, i64 1, align 1
 // LLVM: %[[B_ADDR:.*]] = alloca %struct.HasOpEq, i64 1, align 1
 // LLVM: %[[NEQ_ADDR:.*]] = alloca i8, i64 1, align 1

@@ -72,7 +72,7 @@ void test6(void) {
 }
 
 // CIR-LABEL: @test18
-// LLVM-LABEL: define {{.*}} i32 @test18
+// LLVM-LABEL: define {{.*}} i32 @test18(i32 noundef %0)
 // OGCG-LABEL: define {{.*}} i32 @test18
 unsigned test18(int cond) {
   int a[4], b[4];
@@ -295,7 +295,7 @@ void test22(void) {
 struct Test23Ty { int a; int t[10]; };
 
 // CIR-LABEL: @test23
-// LLVM-LABEL: define {{.*}} void @test23
+// LLVM-LABEL: define {{.*}} void @test23(ptr noundef %0)
 // OGCG-LABEL: define {{.*}} void @test23
 void test23(struct Test23Ty *p) {
   // CIR: cir.objsize max nullunknown {{.*}} : !cir.ptr<!void> -> !u64i
@@ -441,7 +441,7 @@ void test26(void) {
 struct Test27IncompleteTy;
 
 // CIR-LABEL: @test27
-// LLVM-LABEL: define {{.*}} void @test27
+// LLVM-LABEL: define {{.*}} void @test27(ptr noundef %0)
 // OGCG-LABEL: define {{.*}} void @test27
 void test27(struct Test27IncompleteTy *t) {
   // CIR: cir.objsize max nullunknown {{.*}} : !cir.ptr<!void> -> !u64i
@@ -553,7 +553,7 @@ struct StaticStruct {
 };
 
 // CIR-LABEL: @test29
-// LLVM-LABEL: define {{.*}} void @test29
+// LLVM-LABEL: define {{.*}} void @test29(ptr noundef %0, ptr noundef %1, ptr noundef %2, ptr noundef %3)
 // OGCG-LABEL: define {{.*}} void @test29
 void test29(struct DynStructVar *dv, struct DynStruct0 *d0,
             struct DynStruct1 *d1, struct StaticStruct *ss) {

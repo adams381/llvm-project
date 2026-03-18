@@ -20,7 +20,7 @@ struct Aligned16 ret_aligned16(void) { struct Aligned16 s = {1,2}; return s; }
 struct Aligned32 { int a, b; } __attribute__((aligned(32)));
 
 void take_aligned32(struct Aligned32 s) {}
-// LLVM: define {{.*}} void @take_aligned32(ptr {{.*}} byval(%struct.Aligned32) {{.*}} %{{.*}})
+// LLVM: define {{.*}} void @take_aligned32(ptr noundef byval(%struct.Aligned32) {{.*}} %{{.*}})
 // OGCG: define {{.*}} void @take_aligned32(ptr {{.*}} byval(%struct.Aligned32) align 32 %{{.*}})
 
 // packed: tightly packed, 5 bytes -> coerced to i40

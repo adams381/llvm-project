@@ -25,7 +25,7 @@ void test_sized_delete(SizedDelete *x) {
 // CIR:   %[[OBJ_SIZE:.*]] = cir.const #cir.int<4> : !u64i
 // CIR:   cir.call @_ZN11SizedDeletedlEPvm(%[[X_CAST]], %[[OBJ_SIZE]]) nothrow : (!cir.ptr<!void>, !u64i) -> ()
 
-// LLVM: define dso_local void @_Z17test_sized_deleteP11SizedDelete
+// LLVM: define dso_local void @_Z17test_sized_deleteP11SizedDelete(ptr noundef %0)
 // LLVM:   %[[X:.*]] = load ptr, ptr %{{.*}}
 // LLVM:   call void @_ZN11SizedDeletedlEPvm(ptr noundef %[[X]], i64 noundef 4)
 
@@ -66,7 +66,7 @@ Container::~Container() { delete contents; }
 // CIR:   %[[OBJ_SIZE:.*]] = cir.const #cir.int<1> : !u64i
 // CIR:   cir.call @_ZdlPvm(%[[CONTENTS_CAST]], %[[OBJ_SIZE]]) nothrow : (!cir.ptr<!void>, !u64i) -> ()
 
-// LLVM: define dso_local void @_ZN9ContainerD2Ev
+// LLVM: define dso_local void @_ZN9ContainerD2Ev(ptr noundef nonnull align 8 dead_on_return(8) dereferenceable(8) %0)
 // LLVM:   %[[THIS:.*]] = load ptr, ptr %{{.*}}
 // LLVM:   %[[CONTENTS_PTR_ADDR:.*]] = getelementptr %struct.Container, ptr %[[THIS]], i32 0, i32 0
 // LLVM:   %[[CONTENTS_PTR:.*]] = load ptr, ptr %[[CONTENTS_PTR_ADDR]]
@@ -105,7 +105,7 @@ void destroy(StructWithVirtualDestructor *x) {
 // CIR:   %[[DTOR_FN_ADDR:.*]] = cir.load{{.*}} %[[DTOR_FN_ADDR_PTR]]
 // CIR:   cir.call %[[DTOR_FN_ADDR]](%[[X]])
 
-// LLVM: define {{.*}} void @_Z7destroyP27StructWithVirtualDestructor(ptr noundef %[[X_ARG:.*]])
+// LLVM: define dso_local void @_Z7destroyP27StructWithVirtualDestructor(ptr noundef %[[X_ARG:.*]])
 // LLVM:   %[[X_ADDR:.*]] = alloca ptr
 // LLVM:   store ptr %[[X_ARG]], ptr %[[X_ADDR]]
 // LLVM:   %[[X:.*]] = load ptr, ptr %[[X_ADDR]]

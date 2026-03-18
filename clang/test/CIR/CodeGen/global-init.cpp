@@ -66,6 +66,7 @@ NeedsDtor needsDtor;
 // CIR:   %[[HANDLE:.*]] = cir.get_global @__dso_handle : !cir.ptr<i8>
 // CIR:   cir.call @__cxa_atexit(%[[DTOR_CAST]], %[[OBJ_CAST]], %[[HANDLE]]) : (!cir.ptr<!cir.func<(!cir.ptr<!void>)>>, !cir.ptr<!void>, !cir.ptr<i8>) -> ()
 
+// LLVM: declare void @_ZN9NeedsDtorD1Ev(ptr noundef nonnull align 1 dereferenceable(1))
 // LLVM: define internal void @__cxx_global_var_init.1() {
 // LLVM:   call void @__cxa_atexit(ptr @_ZN9NeedsDtorD1Ev, ptr @needsDtor, ptr @__dso_handle)
 
@@ -96,6 +97,8 @@ NeedsCtorDtor needsCtorDtor;
 // CIR:   %[[OBJ_CAST:.*]] = cir.cast bitcast %[[OBJ]] : !cir.ptr<!rec_NeedsCtorDtor> -> !cir.ptr<!void>
 // CIR:   %[[HANDLE:.*]] = cir.get_global @__dso_handle : !cir.ptr<i8>
 // CIR:   cir.call @__cxa_atexit(%[[DTOR_CAST]], %[[OBJ_CAST]], %[[HANDLE]]) : (!cir.ptr<!cir.func<(!cir.ptr<!void>)>>, !cir.ptr<!void>, !cir.ptr<i8>) -> ()
+
+// LLVM: declare void @_ZN13NeedsCtorDtorD1Ev(ptr noundef nonnull align 1 dereferenceable(1))
 
 // LLVM: define internal void @__cxx_global_var_init.2() {
 // LLVM:   call void @_ZN13NeedsCtorDtorC1Ev(ptr noundef nonnull align 1 dereferenceable(1) @needsCtorDtor)

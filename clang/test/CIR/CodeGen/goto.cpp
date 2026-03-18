@@ -28,7 +28,7 @@ err:
 // CIR:    cir.store [[MINUS_ONE]], [[RETVAL]] : !s32i, !cir.ptr<!s32i>
 // CIR:    cir.br ^bb1
 
-// LLVM: define dso_local noundef i32 @_Z21shouldNotGenBranchReti
+// LLVM: define dso_local noundef i32 @_Z21shouldNotGenBranchReti(i32 noundef %{{[0-9]+}})
 // LLVM:   [[COND:%.*]] = load i32, ptr {{.*}}, align 4
 // LLVM:   [[CMP:%.*]] = icmp sgt i32 [[COND]], 5
 // LLVM:   br i1 [[CMP]], label %[[IFTHEN:.*]], label %[[IFEND:.*]]
@@ -70,7 +70,7 @@ err:
 // CIR:  ^bb1:
 // CIR:    cir.label "err"
 
-// LLVM: define dso_local noundef i32 @_Z15shouldGenBranchi
+// LLVM: define dso_local noundef i32 @_Z15shouldGenBranchi(i32 noundef %{{[0-9]+}})
 // LLVM:   br i1 [[CMP:%.*]], label %[[IFTHEN:.*]], label %[[IFEND:.*]]
 // LLVM: [[IFTHEN]]:
 // LLVM:   br label %[[ERR:.*]]
@@ -108,7 +108,7 @@ end2:
 // CIR:  ^bb[[#BLK3]]:
 // CIR:    cir.label "end2"
 
-// LLVM: define dso_local void @_Z19severalLabelsInARowi
+// LLVM: define dso_local void @_Z19severalLabelsInARowi(i32 noundef %{{[0-9]+}})
 // LLVM:   br label %[[END1:.*]]
 // LLVM: [[UNRE:.*]]:                                                ; No predecessors!
 // LLVM:   br label %[[END2:.*]]
@@ -138,7 +138,7 @@ end:
 // CIR:  ^bb[[#BLK2:]]:
 // CIR:    cir.label "end"
 
-// LLVM: define dso_local void @_Z18severalGotosInARowi
+// LLVM: define dso_local void @_Z18severalGotosInARowi(i32 noundef %{{[0-9]+}})
 // LLVM:   br label %[[END:.*]]
 // LLVM: [[UNRE:.*]]:                                                ; No predecessors!
 // LLVM:   br label %[[END]]
@@ -172,7 +172,7 @@ extern "C" void multiple_non_case(int v) {
 // CIR: cir.call @action2()
 // CIR: cir.break
 
-// LLVM: define dso_local void @multiple_non_case
+// LLVM: define dso_local void @multiple_non_case(i32 noundef %{{[0-9]+}})
 // LLVM: [[SWDEFAULT:.*]]:
 // LLVM:   call void @action1()
 // LLVM:   br label %[[L2:.*]]
@@ -214,7 +214,7 @@ extern "C" void case_follow_label(int v) {
 // CIR:   cir.call @action2()
 // CIR:   cir.goto "label"
 
-// LLVM: define dso_local void @case_follow_label
+// LLVM: define dso_local void @case_follow_label(i32 noundef %{{[0-9]+}})
 // LLVM:  switch i32 {{.*}}, label %[[SWDEFAULT:.*]] [
 // LLVM:    i32 1, label %[[CASE1:.*]]
 // LLVM:    i32 2, label %[[CASE2:.*]]
@@ -275,7 +275,7 @@ extern "C" void default_follow_label(int v) {
 // CIR:   cir.call @action2()
 // CIR:   cir.goto "label"
 
-// LLVM: define dso_local void @default_follow_label
+// LLVM: define dso_local void @default_follow_label(i32 noundef %{{[0-9]+}})
 // LLVM: [[CASE1:.*]]:
 // LLVM:   br label %[[BB8:.*]]
 // LLVM: [[BB8]]:

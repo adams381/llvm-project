@@ -36,7 +36,7 @@ bool cmp_eq(void (Foo::*lhs)(int), void (Foo::*rhs)(int)) {
 // CIR-AFTER:   %[[TMP:.*]] = cir.binop(or, %[[PTR_NULL]], %[[ADJ_CMP]]) : !cir.bool
 // CIR-AFTER:   %[[RESULT:.*]] = cir.binop(and, %[[PTR_CMP]], %[[TMP]]) : !cir.bool
 
-// LLVM: define {{.*}} i1 @_Z6cmp_eqM3FooFviES1_
+// LLVM: define {{.*}} noundef zeroext i1 @_Z6cmp_eqM3FooFviES1_
 // LLVM:   %[[LHS_PTR:.*]] = extractvalue { i64, i64 } %{{.*}}, 0
 // LLVM:   %[[RHS_PTR:.*]] = extractvalue { i64, i64 } %{{.*}}, 0
 // LLVM:   %[[PTR_CMP:.*]] = icmp eq i64 %[[LHS_PTR]], %[[RHS_PTR]]
@@ -88,7 +88,7 @@ bool cmp_ne(void (Foo::*lhs)(int), void (Foo::*rhs)(int)) {
 // CIR-AFTER:   %[[TMP:.*]] = cir.binop(and, %[[PTR_NULL]], %[[ADJ_CMP]]) : !cir.bool
 // CIR-AFTER:   %[[RESULT:.*]] = cir.binop(or, %[[PTR_CMP]], %[[TMP]]) : !cir.bool
 
-// LLVM: define {{.*}} i1 @_Z6cmp_neM3FooFviES1_
+// LLVM: define {{.*}} noundef zeroext i1 @_Z6cmp_neM3FooFviES1_
 // LLVM:   %[[LHS_PTR:.*]] = extractvalue { i64, i64 } %{{.*}}, 0
 // LLVM:   %[[RHS_PTR:.*]] = extractvalue { i64, i64 } %{{.*}}, 0
 // LLVM:   %[[PTR_CMP:.*]] = icmp ne i64 %[[LHS_PTR]], %[[RHS_PTR]]

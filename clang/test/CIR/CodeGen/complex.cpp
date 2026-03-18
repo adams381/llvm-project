@@ -201,6 +201,7 @@ void foo9(double a, double b) {
 // CIR: %[[COMPLEX:.*]] = cir.complex.create %[[TMP_A]], %[[TMP_B]] : !cir.double -> !cir.complex<!cir.double>
 // CIR: cir.store{{.*}} %[[COMPLEX]], %[[INIT]] : !cir.complex<!cir.double>, !cir.ptr<!cir.complex<!cir.double>>
 
+// LLVM: define{{.*}} void @_Z4foo9dd(double noundef %0, double noundef %1)
 // LLVM: %[[COMPLEX:.*]] = alloca { double, double }, i64 1, align 8
 // LLVM: %[[TMP_A:.*]] = load double, ptr {{.*}}, align 8
 // LLVM: %[[TMP_B:.*]] = load double, ptr {{.*}}, align 8
@@ -346,6 +347,7 @@ int foo16(int _Complex a, int _Complex b) {
 // CIR: %[[TMP:.*]] = cir.load %[[RET]] : !cir.ptr<!s32i>, !s32i
 // CIR: cir.return %[[TMP]] : !s32i
 
+// LLVM: define{{.*}} noundef i32 @_Z5foo16CiS_(i64 noundef %0, i64 noundef %1)
 // LLVM: %[[RET:.*]] = alloca i32, i64 1, align 4
 // LLVM: %[[COMPLEX_A:.*]] = load { i32, i32 }, ptr {{.*}}, align 4
 // LLVM: %[[A_IMAG:.*]] = extractvalue { i32, i32 } %[[COMPLEX_A]], 1
@@ -379,6 +381,7 @@ int foo17(int _Complex a, int _Complex b) {
 // CIR: %[[TMP:.*]] = cir.load %[[RET]] : !cir.ptr<!s32i>, !s32i
 // CIR: cir.return %[[TMP]] : !s32i
 
+// LLVM: define{{.*}} noundef i32 @_Z5foo17CiS_(i64 noundef %0, i64 noundef %1)
 // LLVM: %[[RET:.*]] = alloca i32, i64 1, align 4
 // LLVM: %[[COMPLEX_A:.*]] = load { i32, i32 }, ptr {{.*}}, align 4
 // LLVM: %[[A_REAL:.*]] = extractvalue { i32, i32 } %[[COMPLEX_A]], 0
@@ -407,6 +410,7 @@ bool foo18(int _Complex a, int _Complex b) {
 // CIR: %[[COMPLEX_B:.*]] = cir.load{{.*}} {{.*}} : !cir.ptr<!cir.complex<!s32i>>, !cir.complex<!s32i>
 // CIR: %[[RESULT:.*]] = cir.cmp(eq, %[[COMPLEX_A]], %[[COMPLEX_B]]) : !cir.complex<!s32i>, !cir.bool
 
+// LLVM: define{{.*}} noundef zeroext i1 @_Z5foo18CiS_(i64 noundef %0, i64 noundef %1)
 // LLVM: alloca i8, i64 1, align 1
 // LLVM: %[[COMPLEX_A:.*]] = load { i32, i32 }, ptr {{.*}}, align 4
 // LLVM: %[[COMPLEX_B:.*]] = load { i32, i32 }, ptr {{.*}}, align 4
@@ -562,6 +566,7 @@ void foo22(int _Complex a, int _Complex b) {
 // CIR: %[[TMP_B:.*]] = cir.load{{.*}} %[[COMPLEX_B]] : !cir.ptr<!cir.complex<!s32i>>, !cir.complex<!s32i>
 // CIR: cir.store{{.*}} %[[TMP_B]], %[[RESULT]] : !cir.complex<!s32i>, !cir.ptr<!cir.complex<!s32i>>
 
+// LLVM: define{{.*}} void @_Z5foo22CiS_(i64 noundef %0, i64 noundef %1)
 // LLVM: %[[COMPLEX_A:.*]] = alloca { i32, i32 }, i64 1, align 4
 // LLVM: %[[COMPLEX_B:.*]] = alloca { i32, i32 }, i64 1, align 4
 // LLVM: %[[RESULT:.*]] = alloca { i32, i32 }, i64 1, align 4
@@ -592,6 +597,7 @@ void foo23(int _Complex a, int _Complex b) {
 // CIR: %[[TMP:.*]] = cir.load{{.*}} %[[COMPLEX_B]] : !cir.ptr<!cir.complex<!s32i>>, !cir.complex<!s32i>
 // CIR: cir.store{{.*}} %[[TMP]], %[[RESULT]] : !cir.complex<!s32i>, !cir.ptr<!cir.complex<!s32i>>
 
+// LLVM: define{{.*}} void @_Z5foo23CiS_(i64 noundef %0, i64 noundef %1)
 // LLVM: %[[COMPLEX_A:.*]] = alloca { i32, i32 }, i64 1, align 4
 // LLVM: %[[COMPLEX_B:.*]] = alloca { i32, i32 }, i64 1, align 4
 // LLVM: %[[COMPLEX_F:.*]] = alloca { float, float }, i64 1, align 4
@@ -671,6 +677,7 @@ void foo26(int _Complex* a) {
 // CIR: %[[TMP:.*]] = cir.load{{.*}} %[[COMPLEX_A]] : !cir.ptr<!cir.complex<!s32i>>, !cir.complex<!s32i>
 // CIR: cir.store{{.*}} %[[TMP]], %[[COMPLEX_B]] : !cir.complex<!s32i>, !cir.ptr<!cir.complex<!s32i>>
 
+// LLVM: define{{.*}} void @_Z5foo26PCi(ptr noundef %0)
 // LLVM: %[[COMPLEX_A_PTR:.*]] = alloca ptr, i64 1, align 8
 // LLVM: %[[COMPLEX_B:.*]] = alloca { i32, i32 }, i64 1, align 4
 // LLVM: %[[COMPLEX_A:.*]] = load ptr, ptr %[[COMPLEX_A_PTR]], align 8
@@ -707,6 +714,7 @@ void foo27(bool cond, int _Complex a, int _Complex b) {
 // CIR: }) : (!cir.bool) -> !cir.complex<!s32i>
 // CIR: cir.store{{.*}} %[[RESULT_VAL]], %[[RESULT]] : !cir.complex<!s32i>, !cir.ptr<!cir.complex<!s32i>>
 
+// LLVM: define{{.*}} void @_Z5foo27bCiS_(i1 noundef zeroext %0, i64 noundef %1, i64 noundef %2)
 // LLVM: %[[COND:.*]] = alloca i8, i64 1, align 1
 // LLVM: %[[COMPLEX_A:.*]] = alloca { i32, i32 }, i64 1, align 4
 // LLVM: %[[COMPLEX_B:.*]] = alloca { i32, i32 }, i64 1, align 4
@@ -871,6 +879,7 @@ void foo33(__builtin_va_list a) {
 // CIR: %[[COMPLEX:.*]] = cir.va_arg %[[VA_TAG]] : (!cir.ptr<!rec___va_list_tag>) -> !cir.complex<!cir.float>
 // CIR: cir.store{{.*}} %[[COMPLEX]], %[[B_ADDR]] : !cir.complex<!cir.float>, !cir.ptr<!cir.complex<!cir.float>>
 
+// LLVM: define{{.*}} void @_Z5foo33P13__va_list_tag(ptr noundef %0)
 // LLVM: %[[A_ADDR:.*]] = alloca ptr, i64 1, align 8
 // LLVM: %[[B_ADDR:.*]] = alloca { float, float }, i64 1, align 4
 // LLVM: store ptr %[[ARG_0:.*]], ptr %[[A_ADDR]], align 8
@@ -1328,6 +1337,7 @@ void complex_type_parameter(float _Complex a) {}
 // CIR: %[[A_ADDR:.*]] = cir.alloca !cir.complex<!cir.float>, !cir.ptr<!cir.complex<!cir.float>>, ["a", init]
 // CIR: cir.store %{{.*}}, %[[A_ADDR]] : !cir.complex<!cir.float>, !cir.ptr<!cir.complex<!cir.float>>
 
+// LLVM: define{{.*}} void @_Z22complex_type_parameterCf(<2 x float> noundef %0)
 // LLVM: store <2 x float> %{{.*}}, ptr %{{.*}}, align 8
 // LLVM: %[[A_ADDR:.*]] = alloca { float, float }, i64 1, align 4
 // LLVM: store { float, float } %{{.*}}, ptr %[[A_ADDR]], align 4
@@ -1375,6 +1385,7 @@ float _Complex complex_type_return_type() {
 // CIR: %[[TMP_RET:.*]] = cir.load %{{.*}} : !cir.ptr<!cir.vector<2 x !cir.float>>, !cir.vector<2 x !cir.float>
 // CIR: cir.return %[[TMP_RET]] : !cir.vector<2 x !cir.float>
 
+// LLVM: define{{.*}} noundef <2 x float> @_Z24complex_type_return_typev()
 // LLVM: %[[RET_ADDR:.*]] = alloca { float, float }, i64 1, align 4
 // LLVM: store { float, float } { float 1.000000e+00, float 2.000000e+00 }, ptr %[[RET_ADDR]], align 4
 // LLVM: %[[TMP_RET:.*]] = load <2 x float>, ptr %{{.*}}, align 8
@@ -1442,6 +1453,7 @@ void function_with_complex_default_arg(
 
 // TODO(CIR): the difference between the CIR LLVM and OGCG is because the lack of calling convention lowering,
 
+// LLVM: define{{.*}} void @_Z33function_with_complex_default_argCf(<2 x float> noundef %0)
 // LLVM: %[[ARG_0_ADDR:.*]] = alloca { float, float }, i64 1, align 4
 // LLVM: store { float, float } %{{.*}}, ptr %[[ARG_0_ADDR]], align 4
 

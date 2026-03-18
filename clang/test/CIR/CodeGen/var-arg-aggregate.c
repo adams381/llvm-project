@@ -37,7 +37,7 @@ struct Bar varargs_aggregate(int count, ...) {
 // CIR:   %{{.+}} = cir.load{{.*}} %[[RET_ADDR]] : !cir.ptr<!rec_Bar>, !rec_Bar
 // CIR:   cir.return %{{.+}} : !rec_anon_struct
 
-// LLVM-LABEL: define dso_local { <2 x float>, i32 } @varargs_aggregate(
+// LLVM-LABEL: define dso_local { <2 x float>, i32 } @varargs_aggregate(i32 noundef %0, ...)
 // LLVM:   call void @llvm.va_start.p0(ptr %{{.*}})
 // LLVM:   %{{.*}} = load i32, ptr %{{.*}}
 // LLVM:   %{{.*}} = icmp ule i32 %{{.*}}, 32

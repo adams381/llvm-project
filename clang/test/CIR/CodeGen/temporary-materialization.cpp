@@ -19,7 +19,8 @@ int test() {
 // CIR-NEXT:   cir.store{{.*}} %[[TEMP_VALUE]], %[[TEMP_SLOT]]
 // CIR-NEXT:   cir.store{{.*}} %[[TEMP_SLOT]], %[[X]]
 
-// LLVM: define {{.*}} i32 @_Z4testv()
+// LLVM: declare noundef i32 @_Z8make_intv()
+// LLVM: define {{.*}} noundef i32 @_Z4testv()
 // LLVM:   %[[RETVAL:.*]] = alloca i32
 // LLVM:   %[[TEMP_SLOT:.*]] = alloca i32
 // LLVM:   %[[X:.*]] = alloca ptr
@@ -56,7 +57,7 @@ int test_scoped() {
 // CIR-NEXT:     cir.store{{.*}} %[[Y_VALUE]], %[[X]] : !s32i, !cir.ptr<!s32i>
 // CIR-NEXT:   }
 
-// LLVM: define {{.*}} i32 @_Z11test_scopedv()
+// LLVM: define {{.*}} noundef i32 @_Z11test_scopedv()
 // LLVM:   %[[TEMP_SLOT:.*]] = alloca i32
 // LLVM:   %[[Y_ADDR:.*]] = alloca ptr
 // LLVM:   %[[RETVAL:.*]] = alloca i32
