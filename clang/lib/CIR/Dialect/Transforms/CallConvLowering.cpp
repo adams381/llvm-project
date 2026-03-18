@@ -243,6 +243,10 @@ static const llvm::abi::Type *mapCIRType(mlir::Type type,
     return tb.getFloatType(llvm::APFloat::IEEEquad(),
                            safeAlign(dl.getTypeABIAlignment(type)));
 
+  if (auto ldTy = dyn_cast<cir::LongDoubleType>(type))
+    return mapCIRType(ldTy.getUnderlying(), typeMapper, dl,
+                      recordCoercionEnabled);
+
   if (auto arrTy = dyn_cast<cir::ArrayType>(type)) {
     const llvm::abi::Type *elemAbi = mapCIRType(
         arrTy.getElementType(), typeMapper, dl, recordCoercionEnabled);

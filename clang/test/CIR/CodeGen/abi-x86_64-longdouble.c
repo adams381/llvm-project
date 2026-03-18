@@ -17,16 +17,16 @@ void take_ld(long double x) {}
 // Struct with long double: X87 class -> returned in x87 register
 struct HasLD { long double x; };
 struct HasLD ret_has_ld(void) { struct HasLD s = {0}; return s; }
-// LLVM: define {{.*}} @ret_has_ld()
+// LLVM: define {{.*}} x86_fp80 @ret_has_ld()
 // OGCG: define {{.*}} x86_fp80 @ret_has_ld()
 
 // Struct with long double arg: MEMORY class -> byval
 void take_has_ld(struct HasLD s) {}
-// LLVM: define {{.*}} void @take_has_ld(
+// LLVM: define {{.*}} void @take_has_ld(ptr noundef byval(%struct.HasLD) align 16 %{{.*}})
 // OGCG: define {{.*}} void @take_has_ld(ptr {{.*}} byval(%struct.HasLD) align 16 %{{.*}})
 
 // Union with long double: MEMORY class -> byval
 union UnionLD { long double ld; int i; };
 void take_union_ld(union UnionLD u) {}
-// LLVM: define {{.*}} void @take_union_ld(
+// LLVM: define {{.*}} void @take_union_ld(ptr noundef byval(%union.UnionLD) align 16 %{{.*}})
 // OGCG: define {{.*}} void @take_union_ld(ptr {{.*}} byval(%union.UnionLD) align 16 %{{.*}})
