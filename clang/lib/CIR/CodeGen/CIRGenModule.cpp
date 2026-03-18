@@ -2248,6 +2248,24 @@ static bool hasStrictReturn(const CodeGenOptions &cgo,
   return true;
 }
 
+/// Return the nofpclass bitmask for the current language options.
+/// Returns 0 if no FP classes are excluded.
+static uint64_t getNoFPClassMask(const LangOptions &langOpts) {
+  uint64_t mask = 0;
+  if (langOpts.NoHonorInfs)
+    mask |= 0x0204; // fcInf = fcPosInf | fcNegInf
+  if (langOpts.NoHonorNaNs)
+    mask |= 0x0003; // fcNan = fcSNan | fcQNan
+  return mask;
+}
+
+/// Return true if a CIR type is a floating-point type eligible
+/// for nofpclass.
+static bool isFloatingPointType(mlir::Type ty) {
+  return mlir::isa<cir::SingleType, cir::DoubleType, cir::FP16Type,
+                   cir::FP80Type, cir::FP128Type>(ty);
+}
+
 void CIRGenModule::setNoundefOnArguments(cir::FuncOp func,
                                          GlobalDecl globalDecl) {
   mlir::MLIRContext *ctx = &getMLIRContext();
@@ -2279,6 +2297,24 @@ void CIRGenModule::setNoundefOnArguments(cir::FuncOp func,
     changed = true;
   }
 
+  // Add nofpclass to floating-point args.
+  uint64_t fpMask = getNoFPClassMask(langOpts);
+  if (fpMask != 0) {
+    for (unsigned i = 0; i < numArgs; ++i) {
+      mlir::Type argTy = func.getArgumentTypes()[i];
+      if (!isFloatingPointType(argTy))
+        continue;
+      auto dict = mlir::cast<mlir::DictionaryAttr>(argAttrDicts[i]);
+      if (dict.get("llvm.nofpclass"))
+        continue;
+      SmallVector<mlir::NamedAttribute> attrs(dict.begin(), dict.end());
+      attrs.push_back(
+          b.getNamedAttr("llvm.nofpclass", b.getI64IntegerAttr(fpMask)));
+      argAttrDicts[i] = mlir::DictionaryAttr::get(ctx, attrs);
+      changed = true;
+    }
+  }
+
   if (changed)
     func->setAttr("arg_attrs", mlir::ArrayAttr::get(ctx, argAttrDicts));
 
@@ -2290,6 +2326,21 @@ void CIRGenModule::setNoundefOnArguments(cir::FuncOp func,
       hasStrictReturn(codeGenOpts, langOpts, targetDecl)) {
     SmallVector<mlir::NamedAttribute> retAttrs;
     retAttrs.push_back(b.getNamedAttr("llvm.noundef", b.getUnitAttr()));
+    SmallVector<mlir::Attribute> resAttrDicts;
+    resAttrDicts.push_back(mlir::DictionaryAttr::get(ctx, retAttrs));
+    func->setAttr("res_attrs", mlir::ArrayAttr::get(ctx, resAttrDicts));
+  }
+
+  // Add nofpclass to floating-point return values.
+  if (fpMask != 0 && !resultTypes.empty() &&
+      isFloatingPointType(resultTypes[0])) {
+    SmallVector<mlir::NamedAttribute> retAttrs;
+    if (auto existing = func->getAttrOfType<mlir::ArrayAttr>("res_attrs"))
+      if (existing.size() > 0)
+        for (auto attr : mlir::cast<mlir::DictionaryAttr>(existing[0]))
+          retAttrs.push_back(attr);
+    retAttrs.push_back(
+        b.getNamedAttr("llvm.nofpclass", b.getI64IntegerAttr(fpMask)));
     SmallVector<mlir::Attribute> resAttrDicts;
     resAttrDicts.push_back(mlir::DictionaryAttr::get(ctx, retAttrs));
     func->setAttr("res_attrs", mlir::ArrayAttr::get(ctx, resAttrDicts));

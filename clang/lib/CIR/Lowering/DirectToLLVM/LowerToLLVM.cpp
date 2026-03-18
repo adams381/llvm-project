@@ -1943,6 +1943,7 @@ rewriteCallOrInvoke(mlir::Operation *op, mlir::ValueRange callOperands,
                 entry.getName() == "llvm.dereferenceable_or_null" ||
                 entry.getName() == "llvm.signext" ||
                 entry.getName() == "llvm.zeroext" ||
+                entry.getName() == "llvm.nofpclass" ||
                 entry.getName() == "llvm.writable" ||
                 entry.getName() == "llvm.dead_on_unwind" ||
                 entry.getName() == "llvm.dead_on_return")

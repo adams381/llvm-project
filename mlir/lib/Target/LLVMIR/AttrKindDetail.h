@@ -64,6 +64,8 @@ getAttrKindToNameMapping() {
        LLVMDialect::getDeadOnUnwindAttrName()},
       {llvm::Attribute::AttrKind::DeadOnReturn,
        LLVMDialect::getDeadOnReturnAttrName()},
+      {llvm::Attribute::AttrKind::NoFPClass,
+       LLVMDialect::getNoFPClassAttrName()},
       {llvm::Attribute::AttrKind::ZExt, LLVMDialect::getZExtAttrName()}};
   return kindNamePairs;
 }
