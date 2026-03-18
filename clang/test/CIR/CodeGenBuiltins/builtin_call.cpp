@@ -88,7 +88,7 @@ void library_builtins() {
 // CIR: cir.call @abort() nothrow {noreturn} : () -> ()
 
 // LLVM: define{{.*}} void @_Z16library_builtinsv()
-// LLVM: call i32 (ptr, ...) @printf(ptr noundef null)
+// LLVM: call i32 (ptr, ...) @printf(ptr noalias noundef null)
 // LLVM: call void @abort()
 
 // OGCG: define{{.*}} void @_Z16library_builtinsv()

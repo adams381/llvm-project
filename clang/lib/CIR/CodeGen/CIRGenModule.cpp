@@ -2326,37 +2326,62 @@ void CIRGenModule::setReferenceParameterAttributes(cir::FuncOp func,
     if (argIdx >= numArgs)
       break;
 
-    QualType paramType = fd->getParamDecl(i)->getType();
-    const auto *refTy = paramType->getAs<ReferenceType>();
-    if (!refTy)
-      continue;
-
-    QualType pointeeTy = refTy->getPointeeType();
-    if (pointeeTy->isIncompleteType() || !pointeeTy->isConstantSizeType())
-      continue;
+    const ParmVarDecl *pvd = fd->getParamDecl(i);
+    QualType paramType = pvd->getType();
 
     auto dict = mlir::cast<mlir::DictionaryAttr>(argAttrDicts[argIdx]);
     SmallVector<mlir::NamedAttribute> attrs(dict.begin(), dict.end());
+    bool argChanged = false;
 
-    uint64_t derefBytes = getMinimumObjectSize(pointeeTy).getQuantity();
-    if (!codeGenOpts.NullPointerIsValid) {
-      if (!dict.get("llvm.nonnull"))
+    // Reference parameters: nonnull, dereferenceable, align.
+    if (const auto *refTy = paramType->getAs<ReferenceType>()) {
+      QualType pointeeTy = refTy->getPointeeType();
+      if (!pointeeTy->isIncompleteType() && pointeeTy->isConstantSizeType()) {
+        uint64_t derefBytes = getMinimumObjectSize(pointeeTy).getQuantity();
+        if (!codeGenOpts.NullPointerIsValid) {
+          if (!dict.get("llvm.nonnull"))
+            attrs.push_back(b.getNamedAttr("llvm.nonnull", b.getUnitAttr()));
+          if (!dict.get("llvm.dereferenceable"))
+            attrs.push_back(b.getNamedAttr("llvm.dereferenceable",
+                                           b.getI64IntegerAttr(derefBytes)));
+        }
+        if (pointeeTy->isObjectType()) {
+          CharUnits alignment = getNaturalTypeAlignment(pointeeTy,
+                                                        /*baseInfo=*/nullptr);
+          if (!dict.get("llvm.align"))
+            attrs.push_back(b.getNamedAttr(
+                "llvm.align", b.getI64IntegerAttr(alignment.getQuantity())));
+        }
+        argChanged = true;
+      }
+    }
+
+    // restrict → noalias on pointer parameters.
+    if (paramType->isPointerType() && paramType.isRestrictQualified() &&
+        !dict.get("llvm.noalias")) {
+      attrs.push_back(b.getNamedAttr("llvm.noalias", b.getUnitAttr()));
+      argChanged = true;
+    }
+
+    // __attribute__((nonnull)) on pointer parameters.
+    if (paramType->isPointerType() && !codeGenOpts.NullPointerIsValid &&
+        !dict.get("llvm.nonnull")) {
+      bool hasNonnull = false;
+      if (pvd->hasAttr<NonNullAttr>())
+        hasNonnull = true;
+      else if (const auto *nna = fd->getAttr<NonNullAttr>())
+        if (nna->isNonNull(i))
+          hasNonnull = true;
+      if (hasNonnull) {
         attrs.push_back(b.getNamedAttr("llvm.nonnull", b.getUnitAttr()));
-      if (!dict.get("llvm.dereferenceable"))
-        attrs.push_back(b.getNamedAttr("llvm.dereferenceable",
-                                       b.getI64IntegerAttr(derefBytes)));
+        argChanged = true;
+      }
     }
 
-    if (pointeeTy->isObjectType()) {
-      CharUnits alignment =
-          getNaturalTypeAlignment(pointeeTy, /*baseInfo=*/nullptr);
-      if (!dict.get("llvm.align"))
-        attrs.push_back(b.getNamedAttr(
-            "llvm.align", b.getI64IntegerAttr(alignment.getQuantity())));
+    if (argChanged) {
+      argAttrDicts[argIdx] = mlir::DictionaryAttr::get(ctx, attrs);
+      changed = true;
     }
-
-    argAttrDicts[argIdx] = mlir::DictionaryAttr::get(ctx, attrs);
-    changed = true;
   }
 
   if (changed)
