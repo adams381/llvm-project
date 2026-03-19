@@ -21,6 +21,33 @@ TrivialABI call_trivial_abi() { return ret_trivial_abi(); }
 // LLVM: define {{.*}} i32 @_Z16call_trivial_abiv()
 // OGCG: define {{.*}} i32 @_Z16call_trivial_abiv()
 
+// Two-int trivial_abi: coerced to i64
+struct [[clang::trivial_abi]] TwoInt {
+  TwoInt(const TwoInt &);
+  ~TwoInt();
+  int x, y;
+};
+
+void take_two(TwoInt t) {}
+// LLVM: define {{.*}} void @_Z8take_two6TwoInt(i64 %{{.*}})
+// OGCG: define {{.*}} void @_Z8take_two6TwoInt(i64 %{{.*}})
+
+TwoInt ret_two();
+TwoInt call_two() { return ret_two(); }
+// LLVM: define {{.*}} i64 @_Z8call_twov()
+// OGCG: define {{.*}} i64 @_Z8call_twov()
+
+// Three-int trivial_abi: coerced to i64, i32 (multi-register)
+struct [[clang::trivial_abi]] ThreeInt {
+  ThreeInt(const ThreeInt &);
+  ~ThreeInt();
+  int x, y, z;
+};
+
+void take_three(ThreeInt t) {}
+// LLVM: define {{.*}} void @_Z10take_three8ThreeInt(i64 %{{.*}}, i32 %{{.*}})
+// OGCG: define {{.*}} void @_Z10take_three8ThreeInt(i64 %{{.*}}, i32 %{{.*}})
+
 // Without trivial_abi: passed indirectly via pointer
 struct NonTrivial {
   NonTrivial(const NonTrivial &);
