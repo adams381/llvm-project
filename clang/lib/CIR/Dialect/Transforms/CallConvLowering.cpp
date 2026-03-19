@@ -118,12 +118,18 @@ static ArgClassification convertABIArgInfo(const llvm::abi::ABIArgInfo &info,
   // Empty trivially-copyable record arguments are not passed
   // per the x86_64 ABI.  Non-trivially-copyable empty records
   // (e.g. struct with only a destructor) must still be passed
-  // indirectly.  Return types are NOT handled here because
-  // dropping empty struct returns requires coordinating with
-  // the coroutine pass — non-coroutine functions that return
-  // empty structs used by coroutine code get their return type
-  // changed to void, but callers in coroutine contexts still
-  // expect the original type, causing type mismatches.
+  // indirectly.
+  //
+  // Return types are NOT handled here.  When a non-coroutine
+  // function returning an empty struct (e.g. get_return_object)
+  // is rewritten to return void, the coroutine body that calls
+  // it still has a cir.store of the old return type into the
+  // coroutine frame.  The Phase 3 call-site rewrite inserts a
+  // dummy alloca+load, but the frame store was generated before
+  // ABI lowering and references the original type, causing a
+  // verification failure.  Fixing this requires either running
+  // ABI lowering after coroutine lowering or teaching the pass
+  // to rewrite frame stores.
   if (isArgument && origTy)
     if (auto recTy = dyn_cast<cir::RecordType>(origTy))
       if (recTy.isEmpty() && recTy.isTriviallyCopyable())
