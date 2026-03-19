@@ -2564,6 +2564,27 @@ void CIRGenModule::setCIRFunctionAttributes(GlobalDecl globalDecl,
   if (!isThunk)
     setReferenceParameterAttributes(func, globalDecl);
 
+  // Add nonnull to return if the function has ReturnsNonNullAttr
+  // (e.g. throwing operator new).
+  if (targetDecl && targetDecl->hasAttr<ReturnsNonNullAttr>() &&
+      !codeGenOpts.NullPointerIsValid) {
+    mlir::Builder b(&getMLIRContext());
+    SmallVector<mlir::NamedAttribute> retAttrs;
+    if (auto existing = func->getAttrOfType<mlir::ArrayAttr>("res_attrs")) {
+      if (!existing.empty())
+        retAttrs.assign(
+            mlir::cast<mlir::DictionaryAttr>(existing[0]).begin(),
+            mlir::cast<mlir::DictionaryAttr>(existing[0]).end());
+    }
+    retAttrs.push_back(
+        b.getNamedAttr("llvm.nonnull", b.getUnitAttr()));
+    SmallVector<mlir::Attribute> resAttrDicts;
+    resAttrDicts.push_back(
+        mlir::DictionaryAttr::get(&getMLIRContext(), retAttrs));
+    func->setAttr("res_attrs",
+                   mlir::ArrayAttr::get(&getMLIRContext(), resAttrDicts));
+  }
+
   // TODO(cir): Check X86_VectorCall incompatibility wiht WinARM64EC
 
   // TODO(cir): typically the calling conv is set right here, but since
