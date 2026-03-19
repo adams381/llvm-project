@@ -182,7 +182,8 @@ static ArgClassification convertABIArgInfo(const llvm::abi::ABIArgInfo &info,
   }
   case llvm::abi::ABIArgInfo::Indirect: {
     if (!recordCoercionEnabled) {
-      if (!origTy || !isa<cir::RecordType>(origTy))
+      if (!origTy ||
+          !isa<cir::RecordType, cir::VectorType, cir::ComplexType>(origTy))
         return ArgClassification::getDirect(nullptr);
     }
     return ArgClassification::getIndirect(llvm::Align(info.getIndirectAlign()),
@@ -273,8 +274,9 @@ static const llvm::abi::Type *mapCIRType(mlir::Type type,
     const llvm::abi::Type *elemAbi = mapCIRType(
         vecTy.getElementType(), typeMapper, dl, recordCoercionEnabled);
     llvm::ElementCount ec = llvm::ElementCount::getFixed(vecTy.getSize());
-    return tb.getVectorType(elemAbi, ec,
-                            safeAlign(dl.getTypeABIAlignment(type)));
+    uint64_t sizeBits = dl.getTypeSizeInBits(type).getFixedValue();
+    uint64_t alignBytes = sizeBits / 8;
+    return tb.getVectorType(elemAbi, ec, safeAlign(alignBytes));
   }
 
   if (auto recTy = dyn_cast<cir::RecordType>(type)) {
@@ -465,6 +467,13 @@ struct CallConvLoweringPass
     recordCoercionEnabled = enableRecordCoercion;
     passByValueIsNoAlias = noAliasForByVal;
   }
+  CallConvLoweringPass(bool enableRecordCoercion, bool noAliasForByVal,
+                       unsigned avxLevel)
+      : CallConvLoweringBase() {
+    recordCoercionEnabled = enableRecordCoercion;
+    passByValueIsNoAlias = noAliasForByVal;
+    x86AvxAbiLevel = avxLevel;
+  }
 
   void runOnOperation() override {
     ModuleOp module = getOperation();
@@ -478,8 +487,10 @@ struct CallConvLoweringPass
     if (auto tripleAttr = module->getAttrOfType<StringAttr>(
             cir::CIRDialect::getTripleAttrName()))
       triple = llvm::Triple(tripleAttr.getValue());
+    auto avxLevel =
+        static_cast<llvm::abi::X86AVXABILevel>(x86AvxAbiLevel.getValue());
     auto targetCGI = llvm::abi::createX8664TargetCodeGenInfo(
-        typeMapper.getTypeBuilder(), triple, llvm::abi::X86AVXABILevel::None,
+        typeMapper.getTypeBuilder(), triple, avxLevel,
         /*Has64BitPointers=*/true, llvm::abi::ABICompatInfo());
     const llvm::abi::ABIInfo &abiInfo = targetCGI->getABIInfo();
 
@@ -556,4 +567,12 @@ mlir::createCallConvLoweringPass(bool recordCoercionEnabled,
                                  bool passByValueIsNoAlias) {
   return std::make_unique<CallConvLoweringPass>(recordCoercionEnabled,
                                                 passByValueIsNoAlias);
+}
+
+std::unique_ptr<Pass>
+mlir::createCallConvLoweringPass(bool recordCoercionEnabled,
+                                 bool passByValueIsNoAlias,
+                                 unsigned x86AvxAbiLevel) {
+  return std::make_unique<CallConvLoweringPass>(
+      recordCoercionEnabled, passByValueIsNoAlias, x86AvxAbiLevel);
 }

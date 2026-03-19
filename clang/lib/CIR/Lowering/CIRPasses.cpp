@@ -10,9 +10,10 @@
 //
 //===----------------------------------------------------------------------===//
 
-// #include "clang/AST/ASTContext.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/Pass/PassManager.h"
+#include "clang/AST/ASTContext.h"
+#include "clang/Basic/TargetInfo.h"
 #include "clang/CIR/Dialect/Passes.h"
 #include "llvm/Support/TimeProfiler.h"
 
@@ -32,12 +33,19 @@ runCIRToCIRPasses(mlir::ModuleOp theModule, mlir::MLIRContext &mlirContext,
 
   pm.addPass(mlir::createTargetLoweringPass());
   pm.addPass(mlir::createCXXABILoweringPass());
-  // Disable record coercion because CIR RecordType does not carry
-  // triviality info.  Non-trivially-copyable C++ structs (with
-  // ctors/dtors) would be incorrectly coerced.  Enable when CIR
-  // carries triviality on RecordType.
+
+  unsigned avxLevel = 0; // X86AVXABILevel::None
+  if (astContext.getTargetInfo().getTriple().getArch() ==
+      llvm::Triple::x86_64) {
+    llvm::StringRef abi = astContext.getTargetInfo().getABI();
+    if (abi == "avx512")
+      avxLevel = 2; // X86AVXABILevel::AVX512
+    else if (abi == "avx")
+      avxLevel = 1; // X86AVXABILevel::AVX
+  }
+
   pm.addPass(mlir::createCallConvLoweringPass(/*recordCoercionEnabled=*/false,
-                                              passByValueIsNoAlias));
+                                              passByValueIsNoAlias, avxLevel));
   pm.addPass(mlir::createLoweringPreparePass(&astContext));
 
   pm.enableVerifier(enableVerifier);

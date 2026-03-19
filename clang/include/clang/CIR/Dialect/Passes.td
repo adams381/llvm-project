@@ -174,7 +174,12 @@ def CallConvLowering : Pass<"cir-call-conv-lowering", "mlir::ModuleOp"> {
     Option<"passByValueIsNoAlias", "pass-by-value-is-noalias", "bool",
            /*default=*/"false",
            "Add noalias to byval parameters for trivially-copyable "
-           "records.  Mirrors -fpass-by-value-is-noalias.">
+           "records.  Mirrors -fpass-by-value-is-noalias.">,
+    Option<"x86AvxAbiLevel", "x86-avx-abi-level", "unsigned",
+           /*default=*/"0",
+           "X86 AVX ABI level: 0=None, 1=AVX, 2=AVX512.  "
+           "Determines the maximum vector register size for "
+           "direct passing (128/256/512 bits).">
   ];
 }
 
