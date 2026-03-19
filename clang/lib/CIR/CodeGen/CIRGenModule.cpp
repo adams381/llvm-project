@@ -1616,7 +1616,10 @@ mlir::Value CIRGenModule::emitMemberPointerConstant(const UnaryOperator *e) {
       return cir::ConstantOp::create(
           builder, loc, getCXXABI().buildVirtualMethodAttr(ty, methodDecl));
 
-    cir::FuncOp methodFuncOp = getAddrOfFunction(methodDecl);
+    const CIRGenFunctionInfo &fi =
+        getTypes().arrangeGlobalDeclaration(methodDecl);
+    cir::FuncType funcType = getTypes().getFunctionType(fi);
+    cir::FuncOp methodFuncOp = getAddrOfFunction(methodDecl, funcType);
     return cir::ConstantOp::create(builder, loc,
                                    builder.getMethodAttr(ty, methodFuncOp));
   }
@@ -2573,17 +2576,15 @@ void CIRGenModule::setCIRFunctionAttributes(GlobalDecl globalDecl,
     SmallVector<mlir::NamedAttribute> retAttrs;
     if (auto existing = func->getAttrOfType<mlir::ArrayAttr>("res_attrs")) {
       if (!existing.empty())
-        retAttrs.assign(
-            mlir::cast<mlir::DictionaryAttr>(existing[0]).begin(),
-            mlir::cast<mlir::DictionaryAttr>(existing[0]).end());
+        retAttrs.assign(mlir::cast<mlir::DictionaryAttr>(existing[0]).begin(),
+                        mlir::cast<mlir::DictionaryAttr>(existing[0]).end());
     }
-    retAttrs.push_back(
-        b.getNamedAttr("llvm.nonnull", b.getUnitAttr()));
+    retAttrs.push_back(b.getNamedAttr("llvm.nonnull", b.getUnitAttr()));
     SmallVector<mlir::Attribute> resAttrDicts;
     resAttrDicts.push_back(
         mlir::DictionaryAttr::get(&getMLIRContext(), retAttrs));
     func->setAttr("res_attrs",
-                   mlir::ArrayAttr::get(&getMLIRContext(), resAttrDicts));
+                  mlir::ArrayAttr::get(&getMLIRContext(), resAttrDicts));
   }
 
   // TODO(cir): Check X86_VectorCall incompatibility wiht WinARM64EC

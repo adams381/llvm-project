@@ -1895,7 +1895,10 @@ mlir::Attribute ConstantEmitter::tryEmitPrivate(const APValue &value,
       if (cxxDecl->isVirtual())
         return cgm.getCXXABI().buildVirtualMethodAttr(ty, cxxDecl);
 
-      cir::FuncOp methodFuncOp = cgm.getAddrOfFunction(cxxDecl);
+      const CIRGenFunctionInfo &fi =
+          cgm.getTypes().arrangeGlobalDeclaration(cxxDecl);
+      cir::FuncType funcType = cgm.getTypes().getFunctionType(fi);
+      cir::FuncOp methodFuncOp = cgm.getAddrOfFunction(cxxDecl, funcType);
       return cgm.getBuilder().getMethodAttr(ty, methodFuncOp);
     }
 
