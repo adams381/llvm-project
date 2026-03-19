@@ -34,7 +34,7 @@ auto base_to_derived(int Base2::*ptr) -> int Derived::* {
 // CIR-AFTER:   %[[BINOP_KIND:.*]] = cir.binop(add, %[[PTR]], %[[OFFSET_VALUE]]) nsw : !s64i
 // CIR-AFTER:   %[[SELECT:.*]] = cir.select if %[[IS_NULL]] then %[[PTR]] else %[[BINOP_KIND]]
 
-// LLVM: define {{.*}} noundef i64 @_Z15base_to_derivedM5Base2i
+// LLVM: define {{.*}} i64 @_Z15base_to_derivedM5Base2i
 // LLVM:   %[[PTR:.*]] = load i64, ptr %{{.*}}
 // LLVM:   %[[IS_NULL:.*]] = icmp eq i64 %[[PTR]], -1
 // LLVM:   %[[DERIVED:.*]] = add nsw i64 %[[PTR]], 4
@@ -62,7 +62,7 @@ auto derived_to_base(int Derived::*ptr) -> int Base2::* {
 // CIR-AFTER:   %[[BINOP_KIND:.*]] = cir.binop(sub, %[[PTR]], %[[OFFSET_VALUE]]) nsw : !s64i
 // CIR-AFTER:   %[[SELECT:.*]] = cir.select if %[[IS_NULL]] then %[[PTR]] else %[[BINOP_KIND]]
 
-// LLVM: define {{.*}} noundef i64 @_Z15derived_to_baseM7Derivedi
+// LLVM: define {{.*}} i64 @_Z15derived_to_baseM7Derivedi
 // LLVM:   %[[PTR:.*]] = load i64, ptr %{{.*}}
 // LLVM:   %[[IS_NULL:.*]] = icmp eq i64 %[[PTR]], -1
 // LLVM:   %[[BASE:.*]] = sub nsw i64 %[[PTR]], 4
@@ -88,7 +88,7 @@ auto base_to_derived_zero_offset(int Base1::*ptr) -> int Derived::* {
 
 // No LLVM instructions emitted for performing a zero-offset cast.
 
-// LLVM:      define {{.*}} noundef i64 @_Z27base_to_derived_zero_offsetM5Base1i
+// LLVM:      define {{.*}} i64 @_Z27base_to_derived_zero_offsetM5Base1i
 // LLVM-NEXT:   %[[PTR_ADDR:.*]] = alloca i64
 // LLVM-NEXT:   %[[RETVAL:.*]] = alloca i64
 // LLVM-NEXT:   store i64 %{{.*}}, ptr %[[PTR_ADDR]]
@@ -118,7 +118,7 @@ auto derived_to_base_zero_offset(int Derived::*ptr) -> int Base1::* {
 
 // No LLVM instructions emitted for performing a zero-offset cast.
 
-// LLVM:      define {{.*}} noundef i64 @_Z27derived_to_base_zero_offsetM7Derivedi
+// LLVM:      define {{.*}} i64 @_Z27derived_to_base_zero_offsetM7Derivedi
 // LLVM-NEXT:   %[[PTR_ADDR:.*]] = alloca i64
 // LLVM-NEXT:   %[[RETVAL:.*]] = alloca i64
 // LLVM-NEXT:   store i64 %{{.*}}, ptr %[[PTR_ADDR]]
@@ -179,7 +179,7 @@ auto bitcast(int Foo::*x) {
 // CIR-AFTER:   %[[RET:.*]] = cir.load %[[RET_ADDR]]
 // CIR-AFTER:   cir.return %[[RET]] : !s64i
 
-// LLVM: define {{.*}} noundef i64 @_Z7bitcastM3Fooi
+// LLVM: define {{.*}} i64 @_Z7bitcastM3Fooi
 // LLVM:   %[[X:.*]] = load i64, ptr %{{.*}}
 // LLVM:   store i64 %[[X]], ptr %[[RET_ADDR:.*]]
 // LLVM:   %[[RET:.*]] = load i64, ptr %[[RET_ADDR:.*]]

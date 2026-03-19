@@ -46,21 +46,21 @@ int Point::*pt_member_nested_region = test1();
 
 // Checks for test1()
 
-// CIR-BEFORE: cir.func {{.*}} @_Z5test1v() -> (!cir.data_member<!s32i in !rec_Point> {llvm.noundef}) {
+// CIR-BEFORE: cir.func {{.*}} @_Z5test1v() -> !cir.data_member<!s32i in !rec_Point> {
 // CIR-BEFORE:   %[[RETVAL:.*]] = cir.alloca !cir.data_member<!s32i in !rec_Point>, !cir.ptr<!cir.data_member<!s32i in !rec_Point>>, ["__retval"]
 // CIR-BEFORE:   %[[MEMBER:.*]] = cir.const #cir.data_member<1> : !cir.data_member<!s32i in !rec_Point>
 // CIR-BEFORE:   cir.store %[[MEMBER]], %[[RETVAL]] : !cir.data_member<!s32i in !rec_Point>, !cir.ptr<!cir.data_member<!s32i in !rec_Point>>
 // CIR-BEFORE:   %[[RET:.*]] = cir.load %[[RETVAL]] : !cir.ptr<!cir.data_member<!s32i in !rec_Point>>, !cir.data_member<!s32i in !rec_Point>
 // CIR-BEFORE:   cir.return %[[RET]] : !cir.data_member<!s32i in !rec_Point>
 
-// CIR-AFTER: cir.func {{.*}} @_Z5test1v() -> (!s64i {llvm.noundef}) {
+// CIR-AFTER: cir.func {{.*}} @_Z5test1v() -> !s64i {
 // CIR-AFTER:   %[[RETVAL:.*]] = cir.alloca !s64i, !cir.ptr<!s64i>, ["__retval"]
 // CIR-AFTER:   %[[OFFSET:.*]] = cir.const #cir.int<4> : !s64i
 // CIR-AFTER:   cir.store %[[OFFSET]], %[[RETVAL]] : !s64i, !cir.ptr<!s64i>
 // CIR-AFTER:   %[[RET:.*]] = cir.load %[[RETVAL]] : !cir.ptr<!s64i>, !s64i
 // CIR-AFTER:   cir.return %[[RET]] : !s64i
 
-// LLVM: define {{.*}} noundef i64 @_Z5test1v()
+// LLVM: define {{.*}} i64 @_Z5test1v()
 // LLVM:   %[[RETVAL:.*]] = alloca i64
 // LLVM:   store i64 4, ptr %[[RETVAL]]
 // LLVM:   %[[RET:.*]] = load i64, ptr %[[RETVAL]]
@@ -112,7 +112,7 @@ int test2(const Point &pt, int Point::*member) {
 // CIR-AFTER:        %[[RET:.*]] = cir.load{{.*}} %[[RETVAL_ADDR]] : !cir.ptr<!s32i>, !s32i
 // CIR-AFTER:        cir.return %[[RET]] : !s32i
 
-// LLVM: define {{.*}} noundef i32 @_Z5test2RK5PointMS_i(ptr noundef nonnull align 4 dereferenceable(12) %[[PT_ARG:.*]], i64 noundef %[[MEMBER_ARG:.*]])
+// LLVM: define {{.*}} noundef i32 @_Z5test2RK5PointMS_i(ptr noundef nonnull align 4 dereferenceable(12) %[[PT_ARG:.*]], i64 %[[MEMBER_ARG:.*]])
 // LLVM:   %[[PT_ADDR:.*]] = alloca ptr
 // LLVM:   %[[MEMBER_ADDR:.*]] = alloca i64
 // LLVM:   %[[RETVAL_ADDR:.*]] = alloca i32
@@ -175,7 +175,7 @@ int test3(const Point *pt, int Point::*member) {
 // CIR-AFTER:        %[[RET:.*]] = cir.load{{.*}} %[[RETVAL_ADDR]] : !cir.ptr<!s32i>, !s32i
 // CIR-AFTER:        cir.return %[[RET]] : !s32i
 
-// LLVM: define {{.*}} noundef i32 @_Z5test3PK5PointMS_i(ptr noundef %[[PT_ARG:.*]], i64 noundef %[[MEMBER_ARG:.*]])
+// LLVM: define {{.*}} noundef i32 @_Z5test3PK5PointMS_i(ptr noundef %[[PT_ARG:.*]], i64 %[[MEMBER_ARG:.*]])
 // LLVM:   %[[PT_ADDR:.*]] = alloca ptr
 // LLVM:   %[[MEMBER_ADDR:.*]] = alloca i64
 // LLVM:   %[[RETVAL_ADDR:.*]] = alloca i32
@@ -226,7 +226,7 @@ auto test4(int Incomplete::*member) -> int Incomplete::* {
 // CIR-AFTER:        %[[RET:.*]] = cir.load{{.*}} %[[RETVAL_ADDR]] : !cir.ptr<!s64i>, !s64i
 // CIR-AFTER:        cir.return %[[RET]] : !s64i
 
-// LLVM: define {{.*}} noundef i64 @_Z5test4M10Incompletei(i64 noundef %[[MEMBER_ARG:.*]])
+// LLVM: define {{.*}} i64 @_Z5test4M10Incompletei(i64 %[[MEMBER_ARG:.*]])
 // LLVM:   %[[MEMBER_ADDR:.*]] = alloca i64
 // LLVM:   %[[RETVAL_ADDR:.*]] = alloca i64
 // LLVM:   store i64 %[[MEMBER_ARG]], ptr %[[MEMBER_ADDR]]
@@ -279,7 +279,7 @@ int test5(Incomplete *ic, int Incomplete::*member) {
 // CIR-AFTER:        %[[RET:.*]] = cir.load{{.*}} %[[RETVAL_ADDR]] : !cir.ptr<!s32i>, !s32i
 // CIR-AFTER:        cir.return %[[RET]] : !s32i
 
-// LLVM: define {{.*}} noundef i32 @_Z5test5P10IncompleteMS_i(ptr noundef %[[IC_ARG:.*]], i64 noundef %[[MEMBER_ARG:.*]])
+// LLVM: define {{.*}} noundef i32 @_Z5test5P10IncompleteMS_i(ptr noundef %[[IC_ARG:.*]], i64 %[[MEMBER_ARG:.*]])
 // LLVM:   %[[IC_ADDR:.*]] = alloca ptr
 // LLVM:   %[[MEMBER_ADDR:.*]] = alloca i64
 // LLVM:   %[[RETVAL_ADDR:.*]] = alloca i32
@@ -315,7 +315,7 @@ auto test_null() -> int Point::* {
 // CIR:   %[[RET:.*]] = cir.load %[[RETVAL_ADDR]]
 // CIR:   cir.return %[[RET]] : !cir.data_member<!s32i in !rec_Point>
 
-// LLVM: define {{.*}} noundef i64 @_Z9test_nullv()
+// LLVM: define {{.*}} i64 @_Z9test_nullv()
 // LLVM:   %[[RETVAL_ADDR:.*]] = alloca i64
 // LLVM:   store i64 -1, ptr %[[RETVAL_ADDR]]
 // LLVM:   %[[RET:.*]] = load i64, ptr %[[RETVAL_ADDR]]
@@ -335,7 +335,7 @@ auto test_null_incomplete() -> int Incomplete::* {
 // CIR:   %[[RET:.*]] = cir.load %[[RETVAL_ADDR]]
 // CIR:   cir.return %[[RET]] : !cir.data_member<!s32i in !rec_Incomplete>
 
-// LLVM: define {{.*}} noundef i64 @_Z20test_null_incompletev()
+// LLVM: define {{.*}} i64 @_Z20test_null_incompletev()
 // LLVM:   %[[RETVAL_ADDR:.*]] = alloca i64
 // LLVM:   store i64 -1, ptr %[[RETVAL_ADDR]]
 // LLVM:   %[[RET:.*]] = load i64, ptr %[[RETVAL_ADDR]]

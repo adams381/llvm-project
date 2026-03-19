@@ -57,7 +57,7 @@ auto memfunc_reinterpret(void (Foo::*func)(int)) -> void (Bar::*)() {
 // CIR-AFTER:   %[[RET:.*]] = cir.load{{.*}} %[[RET_ADDR]] : !cir.ptr<!rec_anon_struct>, !rec_anon_struct
 // CIR-AFTER:   cir.return %[[RET]] : !rec_anon_struct
 
-// LLVM: define {{.*}} noundef { i64, i64 } @_Z19memfunc_reinterpretM3FooFviE
+// LLVM: define {{.*}} { i64, i64 } @_Z19memfunc_reinterpretM3FooFviE
 // LLVM:   store { i64, i64 } %{{.*}}, ptr %{{.*}}
 // LLVM:   store { i64, i64 } %{{.*}}, ptr %[[RET_ADDR:.*]]
 // LLVM:   %[[RET:.*]] = load { i64, i64 }, ptr %[[RET_ADDR]]
@@ -104,7 +104,7 @@ DerivedMemFunc base_to_derived_zero_offset(Base1MemFunc ptr) {
 // CIR-AFTER:   %[[RET_VAL:.*]] = cir.load %[[RET]] : !cir.ptr<!rec_anon_struct>, !rec_anon_struct
 // CIR-AFTER:   cir.return %[[RET_VAL]] : !rec_anon_struct
 
-// LLVM: define {{.*}} noundef { i64, i64 } @_Z27base_to_derived_zero_offsetM5Base1FviE
+// LLVM: define {{.*}} { i64, i64 } @_Z27base_to_derived_zero_offsetM5Base1FviE
 // LLVM:   store { i64, i64 } %{{.*}}, ptr %[[ARG_ADDR:.*]]
 // LLVM:   %[[TMP:.*]] = load { i64, i64 }, ptr %[[ARG_ADDR]]
 // LLVM:   store { i64, i64 } %[[TMP]], ptr %[[RET_ADDR:.*]]
@@ -132,7 +132,7 @@ DerivedMemFunc base_to_derived(Base2MemFunc ptr) {
 // CIR-AFTER:   %[[BINOP_KIND:.*]] = cir.binop(add, %[[OFFSET]], %[[OFFSET_ADJ]]) nsw : !s64i
 // CIR-AFTER:   %{{.*}} = cir.insert_member %[[PTR]][1], %[[BINOP_KIND]] : !rec_anon_struct, !s64i
 
-// LLVM: define {{.*}} noundef { i64, i64 } @_Z15base_to_derivedM5Base2FviE
+// LLVM: define {{.*}} { i64, i64 } @_Z15base_to_derivedM5Base2FviE
 // LLVM:   %[[ADJ:.*]] = extractvalue { i64, i64 } %{{.*}}, 1
 // LLVM:   %[[ADJ_ADJ:.*]] = add nsw i64 %[[ADJ]], 16
 // LLVM:   %{{.*}} = insertvalue { i64, i64 } %{{.*}}, i64 %[[ADJ_ADJ]], 1
@@ -162,7 +162,7 @@ Base1MemFunc derived_to_base_zero_offset(DerivedMemFunc ptr) {
 // CIR-AFTER:   %[[RET_VAL:.*]] = cir.load %[[RET]] : !cir.ptr<!rec_anon_struct>, !rec_anon_struct
 // CIR-AFTER:   cir.return %[[RET_VAL]] : !rec_anon_struct
 
-// LLVM: define {{.*}} noundef { i64, i64 } @_Z27derived_to_base_zero_offsetM7DerivedFviE
+// LLVM: define {{.*}} { i64, i64 } @_Z27derived_to_base_zero_offsetM7DerivedFviE
 // LLVM:   store { i64, i64 } %{{.*}}, ptr %[[ARG_ADDR:.*]]
 // LLVM:   %[[TMP:.*]] = load { i64, i64 }, ptr %[[ARG_ADDR]]
 // LLVM:   store { i64, i64 } %[[TMP]], ptr %[[RET_ADDR:.*]]
@@ -190,7 +190,7 @@ Base2MemFunc derived_to_base(DerivedMemFunc ptr) {
 // CIR-AFTER:   %[[BINOP_KIND:.*]] = cir.binop(sub, %[[OFFSET]], %[[OFFSET_ADJ]]) nsw : !s64i
 // CIR-AFTER:   %{{.*}} = cir.insert_member %[[PTR]][1], %[[BINOP_KIND]] : !rec_anon_struct, !s64i
 
-// LLVM: define {{.*}} noundef { i64, i64 } @_Z15derived_to_baseM7DerivedFviE
+// LLVM: define {{.*}} { i64, i64 } @_Z15derived_to_baseM7DerivedFviE
 // LLVM:   %[[ADJ:.*]] = extractvalue { i64, i64 } %{{.*}}, 1
 // LLVM:   %[[ADJ_ADJ:.*]] = sub nsw i64 %[[ADJ]], 16
 // LLVM:   %{{.*}} = insertvalue { i64, i64 } %{{.*}}, i64 %[[ADJ_ADJ]], 1

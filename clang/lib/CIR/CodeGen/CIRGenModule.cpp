@@ -2229,7 +2229,8 @@ void CIRGenModule::setTLSMode(mlir::Operation *op, const VarDecl &d) {
 /// Scalars, pointers, and booleans are always noundef.  Records
 /// and arrays may have padding and are not noundef.
 static bool shouldAddNoundef(mlir::Type ty) {
-  return !mlir::isa<cir::RecordType, cir::ArrayType>(ty);
+  return !mlir::isa<cir::RecordType, cir::ArrayType, cir::MethodType,
+                    cir::DataMemberType>(ty);
 }
 
 /// Return true if the return value of this function should get
