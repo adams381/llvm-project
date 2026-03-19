@@ -115,22 +115,13 @@ static ArgClassification convertABIArgInfo(const llvm::abi::ABIArgInfo &info,
                                            MLIRContext *ctx, mlir::Type origTy,
                                            bool recordCoercionEnabled,
                                            bool isArgument = true) {
-  // Empty trivially-copyable record arguments are not passed
+  // Empty trivially-copyable records are not passed or returned
   // per the x86_64 ABI.  Non-trivially-copyable empty records
   // (e.g. struct with only a destructor) must still be passed
-  // indirectly.
-  //
-  // Return types are NOT handled here.  When a non-coroutine
-  // function returning an empty struct (e.g. get_return_object)
-  // is rewritten to return void, the coroutine body that calls
-  // it still has a cir.store of the old return type into the
-  // coroutine frame.  The Phase 3 call-site rewrite inserts a
-  // dummy alloca+load, but the frame store was generated before
-  // ABI lowering and references the original type, causing a
-  // verification failure.  Fixing this requires either running
-  // ABI lowering after coroutine lowering or teaching the pass
-  // to rewrite frame stores.
-  if (isArgument && origTy)
+  // indirectly.  Address-taken functions are excluded from
+  // empty return rewriting in Phase 1 (see addressTakenFns)
+  // because function pointer variables would have stale types.
+  if (origTy)
     if (auto recTy = dyn_cast<cir::RecordType>(origTy))
       if (recTy.isEmpty() && recTy.isTriviallyCopyable())
         return ArgClassification::getIgnore();
@@ -494,6 +485,24 @@ struct CallConvLoweringPass
         /*Has64BitPointers=*/true, llvm::abi::ABICompatInfo());
     const llvm::abi::ABIInfo &abiInfo = targetCGI->getABIInfo();
 
+    // Collect functions whose address is taken (referenced by
+    // cir.get_global or cir.const_record global_view).  These
+    // cannot have their return type changed to void because
+    // function pointer variables would have stale types.
+    llvm::DenseSet<StringRef> addressTakenFns;
+    module.walk([&](cir::GetGlobalOp getOp) {
+      auto ptrTy = dyn_cast<cir::PointerType>(getOp.getType());
+      if (ptrTy && isa<cir::FuncType>(ptrTy.getPointee()))
+        addressTakenFns.insert(getOp.getName());
+    });
+    module.walk([&](cir::ConstantOp constOp) {
+      if (auto globalView =
+              dyn_cast_or_null<cir::GlobalViewAttr>(constOp.getValue()))
+        if (auto ref = globalView.getSymbol())
+          if (module.lookupSymbol<FunctionOpInterface>(ref))
+            addressTakenFns.insert(ref.getValue());
+    });
+
     // Phase 1: Classify and rewrite all functions (both definitions
     // and declarations).
     llvm::DenseMap<StringRef, FunctionClassification> classificationMap;
@@ -507,8 +516,16 @@ struct CallConvLoweringPass
       FunctionClassification fc = classifyWithABILibrary(
           funcOp, typeMapper, dataLayout, abiInfo, recordCoercionEnabled);
 
-      if (auto nameAttr = funcOp->getAttrOfType<StringAttr>("sym_name"))
+      // Don't change the return type of address-taken functions
+      // to void — function pointer variables would have stale
+      // function types (e.g. lambda conversion operators store
+      // the address of __invoke with the original return type).
+      if (auto nameAttr = funcOp->getAttrOfType<StringAttr>("sym_name")) {
+        if (fc.ReturnInfo.Kind == ArgKind::Ignore &&
+            addressTakenFns.contains(nameAttr.getValue()))
+          fc.ReturnInfo = ArgClassification::getDirect(nullptr);
         classificationMap[nameAttr.getValue()] = fc;
+      }
 
       OpBuilder builder(funcOp);
       if (failed(rewriteCtx.rewriteFunctionDefinition(funcOp, fc, builder)))

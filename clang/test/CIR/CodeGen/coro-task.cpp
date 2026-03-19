@@ -193,8 +193,7 @@ VoidTask silly_task() {
 
 // Call promise.get_return_object() to retrieve the task object.
 
-// CIR: %[[RetObj:.*]] = cir.call @_ZN5folly4coro4TaskIvE12promise_type17get_return_objectEv(%[[VoidPromisseAddr]]) nothrow : {{.*}} -> ![[VoidTask]]
-// CIR: cir.store{{.*}} %[[RetObj]], %[[VoidTaskAddr]] : ![[VoidTask]]
+// CIR: cir.call @_ZN5folly4coro4TaskIvE12promise_type17get_return_objectEv(%[[VoidPromisseAddr]]) nothrow
 
 // OGCG: call void @llvm.lifetime.start.p0(ptr %[[VoidPromisseAddr]])
 // OGCG: call void @_ZN5folly4coro4TaskIvE12promise_type17get_return_objectEv(ptr noundef nonnull align 1 dereferenceable(1) %[[VoidPromisseAddr]])
@@ -212,8 +211,7 @@ VoidTask silly_task() {
 // the suspend_always struct to use for cir.await. Note that we return by-value since we defer ABI lowering
 // to later passes, same is done elsewhere.
 
-// CIR:   %[[Tmp0:.*]] = cir.call @_ZN5folly4coro4TaskIvE12promise_type15initial_suspendEv(%[[VoidPromisseAddr]])
-// CIR:   cir.store{{.*}} %[[Tmp0:.*]], %[[SuspendAlwaysAddr]]
+// CIR:   cir.call @_ZN5folly4coro4TaskIvE12promise_type15initial_suspendEv(%[[VoidPromisseAddr]])
 
 // OGCG: call void @_ZN5folly4coro4TaskIvE12promise_type15initial_suspendEv(ptr noundef nonnull align 1 dereferenceable(1) %[[VoidPromisseAddr]])
 
@@ -243,8 +241,7 @@ VoidTask silly_task() {
 // FIXME: add veto support for non-void await_suspends.
 
 // CIR:   }, suspend : {
-// CIR:     %[[FromAddrRes:.*]] = cir.call @_ZNSt16coroutine_handleIN5folly4coro4TaskIvE12promise_typeEE12from_addressEPv(%[[CoroFrameAddr]])
-// CIR:     cir.store{{.*}} %[[FromAddrRes]], %[[CoroHandlePromiseAddr]] : ![[CoroHandlePromiseVoid]]
+// CIR:     cir.call @_ZNSt16coroutine_handleIN5folly4coro4TaskIvE12promise_typeEE12from_addressEPv(%[[CoroFrameAddr]])
 // CIR:     %[[CoroHandlePromiseReload:.*]] = cir.load{{.*}} %[[CoroHandlePromiseAddr]]
 // CIR:     cir.call @_ZNSt16coroutine_handleIvEC1IN5folly4coro4TaskIvE12promise_typeEEES_IT_E(%[[CoroHandleVoidAddr]])
 // CIR:     %[[CoroHandleVoidReload:.*]] = cir.load{{.*}} %[[CoroHandleVoidAddr]] : !cir.ptr<![[CoroHandleVoid]]>, ![[CoroHandleVoid]]
@@ -337,13 +334,12 @@ folly::coro::Task<int> byRef(const std::string& s) {
 
 // CIR:    %[[LOAD:.*]] = cir.load %[[AllocaParam]] : !cir.ptr<!cir.ptr<![[StdString]]>>, !cir.ptr<![[StdString]]>
 // CIR:    cir.store {{.*}} %[[LOAD]], %[[AllocaFnUse]] : !cir.ptr<![[StdString]]>, !cir.ptr<!cir.ptr<![[StdString]]>>
-// CIR:    %[[RetObj:.*]] = cir.call @_ZN5folly4coro4TaskIiE12promise_type17get_return_objectEv(%4) nothrow : {{.*}} -> ![[IntTask]]
-// CIR:    cir.store {{.*}} %[[RetObj]], %[[IntTaskAddr]] : ![[IntTask]]
+// CIR:    cir.call @_ZN5folly4coro4TaskIiE12promise_type17get_return_objectEv(%4) nothrow
 // CIR:    cir.scope {
 // CIR:      %[[SuspendAlwaysAddr:.*]] = cir.alloca ![[SuspendAlways]], {{.*}} ["ref.tmp0"] {alignment = 1 : i64}
 // CIR:      %[[CoroHandleVoidAddr:.*]] = cir.alloca ![[CoroHandleVoid]], {{.*}} ["agg.tmp0"] {alignment = 1 : i64}
 // CIR:      %[[CoroHandlePromiseAddr:.*]] = cir.alloca ![[CoroHandlePromiseInt]], {{.*}} ["agg.tmp1"] {alignment = 1 : i64}
-// CIR:      %[[Tmp0:.*]] = cir.call @_ZN5folly4coro4TaskIiE12promise_type15initial_suspendEv(%[[IntPromisseAddr]])
+// CIR:      cir.call @_ZN5folly4coro4TaskIiE12promise_type15initial_suspendEv(%[[IntPromisseAddr]])
 // CIR:      cir.await(init, ready : {
 // CIR:       %[[ReadyVeto:.*]] = cir.scope {
 // CIR:         %[[TmpCallRes:.*]] = cir.call @_ZNSt14suspend_always11await_readyEv(%[[SuspendAlwaysAddr]])
@@ -351,8 +347,7 @@ folly::coro::Task<int> byRef(const std::string& s) {
 // CIR:       }
 // CIR:       cir.condition(%[[ReadyVeto]])
 // CIR:      }, suspend : {
-// CIR:       %[[FromAddrRes:.*]] = cir.call @_ZNSt16coroutine_handleIN5folly4coro4TaskIiE12promise_typeEE12from_addressEPv(%[[CoroFrameAddr:.*]])
-// CIR:       cir.store{{.*}} %[[FromAddrRes]], %[[CoroHandlePromiseAddr]] : ![[CoroHandlePromiseInt]]
+// CIR:       cir.call @_ZNSt16coroutine_handleIN5folly4coro4TaskIiE12promise_typeEE12from_addressEPv(%[[CoroFrameAddr:.*]])
 // CIR:       %[[CoroHandlePromiseReload:.*]] = cir.load{{.*}} %[[CoroHandlePromiseAddr]]
 // CIR:       cir.call @_ZNSt16coroutine_handleIvEC1IN5folly4coro4TaskIiE12promise_typeEEES_IT_E(%[[CoroHandleVoidAddr]])
 // CIR:       %[[CoroHandleVoidReload:.*]] = cir.load{{.*}} %[[CoroHandleVoidAddr]] : !cir.ptr<![[CoroHandleVoid]]>, ![[CoroHandleVoid]]
@@ -414,8 +409,10 @@ folly::coro::Task<void> yield1() {
 // CIR-NEXT:   %[[CORO2_PTR:.*]] = cir.alloca ![[CoroHandlePromiseVoid]], !cir.ptr<![[CoroHandlePromiseVoid]]>
 // CIR-NEXT:   cir.copy {{.*}} to %[[AWAITER_PTR]] : !cir.ptr<![[VoidTask]]>
 // CIR-NEXT:   %[[AWAITER:.*]] = cir.load{{.*}} %[[AWAITER_PTR]] : !cir.ptr<![[VoidTask]]>, ![[VoidTask]]
-// CIR-NEXT:   %[[SUSPEND:.*]] = cir.call @_ZN5folly4coro4TaskIvE12promise_type11yield_valueES2_(%{{.+}}) nothrow : (!cir.ptr<![[VoidPromisse]]>) -> ![[SuspendAlways]]
-// CIR-NEXT:   cir.store{{.*}} %[[SUSPEND]], %[[SUSPEND_PTR]] : ![[SuspendAlways]], !cir.ptr<![[SuspendAlways]]>
+// CIR-NEXT:   cir.call @_ZN5folly4coro4TaskIvE12promise_type11yield_valueES2_(%{{.+}}) nothrow : (!cir.ptr<![[VoidPromisse]]>) -> ()
+// CIR-NEXT:   %{{.*}} = cir.alloca ![[SuspendAlways]], !cir.ptr<![[SuspendAlways]]>, ["ignored"]
+// CIR-NEXT:   %[[SUSPEND_LOAD:.*]] = cir.load %{{.*}} : !cir.ptr<![[SuspendAlways]]>, ![[SuspendAlways]]
+// CIR-NEXT:   cir.store{{.*}} %[[SUSPEND_LOAD]], %[[SUSPEND_PTR]] : ![[SuspendAlways]], !cir.ptr<![[SuspendAlways]]>
 // CIR-NEXT:   cir.await(yield, ready : {
 // CIR-NEXT:     %[[READY:.*]] = cir.scope {
 // CIR-NEXT:       %[[A:.*]] = cir.call @_ZNSt14suspend_always11await_readyEv(%[[SUSPEND_PTR]]) nothrow : (!cir.ptr<![[SuspendAlways]]>) -> !cir.bool
@@ -423,8 +420,10 @@ folly::coro::Task<void> yield1() {
 // CIR-NEXT:     } : !cir.bool
 // CIR-NEXT:     cir.condition(%[[READY]])
 // CIR-NEXT:   }, suspend : {
-// CIR-NEXT:     %[[CORO2:.*]] = cir.call @_ZNSt16coroutine_handleIN5folly4coro4TaskIvE12promise_typeEE12from_addressEPv(%9) nothrow : (!cir.ptr<!void>) -> ![[CoroHandlePromiseVoid]]
-// CIR-NEXT:     cir.store{{.*}} %[[CORO2]], %[[CORO2_PTR]] : ![[CoroHandlePromiseVoid]], !cir.ptr<![[CoroHandlePromiseVoid]]>
+// CIR-NEXT:     cir.call @_ZNSt16coroutine_handleIN5folly4coro4TaskIvE12promise_typeEE12from_addressEPv(%9) nothrow : (!cir.ptr<!void>) -> ()
+// CIR-NEXT:     %{{.*}} = cir.alloca ![[CoroHandlePromiseVoid]], !cir.ptr<![[CoroHandlePromiseVoid]]>, ["ignored"]
+// CIR-NEXT:     %[[CORO2_LOAD:.*]] = cir.load %{{.*}} : !cir.ptr<![[CoroHandlePromiseVoid]]>, ![[CoroHandlePromiseVoid]]
+// CIR-NEXT:     cir.store{{.*}} %[[CORO2_LOAD]], %[[CORO2_PTR]] : ![[CoroHandlePromiseVoid]], !cir.ptr<![[CoroHandlePromiseVoid]]>
 // CIR-NEXT:     %[[B:.*]] = cir.load{{.*}} %[[CORO2_PTR]] : !cir.ptr<![[CoroHandlePromiseVoid]]>, ![[CoroHandlePromiseVoid]]
 // CIR-NEXT:     cir.call @_ZNSt16coroutine_handleIvEC1IN5folly4coro4TaskIvE12promise_typeEEES_IT_E(%[[CORO_PTR]]) nothrow : (!cir.ptr<![[CoroHandleVoid]]>) -> ()
 // CIR-NEXT:     %[[C:.*]] = cir.load{{.*}} %[[CORO_PTR]] : !cir.ptr<![[CoroHandleVoid]]>, ![[CoroHandleVoid]]
@@ -463,8 +462,7 @@ folly::coro::Task<int> go1() {
 // CIR:   %[[OneAddr:.*]] = cir.alloca !s32i, !cir.ptr<!s32i>, ["ref.tmp1", init] {alignment = 4 : i64}
 // CIR:   %[[One:.*]] = cir.const #cir.int<1> : !s32i
 // CIR:   cir.store{{.*}} %[[One]], %[[OneAddr]] : !s32i, !cir.ptr<!s32i>
-// CIR:   %[[IntTaskTmp:.*]] = cir.call @_Z2goRKi(%[[OneAddr]]) : (!cir.ptr<!s32i>) -> ![[IntTask]]
-// CIR:   cir.store{{.*}} %[[IntTaskTmp]], %[[IntTaskAddr]] : ![[IntTask]], !cir.ptr<![[IntTask]]>
+// CIR:   cir.call @_Z2goRKi(%[[OneAddr]]) : (!cir.ptr<!s32i>) -> ()
 // CIR: }
 
 // CIR: %[[CoReturnValAddr:.*]] = cir.alloca !s32i, !cir.ptr<!s32i>, ["__coawait_resume_rval"] {alignment = 1 : i64}
