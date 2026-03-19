@@ -69,7 +69,7 @@ Big call_make_big(int x) {
 // CIR:         cir.return
 
 // LLVM-LABEL: define{{.*}} void @call_make_big(ptr dead_on_unwind noalias writable sret(%struct.Big) align 4 %{{.*}}, i32 noundef %{{.*}})
-// LLVM:         call void @make_big(ptr dead_on_unwind noalias writable sret(%struct.Big) align 4 %{{.*}}, i32 noundef %{{.*}})
+// LLVM:         call void @make_big(ptr dead_on_unwind writable sret(%struct.Big) align 4 %{{.*}}, i32 noundef %{{.*}})
 // LLVM:         ret void
 
 // OGCG-LABEL: define{{.*}} void @call_make_big(ptr {{.*}} sret(%struct.Big) align 4 %{{.*}}, i32 {{.*}})

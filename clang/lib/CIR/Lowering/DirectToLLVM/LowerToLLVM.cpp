@@ -1931,8 +1931,11 @@ rewriteCallOrInvoke(mlir::Operation *op, mlir::ValueRange callOperands,
             converted.push_back(dictAttr);
             continue;
           }
+          bool hasSRet = dict.get("llvm.sret") != nullptr;
           SmallVector<mlir::NamedAttribute> filtered;
           for (mlir::NamedAttribute entry : dict) {
+            if (entry.getName() == "llvm.noalias" && hasSRet)
+              continue;
             if (entry.getName() == "llvm.sret" ||
                 entry.getName() == "llvm.byval" ||
                 entry.getName() == "llvm.align" ||

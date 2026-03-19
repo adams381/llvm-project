@@ -120,7 +120,10 @@ static ArgClassification convertABIArgInfo(const llvm::abi::ABIArgInfo &info,
   // (e.g. struct with only a destructor) must still be passed
   // indirectly.  Return types are NOT handled here because
   // dropping empty struct returns requires coordinating with
-  // the coroutine pass.
+  // the coroutine pass — non-coroutine functions that return
+  // empty structs used by coroutine code get their return type
+  // changed to void, but callers in coroutine contexts still
+  // expect the original type, causing type mismatches.
   if (isArgument && origTy)
     if (auto recTy = dyn_cast<cir::RecordType>(origTy))
       if (recTy.isEmpty() && recTy.isTriviallyCopyable())
