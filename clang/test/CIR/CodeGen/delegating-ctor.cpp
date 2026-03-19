@@ -163,7 +163,7 @@ Derived::Derived(const void *inVoid) { squawk(); }
 // LLVM:   %[[VPTR:.*]] = load ptr, ptr %[[THIS]]
 // LLVM:   %[[SQUAWK_FN_ADDR:.*]] = getelementptr inbounds ptr, ptr %[[VPTR]], i32 0
 // LLVM:   %[[SQUAWK:.*]] = load ptr, ptr %[[SQUAWK_FN_ADDR]]
-// LLVM:   call void %[[SQUAWK]](ptr %[[THIS]])
+// LLVM:   call void %[[SQUAWK]](ptr noundef %[[THIS]])
 // LLVM:   ret void
 
 // OGCG: define {{.*}} void @_ZN7DerivedC2EPKv(ptr {{.*}} %[[THIS_ARG:.*]], ptr {{.*}} %[[VTT_ARG:.*]], ptr {{.*}} %[[INVOID_ARG:.*]])
@@ -237,7 +237,7 @@ Derived::Derived(const void *inVoid) { squawk(); }
 // LLVM:   %[[VPTR:.*]] = load ptr, ptr %[[THIS]]
 // LLVM:   %[[SQUAWK_ADDR:.*]] = getelementptr inbounds ptr, ptr %[[VPTR]], i32 0
 // LLVM:   %[[SQUAWK:.*]] = load ptr, ptr %[[SQUAWK_ADDR]]
-// LLVM:   call void %[[SQUAWK]](ptr %[[THIS]])
+// LLVM:   call void %[[SQUAWK]](ptr noundef %[[THIS]])
 // LLVM:   ret void
 
 // The base constructor is emitted last for OGCG.
@@ -284,7 +284,7 @@ Derived::Derived(const void *inVoid) { squawk(); }
 // LLVM:   %[[VPTR:.*]] = load ptr, ptr %[[THIS]]
 // LLVM:   %[[SQUAWK_ADDR:.*]] = getelementptr inbounds ptr, ptr %[[VPTR]], i32 0
 // LLVM:   %[[SQUAWK:.*]] = load ptr, ptr %[[SQUAWK_ADDR]]
-// LLVM:   call void %[[SQUAWK]](ptr %[[THIS]])
+// LLVM:   call void %[[SQUAWK]](ptr noundef %[[THIS]])
 // LLVM:   ret void
 
 // OGCG: define {{.*}} void @_ZN7DerivedC1EPKv(ptr {{.*}} %[[THIS_ARG:.*]], ptr {{.*}} %[[INVOID_ARG:.*]])

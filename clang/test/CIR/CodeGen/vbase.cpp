@@ -99,7 +99,7 @@ void ppp() { B b; }
 // LLVM:   %[[VFN_TAB:.+]] = load ptr, ptr %[[ADJ_THIS]]
 // LLVM:   %[[SLOT0:.+]] = getelementptr inbounds ptr, ptr %[[VFN_TAB]], i32 0
 // LLVM:   %[[VFN:.+]] = load ptr, ptr %[[SLOT0]]
-// LLVM:   call void %[[VFN]](ptr %[[ADJ_THIS]])
+// LLVM:   call void %[[VFN]](ptr noundef %[[ADJ_THIS]])
 // LLVM:   ret void
 
 // LLVM: define {{.*}}void @_Z1gv(){{.*}}
@@ -108,7 +108,7 @@ void ppp() { B b; }
 // LLVM:   %[[VPTR2:.+]] = load ptr, ptr %[[DF]]
 // LLVM:   %[[SLOT0_2:.+]] = getelementptr inbounds ptr, ptr %[[VPTR2]], i32 0
 // LLVM:   %[[VFN2:.+]] = load ptr, ptr %[[SLOT0_2]]
-// LLVM:   call void %[[VFN2]](ptr %[[DF]])
+// LLVM:   call void %[[VFN2]](ptr noundef %[[DF]])
 // LLVM:   ret void
 
 // OGCG: define {{.*}}void @_Z1fv()

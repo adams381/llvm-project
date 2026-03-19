@@ -166,7 +166,7 @@ void call(Foo *obj, void (Foo::*func)(int), int arg) {
 // LLVM: [[CONTINUE]]:
 // LLVM:   %[[CALLEE_PTR:.*]] = phi ptr [ %[[FUNC_PTR]], %[[HANDLE_NON_VIRTUAL]] ], [ %[[VIRTUAL_FN_PTR]], %[[HANDLE_VIRTUAL]] ]
 // LLVM:   %[[ARG:.*]] = load i32, ptr %{{.+}}
-// LLVM:   call void %[[CALLEE_PTR]](ptr %[[ADJUSTED_THIS]], i32 %[[ARG]])
+// LLVM:   call void %[[CALLEE_PTR]](ptr noundef %[[ADJUSTED_THIS]], i32 noundef %[[ARG]])
 // LLVM: }
 
 // OGCG: define {{.*}} @_Z4callP3FooMS_FviEi

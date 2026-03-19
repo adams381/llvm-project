@@ -112,7 +112,7 @@ void destroy(StructWithVirtualDestructor *x) {
 // LLVM:   %[[VTABLE:.*]] = load ptr, ptr %[[X]]
 // LLVM:   %[[DTOR_FN_ADDR_PTR:.*]] = getelementptr inbounds ptr, ptr %[[VTABLE]], i32 1
 // LLVM:   %[[DTOR_FN_ADDR:.*]] = load ptr, ptr %[[DTOR_FN_ADDR_PTR]]
-// LLVM:   call void %[[DTOR_FN_ADDR]](ptr %[[X]])
+// LLVM:   call void %[[DTOR_FN_ADDR]](ptr noundef %[[X]])
 
 // OGCG: define {{.*}} void @_Z7destroyP27StructWithVirtualDestructor(ptr {{.*}} %[[X_ARG:.*]])
 // OGCG:   %[[X_ADDR:.*]] = alloca ptr

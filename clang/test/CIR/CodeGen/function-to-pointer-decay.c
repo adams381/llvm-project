@@ -37,7 +37,7 @@ void test_lvalue_cast() {
 // LLVM:        define{{.*}} void @f2()
 // LLVM:        call void @f()
 // LLVM:        define{{.*}} void @test_lvalue_cast()
-// LLVM:        call void @f(i32 42)
+// LLVM:        call void @f(i32 noundef 42)
 
 // OGCG-LABEL:  define{{.*}} void @f1()
 // OGCG:        ret void

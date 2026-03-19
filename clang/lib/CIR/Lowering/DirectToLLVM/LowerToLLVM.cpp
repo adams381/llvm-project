@@ -1956,6 +1956,29 @@ rewriteCallOrInvoke(mlir::Operation *op, mlir::ValueRange callOperands,
                        mlir::ArrayAttr::get(op->getContext(), converted));
       }
     }
+  } else {
+    // Indirect call: no callee declaration to copy from.  Derive
+    // type-based attributes (noundef) from the CIR function type
+    // embedded in the function pointer operand.
+    auto calleeTy = op->getOperands().front().getType();
+    if (auto ptrTy = dyn_cast<cir::PointerType>(calleeTy)) {
+      if (auto funcTy = dyn_cast<cir::FuncType>(ptrTy.getPointee())) {
+        mlir::Builder b(op->getContext());
+        auto noundefAttr = b.getNamedAttr("llvm.noundef", b.getUnitAttr());
+
+        SmallVector<mlir::Attribute> argAttrs;
+        for (mlir::Type paramTy : funcTy.getInputs()) {
+          SmallVector<mlir::NamedAttribute> attrs;
+          if (!mlir::isa<cir::RecordType, cir::ArrayType>(paramTy))
+            attrs.push_back(noundefAttr);
+          argAttrs.push_back(
+              mlir::DictionaryAttr::get(op->getContext(), attrs));
+        }
+        if (!argAttrs.empty())
+          newOp->setAttr("arg_attrs",
+                         mlir::ArrayAttr::get(op->getContext(), argAttrs));
+      }
+    }
   }
 
   return mlir::success();
