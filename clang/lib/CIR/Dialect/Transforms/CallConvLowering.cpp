@@ -320,9 +320,8 @@ static const llvm::abi::Type *mapCIRType(mlir::Type type,
     // data size.  The ABI classifier uses the data size to
     // determine how many eightbytes to classify.
     uint64_t dataSizeBits = recTy.getDataSizeInBits();
-    llvm::TypeSize size = dataSizeBits
-                              ? llvm::TypeSize::getFixed(dataSizeBits)
-                              : dl.getTypeSizeInBits(type);
+    llvm::TypeSize size = dataSizeBits ? llvm::TypeSize::getFixed(dataSizeBits)
+                                       : dl.getTypeSizeInBits(type);
     uint64_t rawAlign = recTy.getRecordAlignInBytes();
     if (!rawAlign)
       rawAlign = dl.getTypeABIAlignment(type);
@@ -395,6 +394,16 @@ FunctionClassification classifyWithABILibrary(FunctionOpInterface funcOp,
             [](llvm::abi::ABIFunctionInfo *p) { p->operator delete(p); });
   abiInfo.computeInfo(*abiFI);
 
+  // Helper: detect _BitInt(N>64) which has special ABI treatment
+  // on x86_64 -- always passed/returned indirect regardless of
+  // register availability.  Alignment is capped at 8 bytes.
+  auto isBitIntIndirect = [](Type ty) -> bool {
+    if (!ty)
+      return false;
+    auto intTy = dyn_cast<cir::IntType>(ty);
+    return intTy && intTy.isBitInt() && intTy.getWidth() > 64;
+  };
+
   // Convert return classification.
   Type origRetTy = resultTypes.empty() ? Type() : resultTypes[0];
   fc.ReturnInfo = convertABIArgInfo(abiFI->getReturnInfo(), ctx, origRetTy,
@@ -405,8 +414,13 @@ FunctionClassification classifyWithABILibrary(FunctionOpInterface funcOp,
   ArrayRef<Type> argTypes = funcOp.getArgumentTypes();
   for (unsigned i = 0, e = abiFI->getNumArgs(); i < e; ++i) {
     Type origArgTy = i < argTypes.size() ? argTypes[i] : Type();
-    fc.ArgInfos.push_back(convertABIArgInfo(abiFI->getArgInfo(i).ArgInfo, ctx,
-                                            origArgTy, recordCoercionEnabled));
+    auto ac = convertABIArgInfo(abiFI->getArgInfo(i).ArgInfo, ctx, origArgTy,
+                                recordCoercionEnabled);
+
+    if (isBitIntIndirect(origArgTy))
+      ac = ArgClassification::getIndirect(llvm::Align(8), /*ByVal=*/true);
+
+    fc.ArgInfos.push_back(ac);
   }
 
   // Fix up union coercion types.  The ABI library's
