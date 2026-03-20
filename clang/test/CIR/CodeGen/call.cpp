@@ -57,7 +57,7 @@ int f7(int (*ptr)(int, int)) {
 
 // LLVM-LABEL: define{{.*}} noundef i32 @_Z2f7PFiiiE(ptr noundef %{{.*}}){{.*}}
 // LLVM:         %[[#ptr:]] = load ptr, ptr %{{.+}}
-// LLVM-NEXT:    %{{.+}} = call i32 %[[#ptr]](i32 noundef 1, i32 noundef 2)
+// LLVM-NEXT:    %{{.+}} = call noundef i32 %[[#ptr]](i32 noundef 1, i32 noundef 2)
 
 void f8(int a, ...);
 void f9() {

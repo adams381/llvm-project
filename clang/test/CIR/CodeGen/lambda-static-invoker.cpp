@@ -165,7 +165,7 @@ int g3() {
 // LLVM: [[SCOPE_BB2]]:
 // LLVM:   %[[FN:.*]] = load ptr, ptr %[[FN_PTR]]
 // LLVM:   store i32 3, ptr %[[REF_TMP1]]
-// LLVM:   %[[RESULT:.*]] = call i32 %[[FN]](ptr noundef %[[REF_TMP1]])
+// LLVM:   %[[RESULT:.*]] = call noundef i32 %[[FN]](ptr noundef %[[REF_TMP1]])
 // LLVM:   br label %[[RET_BB:.*]]
 
 // LLVM: [[RET_BB]]:

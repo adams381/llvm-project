@@ -69,7 +69,7 @@ void f1(A *a) {
 // LLVM:   %[[VPTR:.*]] = load ptr, ptr %[[A]]
 // LLVM:   %[[FN_PTR_PTR:.*]] = getelementptr inbounds ptr, ptr %[[VPTR]], i32 0
 // LLVM:   %[[FN_PTR:.*]] = load ptr, ptr %[[FN_PTR_PTR]]
-// LLVM:   call void %[[FN_PTR]](ptr noundef %[[A]], i8 noundef 99)
+// LLVM:   call void %[[FN_PTR]](ptr noundef %[[A]], i8 noundef signext 99)
 
 // OGCG: define{{.*}} void @_Z2f1P1A(ptr {{.*}} %[[ARG0:.*]])
 // OGCG:   %[[A_ADDR:.*]] = alloca ptr

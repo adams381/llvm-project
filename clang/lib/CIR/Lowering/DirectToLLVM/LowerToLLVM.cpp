@@ -1974,12 +1974,52 @@ rewriteCallOrInvoke(mlir::Operation *op, mlir::ValueRange callOperands,
           SmallVector<mlir::NamedAttribute> attrs;
           if (!mlir::isa<cir::RecordType, cir::ArrayType>(paramTy))
             attrs.push_back(noundefAttr);
+          if (auto intTy = dyn_cast<cir::IntType>(paramTy)) {
+            if (intTy.getWidth() < 32) {
+              StringRef ext =
+                  intTy.isSigned() ? "llvm.signext" : "llvm.zeroext";
+              attrs.push_back(b.getNamedAttr(ext, b.getUnitAttr()));
+            }
+          } else if (isa<cir::BoolType>(paramTy)) {
+            attrs.push_back(b.getNamedAttr("llvm.zeroext", b.getUnitAttr()));
+          }
           argAttrs.push_back(
               mlir::DictionaryAttr::get(op->getContext(), attrs));
         }
         if (!argAttrs.empty())
           newOp->setAttr("arg_attrs",
                          mlir::ArrayAttr::get(op->getContext(), argAttrs));
+
+        mlir::Type retTy = funcTy.getReturnType();
+        SmallVector<mlir::NamedAttribute> retAttrs;
+        if (retTy && !isa<cir::VoidType>(retTy)) {
+          auto modOp = op->getParentOfType<mlir::ModuleOp>();
+          bool isCXX = false;
+          if (auto langAttr = modOp->getAttrOfType<cir::SourceLanguageAttr>(
+                  cir::CIRDialect::getSourceLanguageAttrName()))
+            isCXX = langAttr.isCXX();
+
+          if (isCXX && !isa<cir::RecordType, cir::ArrayType, cir::MethodType,
+                            cir::DataMemberType>(retTy))
+            retAttrs.push_back(noundefAttr);
+
+          if (auto intTy = dyn_cast<cir::IntType>(retTy)) {
+            if (intTy.getWidth() < 32) {
+              StringRef ext =
+                  intTy.isSigned() ? "llvm.signext" : "llvm.zeroext";
+              retAttrs.push_back(b.getNamedAttr(ext, b.getUnitAttr()));
+            }
+          } else if (isa<cir::BoolType>(retTy)) {
+            retAttrs.push_back(b.getNamedAttr("llvm.zeroext", b.getUnitAttr()));
+          }
+        }
+        if (!retAttrs.empty()) {
+          SmallVector<mlir::Attribute> resAttrDicts;
+          resAttrDicts.push_back(
+              mlir::DictionaryAttr::get(op->getContext(), retAttrs));
+          newOp->setAttr("res_attrs",
+                         mlir::ArrayAttr::get(op->getContext(), resAttrDicts));
+        }
       }
     }
   }

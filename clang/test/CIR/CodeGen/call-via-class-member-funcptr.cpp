@@ -71,7 +71,7 @@ void fn2() { C c1; c1.call_indirect(2); }
 // LLVM:   %[[INDIRECT_CALLEE_PTR:.*]] = getelementptr %class.B, ptr %[[INNER]], i32 0, i32 0
 // LLVM:   %[[INDIRECT_CALLEE:.*]] = load ptr, ptr %[[INDIRECT_CALLEE_PTR]]
 // LLVM:   %[[V:.*]] = load i32, ptr %[[V_ADDR]]
-// LLVM:   %[[RET:.*]] = call i32 %[[INDIRECT_CALLEE]](i32 noundef %[[V]])
+// LLVM:   %[[RET:.*]] = call noundef i32 %[[INDIRECT_CALLEE]](i32 noundef %[[V]])
 
 // OGCG: define {{.*}} i32 @_ZN1C13call_indirectEi(ptr {{.*}} %[[THIS_ARG:.*]], i32 {{.*}} %[[V_ARG:.*]])
 // OGCG:   %[[THIS_ADDR:.*]] = alloca ptr
