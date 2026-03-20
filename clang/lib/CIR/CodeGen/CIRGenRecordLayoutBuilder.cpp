@@ -699,10 +699,12 @@ CIRGenTypes::computeRecordLayout(const RecordDecl *rd, cir::RecordType *ty) {
     triviallyDestructible = cxxRD->hasTrivialDestructor();
     empty = cxxRD->isEmpty();
   }
-  uint64_t dataSizeInBits =
-      astContext.getASTRecordLayout(rd).getDataSize().getQuantity() * 8;
+  const auto &astLayout = astContext.getASTRecordLayout(rd);
+  uint64_t dataSizeInBits = astLayout.getDataSize().getQuantity() * 8;
+  uint64_t recordAlignInBytes = astLayout.getAlignment().getQuantity();
   ty->complete(lowering.fieldTypes, lowering.packed, lowering.padded,
-               triviallyCopyable, triviallyDestructible, empty, dataSizeInBits);
+               triviallyCopyable, triviallyDestructible, empty, dataSizeInBits,
+               recordAlignInBytes);
 
   auto rl = std::make_unique<CIRGenRecordLayout>(
       ty ? *ty : cir::RecordType{}, baseTy ? baseTy : cir::RecordType{},

@@ -320,7 +320,9 @@ static const llvm::abi::Type *mapCIRType(mlir::Type type,
     // data size.  The ABI classifier uses the data size to
     // determine how many eightbytes to classify.
     llvm::TypeSize size = dl.getTypeSizeInBits(type);
-    uint64_t rawAlign = dl.getTypeABIAlignment(type);
+    uint64_t rawAlign = recTy.getRecordAlignInBytes();
+    if (!rawAlign)
+      rawAlign = dl.getTypeABIAlignment(type);
     // CIRGen sets the triviallyCopyable flag from
     // RecordDecl::canPassInRegisters() via complete().  Anonymous
     // records default to trivially copyable in RecordTypeStorage.

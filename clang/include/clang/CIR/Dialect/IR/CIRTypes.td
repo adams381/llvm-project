@@ -735,7 +735,8 @@ def CIR_RecordType : CIR_Type<"Record", "record", [
                   bool isPadded, bool triviallyCopyable = false,
                   bool triviallyDestructible = true,
                   bool empty = false,
-                  uint64_t dataSizeInBits = 0);
+                  uint64_t dataSizeInBits = 0,
+                  uint64_t recordAlignInBytes = 0);
 
     /// Returns true if the record can be passed in registers according
     /// to the C++ ABI.  Always true for C structs.  Set during
@@ -757,6 +758,12 @@ def CIR_RecordType : CIR_Type<"Record", "record", [
     /// ASTRecordLayout::getDataSize().  Returns 0 for anonymous
     /// records or if not set.
     uint64_t getDataSizeInBits() const;
+
+    /// Returns the record alignment in bytes as set by Clang's
+    /// ASTRecordLayout::getAlignment().  Returns 0 for anonymous
+    /// records or if not set.  When non-zero, this overrides the
+    /// DataLayout-computed alignment for ABI classification.
+    uint64_t getRecordAlignInBytes() const;
 
     uint64_t getElementOffset(const mlir::DataLayout &dataLayout,
               unsigned idx) const;

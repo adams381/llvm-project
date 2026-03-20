@@ -287,10 +287,11 @@ cir::RecordType::RecordKind RecordType::getKind() const {
 
 void RecordType::complete(ArrayRef<Type> members, bool packed, bool padded,
                           bool triviallyCopyable, bool triviallyDestructible,
-                          bool empty, uint64_t dataSizeInBits) {
+                          bool empty, uint64_t dataSizeInBits,
+                          uint64_t recordAlignInBytes) {
   assert(!cir::MissingFeatures::astRecordDeclAttr());
   if (mutate(members, packed, padded, triviallyCopyable, triviallyDestructible,
-             empty, dataSizeInBits)
+             empty, dataSizeInBits, recordAlignInBytes)
           .failed())
     llvm_unreachable("failed to complete record");
 }
@@ -307,6 +308,10 @@ bool RecordType::isEmpty() const { return getImpl()->empty; }
 
 uint64_t RecordType::getDataSizeInBits() const {
   return getImpl()->dataSizeInBits;
+}
+
+uint64_t RecordType::getRecordAlignInBytes() const {
+  return getImpl()->recordAlignInBytes;
 }
 
 /// Return the largest member of in the type.
