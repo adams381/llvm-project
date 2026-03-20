@@ -10,12 +10,12 @@
 // RUN:   -o %t-ogcg.ll
 //
 // Normalize: strip dso_local, param names, attr groups, opening brace.
-// Filter known gaps (test48, f74) before comparison.
+// Filter f74 (_BitInt(128) has different ABI from __int128 in CIR).
 // RUN: grep '^define' %t-cir.ll \
 // RUN:   | sed 's/dso_local //;s/ #[0-9]*//;s/ {$//;s/%[a-zA-Z0-9._]*/%x/g;s/  */ /g' \
-// RUN:   | grep -v '@test48\|@f74' | sort > %t-cir-sigs.txt
+// RUN:   | grep -v '@f74' | sort > %t-cir-sigs.txt
 // RUN: grep '^define' %t-ogcg.ll \
 // RUN:   | sed 's/dso_local //;s/ #[0-9]*//;s/ {$//;s/%[a-zA-Z0-9._]*/%x/g;s/  */ /g' \
-// RUN:   | grep -v '@test48\|@f74' | sort > %t-ogcg-sigs.txt
+// RUN:   | grep -v '@f74' | sort > %t-ogcg-sigs.txt
 //
 // RUN: diff %t-cir-sigs.txt %t-ogcg-sigs.txt

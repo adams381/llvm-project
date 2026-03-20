@@ -169,7 +169,7 @@ void f3(union U3 u) {
   u.c[2] = 0;
 }
 
-// CIR:      cir.func{{.*}} @f3(%{{.*}}: !cir.int<s, 40>
+// CIR:      cir.func{{.*}} @f3(%{{.*}}: !cir.int<u, 40>
 // CIR:        %[[U:.*]] = cir.alloca !rec_U3, !cir.ptr<!rec_U3>, ["u", init] {alignment = 1 : i64}
 // CIR:        cir.store %{{.*}}, %[[U]] : !rec_U3, !cir.ptr<!rec_U3>
 // CIR:        %[[C_PTR:.*]] = cir.get_member %[[U]][0] {name = "c"} : !cir.ptr<!rec_U3> -> !cir.ptr<!cir.array<!s8i x 5>>
@@ -193,7 +193,7 @@ void f5(union U4 u) {
   u.c[4] = 65;
 }
 
-// CIR:      cir.func{{.*}} @f5(%{{.*}}: !s64i
+// CIR:      cir.func{{.*}} @f5(%{{.*}}: !u64i
 // CIR:        %[[U:.*]] = cir.alloca !rec_U4, !cir.ptr<!rec_U4>, ["u", init] {alignment = 4 : i64}
 // CIR:        cir.store %{{.*}}, %[[U]] : !rec_U4, !cir.ptr<!rec_U4>
 // CIR:        %[[C_PTR:.*]] = cir.get_member %[[U]][0] {name = "c"} : !cir.ptr<!rec_U4> -> !cir.ptr<!cir.array<!s8i x 5>>

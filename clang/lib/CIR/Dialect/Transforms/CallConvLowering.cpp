@@ -319,7 +319,10 @@ static const llvm::abi::Type *mapCIRType(mlir::Type type,
     // padding members that inflate the layout size beyond the
     // data size.  The ABI classifier uses the data size to
     // determine how many eightbytes to classify.
-    llvm::TypeSize size = dl.getTypeSizeInBits(type);
+    uint64_t dataSizeBits = recTy.getDataSizeInBits();
+    llvm::TypeSize size = dataSizeBits
+                              ? llvm::TypeSize::getFixed(dataSizeBits)
+                              : dl.getTypeSizeInBits(type);
     uint64_t rawAlign = recTy.getRecordAlignInBytes();
     if (!rawAlign)
       rawAlign = dl.getTypeABIAlignment(type);
