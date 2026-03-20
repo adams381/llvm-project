@@ -80,6 +80,9 @@ static mlir::Type abiTypeToCIR(const llvm::abi::Type *ty, MLIRContext *ctx) {
     return cir::VectorType::get(elemCIR, numElts);
   }
 
+  if (llvm::isa<llvm::abi::PointerType>(ty))
+    return cir::PointerType::get(cir::VoidType::get(ctx));
+
   // Multi-register coercion: the ABI library produces a coerced
   // RecordType (e.g. {i64, i64} for a 16-byte struct returned in
   // two registers).  Convert each field to a CIR type and build
@@ -173,9 +176,8 @@ static ArgClassification convertABIArgInfo(const llvm::abi::ABIArgInfo &info,
   }
   case llvm::abi::ABIArgInfo::Indirect: {
     if (!recordCoercionEnabled) {
-      if (!origTy ||
-          !isa<cir::RecordType, cir::VectorType, cir::ComplexType,
-               cir::IntType>(origTy))
+      if (!origTy || !isa<cir::RecordType, cir::VectorType, cir::ComplexType,
+                          cir::IntType>(origTy))
         return ArgClassification::getDirect(nullptr);
     }
     return ArgClassification::getIndirect(llvm::Align(info.getIndirectAlign()),
