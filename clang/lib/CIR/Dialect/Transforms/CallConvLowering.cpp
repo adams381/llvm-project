@@ -174,7 +174,8 @@ static ArgClassification convertABIArgInfo(const llvm::abi::ABIArgInfo &info,
   case llvm::abi::ABIArgInfo::Indirect: {
     if (!recordCoercionEnabled) {
       if (!origTy ||
-          !isa<cir::RecordType, cir::VectorType, cir::ComplexType>(origTy))
+          !isa<cir::RecordType, cir::VectorType, cir::ComplexType,
+               cir::IntType>(origTy))
         return ArgClassification::getDirect(nullptr);
     }
     return ArgClassification::getIndirect(llvm::Align(info.getIndirectAlign()),
