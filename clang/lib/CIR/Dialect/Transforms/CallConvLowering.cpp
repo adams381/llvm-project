@@ -554,15 +554,71 @@ struct CallConvLoweringPass
     // Phase 3: Rewrite call sites to match rewritten callees.
     module.walk([&](cir::CallOp callOp) {
       auto callee = callOp.getCalleeAttr();
-      if (!callee)
-        return;
 
-      auto it = classificationMap.find(callee.getValue());
-      if (it == classificationMap.end())
-        return;
+      FunctionClassification fc;
+      if (callee) {
+        auto it = classificationMap.find(callee.getValue());
+        if (it == classificationMap.end())
+          return;
+        fc = it->second;
+      } else {
+        // Indirect call: classify from the function pointer type.
+        if (callOp.getOperands().empty())
+          return;
+        auto ptrTy =
+            dyn_cast<cir::PointerType>(callOp.getOperands().front().getType());
+        if (!ptrTy)
+          return;
+        auto funcTy = dyn_cast<cir::FuncType>(ptrTy.getPointee());
+        if (!funcTy)
+          return;
+
+        MLIRContext *ctx = callOp.getContext();
+        llvm::abi::TypeBuilder &tb = typeMapper.getTypeBuilder();
+
+        const llvm::abi::Type *retAbiTy = nullptr;
+        mlir::Type retCIRTy = funcTy.getReturnType();
+        if (!retCIRTy || isa<cir::VoidType>(retCIRTy))
+          retAbiTy = tb.getVoidType();
+        else
+          retAbiTy = mapCIRType(retCIRTy, typeMapper, dataLayout,
+                                recordCoercionEnabled);
+
+        SmallVector<const llvm::abi::Type *> argAbiTypes;
+        for (Type argTy : funcTy.getInputs()) {
+          const llvm::abi::Type *mapped =
+              mapCIRType(argTy, typeMapper, dataLayout, recordCoercionEnabled);
+          if (!mapped)
+            return;
+          argAbiTypes.push_back(mapped);
+        }
+        if (!retAbiTy)
+          return;
+
+        std::unique_ptr<llvm::abi::ABIFunctionInfo,
+                        void (*)(llvm::abi::ABIFunctionInfo *)>
+            abiFI(llvm::abi::ABIFunctionInfo::create(llvm::CallingConv::C,
+                                                     retAbiTy, argAbiTypes),
+                  [](llvm::abi::ABIFunctionInfo *p) { p->operator delete(p); });
+        abiInfo.computeInfo(*abiFI);
+
+        Type origRetTy =
+            (retCIRTy && !isa<cir::VoidType>(retCIRTy)) ? retCIRTy : Type();
+        fc.ReturnInfo = convertABIArgInfo(abiFI->getReturnInfo(), ctx,
+                                          origRetTy, recordCoercionEnabled,
+                                          /*isArgument=*/false);
+
+        auto argTypes = funcTy.getInputs();
+        for (unsigned i = 0; i < abiFI->getNumArgs(); ++i) {
+          Type origArgTy = (i < argTypes.size()) ? argTypes[i] : Type();
+          fc.ArgInfos.push_back(convertABIArgInfo(abiFI->getArgInfo(i).ArgInfo,
+                                                  ctx, origArgTy,
+                                                  recordCoercionEnabled));
+        }
+      }
 
       OpBuilder builder(callOp);
-      if (failed(rewriteCtx.rewriteCallSite(callOp, it->second, builder)))
+      if (failed(rewriteCtx.rewriteCallSite(callOp, fc, builder)))
         return signalPassFailure();
     });
   }

@@ -515,9 +515,12 @@ folly::coro::Task<int> go4() {
 // CIR:   %[[THREE:.*]] = cir.const #cir.int<3> : !s32i
 // CIR:   cir.store{{.*}} %[[THREE]], %[[ARG]] : !s32i, !cir.ptr<!s32i>
 
-// Call invoker, which calls operator() indirectly.
-// CIR:   %[[RES:.*]] = cir.call %[[LAMBDA2]](%[[ARG]]) : (!cir.ptr<!cir.func<(!cir.ptr<!s32i>) -> ![[IntTask]]>>, !cir.ptr<!s32i>) -> ![[IntTask]]
-// CIR:   cir.store{{.*}} %[[RES]], %4 : ![[IntTask]], !cir.ptr<![[IntTask]]>
+// Call invoker, which calls operator() indirectly (void ABI call + reload).
+// CIR:   %{{.*}} = cir.cast bitcast %[[LAMBDA2]] : !cir.ptr<!cir.func<(!cir.ptr<!s32i>) -> ![[IntTask]]>> -> !cir.ptr<!cir.func<(!cir.ptr<!s32i>)>>
+// CIR:   cir.call %{{.*}}(%[[ARG]]) : (!cir.ptr<!cir.func<(!cir.ptr<!s32i>)>>, !cir.ptr<!s32i>) -> ()
+// CIR:   %{{.*}} = cir.alloca ![[IntTask]], !cir.ptr<![[IntTask]]>, ["ignored"]{{.*}}
+// CIR:   %{{.*}} = cir.load %{{.*}} : !cir.ptr<![[IntTask]]>, ![[IntTask]]{{.*}}
+// CIR:   cir.store{{.*}} %{{.*}}, %{{.*}} : ![[IntTask]], !cir.ptr<![[IntTask]]>
 // CIR: }
 
 // CIR:   cir.await(user, ready : {

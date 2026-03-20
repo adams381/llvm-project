@@ -732,6 +732,24 @@ LogicalResult CIRABIRewriteContext::rewriteCallSite(
     newArgs.push_back(arg);
   }
 
+  // Helper: for indirect calls, prepend the callee pointer
+  // (possibly bitcast to match updated arg/return types) to the
+  // operand list so CallOp::create includes it.
+  auto prependIndirectCallee = [&](SmallVector<Value> &args, Type newRetTy) {
+    if (!call.isIndirect())
+      return;
+    Value calleePtr = call.getOperands().front();
+    SmallVector<Type> paramTypes;
+    for (Value v : args)
+      paramTypes.push_back(v.getType());
+    auto newFuncTy = cir::FuncType::get(paramTypes, newRetTy);
+    auto newPtrTy = cir::PointerType::get(newFuncTy);
+    if (calleePtr.getType() != newPtrTy)
+      calleePtr = cir::CastOp::create(rewriter, call.getLoc(), newPtrTy,
+                                      cir::CastKind::bitcast, calleePtr);
+    args.insert(args.begin(), calleePtr);
+  };
+
   // Handle indirect return (sret) at call site.
   if (hasSRet && call.getNumResults() > 0) {
     Type origRetTy = call.getResult().getType();
@@ -749,6 +767,7 @@ LogicalResult CIRABIRewriteContext::rewriteCallSite(
     sretArgs.append(newArgs.begin(), newArgs.end());
 
     auto voidTy = cir::VoidType::get(call.getContext());
+    prependIndirectCallee(sretArgs, voidTy);
     auto newCall = cir::CallOp::create(rewriter, call.getLoc(),
                                        call.getCalleeAttr(), voidTy, sretArgs);
     // Preserve call attributes (noreturn, side_effect, etc.).
@@ -774,6 +793,7 @@ LogicalResult CIRABIRewriteContext::rewriteCallSite(
   if (fc.ReturnInfo.Kind == ArgKind::Ignore && call.getNumResults() > 0) {
     rewriter.setInsertionPoint(call);
     auto voidTy = cir::VoidType::get(call.getContext());
+    prependIndirectCallee(newArgs, voidTy);
     auto newCall = cir::CallOp::create(rewriter, call.getLoc(),
                                        call.getCalleeAttr(), voidTy, newArgs);
     for (NamedAttribute attr : call->getAttrs())
@@ -826,6 +846,7 @@ LogicalResult CIRABIRewriteContext::rewriteCallSite(
   }
 
   rewriter.setInsertionPoint(call);
+  prependIndirectCallee(newArgs, callRetTy);
   auto newCall = cir::CallOp::create(rewriter, call.getLoc(),
                                      call.getCalleeAttr(), callRetTy, newArgs);
   for (NamedAttribute attr : call->getAttrs())

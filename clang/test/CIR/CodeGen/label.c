@@ -183,21 +183,35 @@ void foo() {
 
 // CIR: cir.func {{.*}} @foo
 // CIR:   cir.scope {
-// CIR:     %0 = cir.alloca !rec_S, !cir.ptr<!rec_S>, ["agg.tmp0"]
+// CIR:     %{{.+}} = cir.alloca !rec_S, !cir.ptr<!rec_S>, ["agg.tmp0"]{{.*}}
 // CIR:      cir.br ^bb1
 // CIR:    ^bb1:
 // CIR:     cir.label "label"
+// CIR:     %{{.+}} = cir.get_global @get : !cir.ptr<!cir.func<(...) -> !rec_S>>{{.*}}
+// CIR:     %{{.+}} = cir.cast bitcast %{{.+}} : !cir.ptr<!cir.func<(...) -> !rec_S>> -> !cir.ptr<!cir.func<() -> !rec_S>>{{.*}}
+// CIR:     %{{.+}} = cir.cast bitcast %{{.+}} : !cir.ptr<!cir.func<() -> !rec_S>> -> !cir.ptr<!cir.func<()>>{{.*}}
+// CIR:     cir.call %{{.+}}() : (!cir.ptr<!cir.func<()>>) -> (){{.*}}
+// CIR:     %{{.+}} = cir.alloca !rec_S, !cir.ptr<!rec_S>, ["ignored"]{{.*}}
+// CIR:     %{{.+}} = cir.load %{{.+}} : !cir.ptr<!rec_S>, !rec_S{{.*}}
+// CIR:     cir.store{{.*}} %{{.+}}, %{{.+}} : !rec_S, !cir.ptr<!rec_S>{{.*}}
+// CIR:     %{{.+}} = cir.load{{.*}} %{{.+}} : !cir.ptr<!rec_S>, !rec_S{{.*}}
+// CIR:     cir.call @bar() : () -> (){{.*}}
 
 // LLVM: define dso_local void @foo(){{.*}} {
-// LLVM:  [[ALLOC:%.*]] = alloca %struct.S, i64 1, align 1
-// LLVM:  br label %2
-// LLVM:2:
+// LLVM:  [[A1:%.*]] = alloca %struct.S, i64 1, align 1
+// LLVM:  [[A2:%.*]] = alloca %struct.S, i64 1, align 1
 // LLVM:  br label %3
 // LLVM:3:
-// LLVM:  [[CALL:%.*]] = call %struct.S @get()
-// LLVM:  store %struct.S [[CALL]], ptr [[ALLOC]], align 1
-// LLVM:  [[LOAD:%.*]] = load %struct.S, ptr [[ALLOC]], align 1
+// LLVM:  br label %4
+// LLVM:4:
+// LLVM:  call void @get()
+// LLVM:  [[L1:%.*]] = load %struct.S, ptr [[A2]], align 1
+// LLVM:  store %struct.S [[L1]], ptr [[A1]], align 1
+// LLVM:  [[L2:%.*]] = load %struct.S, ptr [[A1]], align 1
 // LLVM:  call void @bar()
+// LLVM:  br label %7
+// LLVM:7:
+// LLVM:  ret void
 
 // OGCG: define dso_local void @foo()
 // OGCG:   %agg.tmp = alloca %struct.S, align 1
