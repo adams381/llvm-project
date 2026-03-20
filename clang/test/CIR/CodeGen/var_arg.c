@@ -184,3 +184,21 @@ void stdarg_copy() {
 // OGCG:   %{{.*}} = getelementptr inbounds [1 x %struct.__va_list_tag], ptr %{{.*}}
 // OGCG:   %{{.*}} = getelementptr inbounds [1 x %struct.__va_list_tag], ptr %{{.*}}
 // OGCG:   call void @llvm.va_copy.p0(ptr %{{.*}}, ptr %{{.*}}
+
+// Regression: variadic function declared after non-variadic with same
+// param type must retain the variadic flag (CIRGenFunctionInfo Profile fix).
+typedef float __m256 __attribute__((__vector_size__(32)));
+void non_variadic_vec(__m256 x);
+void use_non_variadic_vec(void) { non_variadic_vec((__m256){}); }
+void variadic_vec(__m256, ...);
+__m256 gv;
+void use_variadic_vec(void) { variadic_vec(gv, gv, 1.0); }
+
+// CIR: cir.func private @variadic_vec({{.*}}, ...)
+// CIR: cir.call @variadic_vec({{.*}}, {{.*}}, {{.*}}) :
+
+// LLVM-LABEL: @use_variadic_vec
+// LLVM: call void {{.*}}({{.*}}, {{.*}}, {{.*}})
+
+// OGCG-LABEL: @use_variadic_vec
+// OGCG: call void {{.*}}({{.*}}, {{.*}}, {{.*}})
