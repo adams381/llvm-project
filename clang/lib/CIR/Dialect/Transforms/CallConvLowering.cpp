@@ -323,6 +323,26 @@ static const llvm::abi::Type *mapCIRType(mlir::Type type,
     uint64_t offsetBits = 0;
     for (auto it = members.begin(); it != endIt; ++it) {
       mlir::Type fieldTy = *it;
+
+      // Skip empty base class members.  CIR flattens base classes
+      // into the record and includes padding for empty bases
+      // (either as a padded empty RecordType or as a u8i ArrayType).
+      // The ABI classifier should not see these.
+      if (auto memberRec = dyn_cast<cir::RecordType>(fieldTy)) {
+        if (memberRec.isEmpty() && memberRec.getMembers().size() <= 1) {
+          offsetBits += dl.getTypeSizeInBits(fieldTy).getFixedValue();
+          continue;
+        }
+      }
+      if (auto arrTy = dyn_cast<cir::ArrayType>(fieldTy)) {
+        if (isa<cir::IntType>(arrTy.getElementType()) &&
+            cast<cir::IntType>(arrTy.getElementType()).getWidth() == 8 &&
+            recTy.getPadded() && it == members.begin()) {
+          offsetBits += dl.getTypeSizeInBits(fieldTy).getFixedValue();
+          continue;
+        }
+      }
+
       const llvm::abi::Type *mappedField =
           mapCIRType(fieldTy, typeMapper, dl, recordCoercionEnabled);
       uint64_t fieldSize = dl.getTypeSizeInBits(fieldTy);
