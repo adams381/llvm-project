@@ -145,9 +145,21 @@ void call(Foo *obj, void (Foo::*func)(int), int arg) {
 // CIR-AFTER:   %[[ARG:.*]] = cir.load{{.*}} %{{.*}} : !cir.ptr<!s32i>, !s32i
 // CIR-AFTER:   cir.call %[[CALLEE]](%[[ADJUSTED_THIS]], %[[ARG]]) : (!cir.ptr<!cir.func<(!cir.ptr<!void>, !s32i)>>, !cir.ptr<!void>, !s32i) -> ()
 
-// LLVM: define {{.*}} void @_Z4callP3FooMS_FviEi(ptr noundef %{{.*}}, { i64, i64 } %{{.*}}, i32 noundef %{{.*}})
-// LLVM:   %[[OBJ:.*]] = load ptr, ptr %{{.*}}
-// LLVM:   %[[MEMFN_PTR:.*]] = load { i64, i64 }, ptr %{{.*}}
+// LLVM: define {{.*}} void @_Z4callP3FooMS_FviEi(ptr noundef %{{.*}}, i64 %{{.*}}, i64 %{{.*}}, i32 noundef %{{.*}})
+// LLVM:   %{{.*}} = alloca { i64, i64 }
+// LLVM:   %{{.*}} = getelementptr { i64, i64 }, ptr %{{.*}}, i32 0, i32 0
+// LLVM:   store i64 %{{.*}}, ptr %{{.*}}, align 8
+// LLVM:   %{{.*}} = getelementptr { i64, i64 }, ptr %{{.*}}, i32 0, i32 1
+// LLVM:   store i64 %{{.*}}, ptr %{{.*}}, align 8
+// LLVM:   %{{.*}} = load { i64, i64 }, ptr %{{.*}}, align 8
+// LLVM:   %{{.*}} = alloca ptr
+// LLVM:   %{{.*}} = alloca { i64, i64 }
+// LLVM:   %{{.*}} = alloca i32
+// LLVM:   store ptr %{{.*}}, ptr %{{.*}}, align 8
+// LLVM:   store { i64, i64 } %{{.*}}, ptr %{{.*}}, align 8
+// LLVM:   store i32 %{{.*}}, ptr %{{.*}}, align 4
+// LLVM:   %[[OBJ:.*]] = load ptr, ptr %{{.*}}, align 8
+// LLVM:   %[[MEMFN_PTR:.*]] = load { i64, i64 }, ptr %{{.*}}, align 8
 // LLVM:   %[[THIS_ADJ:.*]] = extractvalue { i64, i64 } %[[MEMFN_PTR]], 1
 // LLVM:   %[[ADJUSTED_THIS:.*]] = getelementptr i8, ptr %[[OBJ]], i64 %[[THIS_ADJ]]
 // LLVM:   %[[PTR_FIELD:.*]] = extractvalue { i64, i64 } %[[MEMFN_PTR]], 0

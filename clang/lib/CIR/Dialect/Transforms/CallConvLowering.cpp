@@ -141,7 +141,8 @@ static ArgClassification convertABIArgInfo(const llvm::abi::ABIArgInfo &info,
     if (coerced && origTy) {
       if (coerced == origTy)
         coerced = nullptr;
-      else if (!isa<cir::RecordType, cir::ComplexType, cir::VectorType>(origTy))
+      else if (!isa<cir::RecordType, cir::ComplexType, cir::VectorType,
+                    cir::MethodType, cir::DataMemberType>(origTy))
         coerced = nullptr;
       else if (auto coercedInt = dyn_cast<cir::IntType>(coerced))
         if (auto origInt = dyn_cast<cir::IntType>(origTy))
@@ -156,6 +157,14 @@ static ArgClassification convertABIArgInfo(const llvm::abi::ABIArgInfo &info,
           if (recTy.getPadded() && recTy.getMembers().size() == 1 &&
               recTy.getMembers()[0] == coerced)
             coerced = nullptr;
+    }
+    // When the coerced type matches the original (no-op coercion)
+    // but the ABI says the arg should be flattened into separate
+    // registers, re-enable coercion so the flattening code fires.
+    if (!coerced && info.getCanBeFlattened() && origTy) {
+      if (auto recTy = dyn_cast<cir::RecordType>(origTy))
+        if (recTy.getMembers().size() > 1)
+          coerced = origTy;
     }
     auto ac = ArgClassification::getDirect(coerced);
     ac.CanFlatten = info.getCanBeFlattened();
