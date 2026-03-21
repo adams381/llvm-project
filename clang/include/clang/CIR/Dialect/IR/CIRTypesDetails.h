@@ -59,7 +59,8 @@ struct RecordTypeStorage : public mlir::TypeStorage {
                     RecordType::RecordKind kind)
       : members(members), name(name), incomplete(incomplete), packed(packed),
         padded(padded), triviallyCopyable(!name), triviallyDestructible(!name),
-        empty(!name), dataSizeInBits(0), recordAlignInBytes(0), kind(kind) {
+        empty(!name && members.empty()), dataSizeInBits(0),
+        recordAlignInBytes(0), kind(kind) {
     assert((name || !incomplete) && "Incomplete records must have a name");
   }
 

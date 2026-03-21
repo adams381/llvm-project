@@ -273,6 +273,20 @@ static const llvm::abi::Type *mapCIRType(mlir::Type type,
     return tb.getVectorType(elemAbi, ec, safeAlign(alignBytes));
   }
 
+  // Member data pointer: single integer (offset into object).
+  if (isa<cir::DataMemberType>(type))
+    return tb.getIntegerType(64, llvm::Align(8), /*Signed=*/false);
+
+  // Member function pointer: {ptr, ptrdiff_t} for Itanium ABI.
+  if (isa<cir::MethodType>(type)) {
+    auto i64 = tb.getIntegerType(64, llvm::Align(8), /*Signed=*/false);
+    SmallVector<llvm::abi::FieldInfo> fields;
+    fields.push_back({i64, 0, 0, false, false});
+    fields.push_back({i64, 64, 0, false, false});
+    return tb.getRecordType(fields, llvm::TypeSize::getFixed(128),
+                            llvm::Align(8));
+  }
+
   if (auto recTy = dyn_cast<cir::RecordType>(type)) {
     SmallVector<llvm::abi::FieldInfo> fields;
     bool isUnion = recTy.isUnion();
