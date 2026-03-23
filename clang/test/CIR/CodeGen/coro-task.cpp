@@ -517,7 +517,7 @@ folly::coro::Task<int> go4() {
 
 // Call invoker, which calls operator() indirectly (void ABI call + reload).
 // CIR:   %{{.*}} = cir.cast bitcast %[[LAMBDA2]] : !cir.ptr<!cir.func<(!cir.ptr<!s32i>) -> ![[IntTask]]>> -> !cir.ptr<!cir.func<(!cir.ptr<!s32i>)>>
-// CIR:   cir.call %{{.*}}(%[[ARG]]) : (!cir.ptr<!cir.func<(!cir.ptr<!s32i>)>>, !cir.ptr<!s32i>) -> ()
+// CIR:   cir.call %{{.*}}(%[[ARG]]) {arg_attrs = [{llvm.noundef}]} : (!cir.ptr<!cir.func<(!cir.ptr<!s32i>)>>, !cir.ptr<!s32i>) -> ()
 // CIR:   %{{.*}} = cir.alloca ![[IntTask]], !cir.ptr<![[IntTask]]>, ["ignored"]{{.*}}
 // CIR:   %{{.*}} = cir.load %{{.*}} : !cir.ptr<![[IntTask]]>, ![[IntTask]]{{.*}}
 // CIR:   cir.store{{.*}} %{{.*}}, %{{.*}} : ![[IntTask]], !cir.ptr<![[IntTask]]>

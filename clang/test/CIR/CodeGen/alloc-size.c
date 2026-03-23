@@ -34,14 +34,14 @@ void call_function_pointer(void) {
   malloc_function_pointer(NULL, 100);
   // CIR: %[[MALLOC_FN_PTR_GLOBAL:.*]] = cir.get_global @malloc_function_pointer
   // CIR: %[[MALLOC_FN_PTR:.+]] = cir.load{{.*}}%[[MALLOC_FN_PTR_GLOBAL]]
-  // CIR: cir.call %[[MALLOC_FN_PTR]]({{.*}}) {allocsize = array<i32: 1>}
+  // CIR: cir.call %[[MALLOC_FN_PTR]]({{.*}}) {allocsize = array<i32: 1>, arg_attrs = [{llvm.noundef}, {llvm.noundef}]}
   //
   // LLVM: %[[MALLOC_FN_PTR:.+]] = load ptr, ptr @malloc_function_pointer, align 8
   // LLVM: call ptr %[[MALLOC_FN_PTR]](ptr{{.*}} null, i32{{.*}} 100) [[INDIRECT_MALLOC_ATTR:#[0-9]+]]
   calloc_function_pointer(NULL, 2, 4);
   // CIR: %[[CALLOC_FN_PTR_GLOBAL:.*]] = cir.get_global @calloc_function_pointer
   // CIR: %[[CALLOC_FN_PTR:.+]] = cir.load{{.*}}%[[CALLOC_FN_PTR_GLOBAL]]
-  // CIR: cir.call %[[CALLOC_FN_PTR]]({{.*}}) {allocsize = array<i32: 1, 2>}
+  // CIR: cir.call %[[CALLOC_FN_PTR]]({{.*}}) {allocsize = array<i32: 1, 2>, arg_attrs = [{llvm.noundef}, {llvm.noundef}, {llvm.noundef}]}
   //
   // LLVM: %[[CALLOC_FN_PTR:.+]] = load ptr, ptr @calloc_function_pointer, align 8
   // LLVM: call ptr %[[CALLOC_FN_PTR]](ptr{{.*}} null, i32{{.*}} 2, i32{{.*}} 4) [[INDIRECT_CALLOC_ATTR:#[0-9]+]]
@@ -58,14 +58,14 @@ void call_function_pointer_typedef(void) {
   malloc_function_pointer_with_typedef(NULL, NULL, 200);
   // CIR: %[[INDIRECT_TYPEDEF_MALLOC_FN_PTR_GLOBAL:.*]] = cir.get_global @malloc_function_pointer_with_typedef
   // CIR: %[[INDIRECT_TYPEDEF_MALLOC_FN_PTR:.+]] = cir.load{{.*}}%[[INDIRECT_TYPEDEF_MALLOC_FN_PTR_GLOBAL]]
-  // CIR: cir.call %[[INDIRECT_TYPEDEF_MALLOC_FN_PTR]]({{.*}}) {allocsize = array<i32: 2>}
+  // CIR: cir.call %[[INDIRECT_TYPEDEF_MALLOC_FN_PTR]]({{.*}}) {allocsize = array<i32: 2>, arg_attrs = [{llvm.noundef}, {llvm.noundef}, {llvm.noundef}]}
   //
   // LLVM: %[[INDIRECT_TYPEDEF_MALLOC_FN_PTR:.+]] = load ptr, ptr @malloc_function_pointer_with_typedef, align 8
   // LLVM: call ptr %[[INDIRECT_TYPEDEF_MALLOC_FN_PTR]](ptr{{.*}} null, ptr{{.*}} null, i32{{.*}} 200) [[INDIRECT_TYPEDEF_MALLOC_ATTR:#[0-9]+]]
   calloc_function_pointer_with_typedef(NULL, NULL, 8, 4);
   // CIR: %[[INDIRECT_TYPEDEF_CALLOC_FN_PTR_GLOBAL:.*]] = cir.get_global @calloc_function_pointer_with_typedef
   // CIR: %[[INDIRECT_TYPEDEF_CALLOC_FN_PTR:.+]] = cir.load{{.*}}%[[INDIRECT_TYPEDEF_CALLOC_FN_PTR_GLOBAL]]
-  // CIR: cir.call %[[INDIRECT_TYPEDEF_CALLOC_FN_PTR]]({{.*}}) {allocsize = array<i32: 2, 3>}
+  // CIR: cir.call %[[INDIRECT_TYPEDEF_CALLOC_FN_PTR]]({{.*}}) {allocsize = array<i32: 2, 3>, arg_attrs = [{llvm.noundef}, {llvm.noundef}, {llvm.noundef}, {llvm.noundef}]}
   //
   // LLVM: %[[INDIRECT_TYPEDEF_CALLOC_FN_PTR:.+]] = load ptr, ptr @calloc_function_pointer_with_typedef, align 8
   // LLVM: call ptr %[[INDIRECT_TYPEDEF_CALLOC_FN_PTR]](ptr{{.*}} null, ptr{{.*}} null, i32{{.*}} 8, i32{{.*}} 4) [[INDIRECT_TYPEDEF_CALLOC_ATTR:#[0-9]+]]

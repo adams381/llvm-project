@@ -143,7 +143,7 @@ void call(Foo *obj, void (Foo::*func)(int), int arg) {
 // CIR-AFTER:     cir.yield %[[CALLEE_PTR]] : !cir.ptr<!cir.func<(!cir.ptr<!void>, !s32i)>>
 // CIR-AFTER:   }) : (!cir.bool) -> !cir.ptr<!cir.func<(!cir.ptr<!void>, !s32i)>>
 // CIR-AFTER:   %[[ARG:.*]] = cir.load{{.*}} %{{.*}} : !cir.ptr<!s32i>, !s32i
-// CIR-AFTER:   cir.call %[[CALLEE]](%[[ADJUSTED_THIS]], %[[ARG]]) : (!cir.ptr<!cir.func<(!cir.ptr<!void>, !s32i)>>, !cir.ptr<!void>, !s32i) -> ()
+// CIR-AFTER:   cir.call %[[CALLEE]](%[[ADJUSTED_THIS]], %[[ARG]]) {arg_attrs = [{llvm.noundef}, {llvm.noundef}]} : (!cir.ptr<!cir.func<(!cir.ptr<!void>, !s32i)>>, !cir.ptr<!void>, !s32i) -> ()
 
 // LLVM: define {{.*}} void @_Z4callP3FooMS_FviEi(ptr noundef %{{.*}}, i64 %{{.*}}, i64 %{{.*}}, i32 noundef %{{.*}})
 // LLVM:   %{{.*}} = alloca { i64, i64 }

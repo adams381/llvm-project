@@ -139,7 +139,7 @@ Derived::Derived(const void *inVoid) { squawk(); }
 // CIR:        %[[VPTR_BASE:.*]] = cir.load{{.*}} %[[VPTR_BASE_ADDR]] : !cir.ptr<!cir.vptr>, !cir.vptr
 // CIR:        %[[SQUAWK_FN_ADDR:.*]] = cir.vtable.get_virtual_fn_addr %[[VPTR_BASE]][0] : !cir.vptr -> !cir.ptr<!cir.ptr<!cir.func<(!cir.ptr<!rec_Derived>)>>>
 // CIR:        %[[SQUAWK:.*]] = cir.load{{.*}} %[[SQUAWK_FN_ADDR]] : !cir.ptr<!cir.ptr<!cir.func<(!cir.ptr<!rec_Derived>)>>>, !cir.ptr<!cir.func<(!cir.ptr<!rec_Derived>)>>
-// CIR:        cir.call %[[SQUAWK]](%[[THIS]]) : (!cir.ptr<!cir.func<(!cir.ptr<!rec_Derived>)>>, !cir.ptr<!rec_Derived>) -> ()
+// CIR:        cir.call %[[SQUAWK]](%[[THIS]]) {arg_attrs = [{llvm.noundef}]} : (!cir.ptr<!cir.func<(!cir.ptr<!rec_Derived>)>>, !cir.ptr<!rec_Derived>) -> ()
 // CIR:        cir.return
 
 // LLVM: define {{.*}} void @_ZN7DerivedC2EPKv(ptr noundef nonnull align 8 dereferenceable(8) %[[THIS_ARG:.*]], ptr noundef %[[VTT_ARG:.*]], ptr noundef %[[INVOID_ARG:.*]])
@@ -226,7 +226,7 @@ Derived::Derived(const void *inVoid) { squawk(); }
 // CIR:   %[[VPTR:.*]] = cir.load{{.*}} %[[VPTR_ADDR]] : !cir.ptr<!cir.vptr>, !cir.vptr
 // CIR:   %[[VIRTUAL_FN_ADDR:.*]] = cir.vtable.get_virtual_fn_addr %[[VPTR]][0] : !cir.vptr -> !cir.ptr<!cir.ptr<!cir.func<(!cir.ptr<!rec_Base>)>>>
 // CIR:   %[[VIRTUAL_FN:.*]] = cir.load{{.*}} %[[VIRTUAL_FN_ADDR]] : !cir.ptr<!cir.ptr<!cir.func<(!cir.ptr<!rec_Base>)>>>, !cir.ptr<!cir.func<(!cir.ptr<!rec_Base>)>>
-// CIR:   cir.call %[[VIRTUAL_FN]](%[[THIS]]) : (!cir.ptr<!cir.func<(!cir.ptr<!rec_Base>)>>, !cir.ptr<!rec_Base>) -> ()
+// CIR:   cir.call %[[VIRTUAL_FN]](%[[THIS]]) {arg_attrs = [{llvm.noundef}]} : (!cir.ptr<!cir.func<(!cir.ptr<!rec_Base>)>>, !cir.ptr<!rec_Base>) -> ()
 // CIR:   cir.return
 
 // LLVM: define {{.*}} void @_ZN4BaseC2Ev(ptr noundef nonnull align 8 dereferenceable(8) %[[THIS_ARG:.*]])
@@ -269,7 +269,7 @@ Derived::Derived(const void *inVoid) { squawk(); }
 // CIR:   %[[VPTR:.*]] = cir.load{{.*}} %[[VPTR_ADDR]] : !cir.ptr<!cir.vptr>, !cir.vptr
 // CIR:   %[[SQUAWK_ADDR:.*]] = cir.vtable.get_virtual_fn_addr %[[VPTR]][0] : !cir.vptr -> !cir.ptr<!cir.ptr<!cir.func<(!cir.ptr<!rec_Derived>)>>>
 // CIR:   %[[SQUAWK:.*]] = cir.load{{.*}} %[[SQUAWK_ADDR]] : !cir.ptr<!cir.ptr<!cir.func<(!cir.ptr<!rec_Derived>)>>>, !cir.ptr<!cir.func<(!cir.ptr<!rec_Derived>)>>
-// CIR:   cir.call %[[SQUAWK]](%[[THIS]])
+// CIR:   cir.call %[[SQUAWK]](%[[THIS]]) {arg_attrs = [{llvm.noundef}]}
 // CIR:   cir.return
 
 // LLVM: define {{.*}} void @_ZN7DerivedC1EPKv(ptr noundef nonnull align 8 dereferenceable(8) %[[THIS_ARG:.*]], ptr noundef %[[INVOID_ARG:.*]])

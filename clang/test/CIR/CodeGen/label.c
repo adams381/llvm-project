@@ -190,7 +190,7 @@ void foo() {
 // CIR:     %{{.+}} = cir.get_global @get : !cir.ptr<!cir.func<(...) -> !rec_S>>{{.*}}
 // CIR:     %{{.+}} = cir.cast bitcast %{{.+}} : !cir.ptr<!cir.func<(...) -> !rec_S>> -> !cir.ptr<!cir.func<() -> !rec_S>>{{.*}}
 // CIR:     %{{.+}} = cir.cast bitcast %{{.+}} : !cir.ptr<!cir.func<() -> !rec_S>> -> !cir.ptr<!cir.func<()>>{{.*}}
-// CIR:     cir.call %{{.+}}() : (!cir.ptr<!cir.func<()>>) -> (){{.*}}
+// CIR:     cir.call %{{.+}}() {arg_attrs = []} : (!cir.ptr<!cir.func<()>>) -> (){{.*}}
 // CIR:     %{{.+}} = cir.alloca !rec_S, !cir.ptr<!rec_S>, ["ignored"]{{.*}}
 // CIR:     %{{.+}} = cir.load %{{.+}} : !cir.ptr<!rec_S>, !rec_S{{.*}}
 // CIR:     cir.store{{.*}} %{{.+}}, %{{.+}} : !rec_S, !cir.ptr<!rec_S>{{.*}}

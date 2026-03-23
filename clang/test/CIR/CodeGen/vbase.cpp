@@ -75,7 +75,7 @@ void ppp() { B b; }
 // CIR:   %[[BASE_VPTR:.+]] = cir.load {{.*}} %[[BASE_VPTR_PTR]] : !cir.ptr<!cir.vptr>, !cir.vptr
 // CIR:   %[[SLOT_PTR:.+]] = cir.vtable.get_virtual_fn_addr %[[BASE_VPTR]][0] : !cir.vptr -> !cir.ptr<!cir.ptr<!cir.func<(!cir.ptr<!rec_Base>)>>>
 // CIR:   %[[FN:.+]] = cir.load {{.*}} %[[SLOT_PTR]] : !cir.ptr<!cir.ptr<!cir.func<(!cir.ptr<!rec_Base>)>>>, !cir.ptr<!cir.func<(!cir.ptr<!rec_Base>)>>
-// CIR:   cir.call %[[FN]](%[[BASE_THIS]]) : (!cir.ptr<!cir.func<(!cir.ptr<!rec_Base>)>>, !cir.ptr<!rec_Base>) -> ()
+// CIR:   cir.call %[[FN]](%[[BASE_THIS]]) {arg_attrs = [{llvm.noundef}]} : (!cir.ptr<!cir.func<(!cir.ptr<!rec_Base>)>>, !cir.ptr<!rec_Base>) -> ()
 // CIR:   cir.return
 
 // CIR: cir.func {{.*}}@_Z1gv()
@@ -86,7 +86,7 @@ void ppp() { B b; }
 // CIR:   %[[BASE_VPTR_2:.+]] = cir.load {{.*}} %[[BASE_VPTR_PTR_2]] : !cir.ptr<!cir.vptr>, !cir.vptr
 // CIR:   %[[SLOT_PTR_2:.+]] = cir.vtable.get_virtual_fn_addr %[[BASE_VPTR_2]][0] : !cir.vptr -> !cir.ptr<!cir.ptr<!cir.func<(!cir.ptr<!rec_Base>)>>>
 // CIR:   %[[FN_2:.+]] = cir.load {{.*}} %[[SLOT_PTR_2]] : !cir.ptr<!cir.ptr<!cir.func<(!cir.ptr<!rec_Base>)>>>, !cir.ptr<!cir.func<(!cir.ptr<!rec_Base>)>>
-// CIR:   cir.call %[[FN_2]](%[[BASE_THIS_2]]) : (!cir.ptr<!cir.func<(!cir.ptr<!rec_Base>)>>, !cir.ptr<!rec_Base>) -> ()
+// CIR:   cir.call %[[FN_2]](%[[BASE_THIS_2]]) {arg_attrs = [{llvm.noundef}]} : (!cir.ptr<!cir.func<(!cir.ptr<!rec_Base>)>>, !cir.ptr<!rec_Base>) -> ()
 // CIR:   cir.return
 
 // LLVM: define {{.*}}void @_Z1fv(){{.*}}

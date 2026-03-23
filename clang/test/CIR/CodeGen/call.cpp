@@ -53,7 +53,7 @@ int f7(int (*ptr)(int, int)) {
 // CIR:         %[[#ptr:]] = cir.load{{.*}} %{{.+}} : !cir.ptr<!cir.ptr<!cir.func<(!s32i, !s32i) -> !s32i>>>, !cir.ptr<!cir.func<(!s32i, !s32i) -> !s32i>>
 // CIR-NEXT:    %[[#a:]] = cir.const #cir.int<1> : !s32i
 // CIR-NEXT:    %[[#b:]] = cir.const #cir.int<2> : !s32i
-// CIR-NEXT:    %{{.+}} = cir.call %[[#ptr]](%[[#a]], %[[#b]]) : (!cir.ptr<!cir.func<(!s32i, !s32i) -> !s32i>>, !s32i, !s32i) -> !s32i
+// CIR-NEXT:    %{{.+}} = cir.call %[[#ptr]](%[[#a]], %[[#b]]) {arg_attrs = [{llvm.noundef}, {llvm.noundef}], res_attrs = [{llvm.noundef}]} : (!cir.ptr<!cir.func<(!s32i, !s32i) -> !s32i>>, !s32i, !s32i) -> !s32i
 
 // LLVM-LABEL: define{{.*}} noundef i32 @_Z2f7PFiiiE(ptr noundef %{{.*}}){{.*}}
 // LLVM:         %[[#ptr:]] = load ptr, ptr %{{.+}}

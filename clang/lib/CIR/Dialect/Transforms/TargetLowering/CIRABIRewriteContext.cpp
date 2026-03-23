@@ -611,10 +611,85 @@ LogicalResult CIRABIRewriteContext::rewriteFunctionDefinition(
   return success();
 }
 
+/// Set ABI attributes (noundef, signext/zeroext) directly on a call
+/// operation based on the ABI classification.  Used for indirect calls
+/// where there is no callee declaration to copy attributes from.
+static void setCallSiteABIAttrs(cir::CallOp call,
+                                const FunctionClassification &fc, bool hasSRet,
+                                OpBuilder &rewriter) {
+  MLIRContext *ctx = call->getContext();
+  auto noundefAttr =
+      rewriter.getNamedAttr("llvm.noundef", rewriter.getUnitAttr());
+
+  unsigned sretOff = hasSRet ? 1 : 0;
+  unsigned numArgs = call.getArgOperands().size();
+  SmallVector<Attribute> argAttrDicts(numArgs + sretOff,
+                                      DictionaryAttr::get(ctx));
+
+  if (hasSRet)
+    argAttrDicts[0] = DictionaryAttr::get(ctx, {noundefAttr});
+
+  for (auto [idx, argClass] : llvm::enumerate(fc.ArgInfos)) {
+    unsigned newIdx = idx + sretOff;
+    if (newIdx >= argAttrDicts.size())
+      break;
+
+    SmallVector<NamedAttribute> attrs;
+    if (argClass.Kind == ArgKind::Indirect && argClass.ByVal)
+      attrs.push_back(noundefAttr);
+    else if (argClass.Kind == ArgKind::Extend ||
+             argClass.Kind == ArgKind::Direct)
+      attrs.push_back(noundefAttr);
+
+    if (argClass.Kind == ArgKind::Extend) {
+      StringRef extName = argClass.SignExtend ? "llvm.signext" : "llvm.zeroext";
+      attrs.push_back(rewriter.getNamedAttr(extName, rewriter.getUnitAttr()));
+    }
+
+    if (!attrs.empty())
+      argAttrDicts[newIdx] = DictionaryAttr::get(ctx, attrs);
+  }
+
+  call->setAttr("arg_attrs", ArrayAttr::get(ctx, argAttrDicts));
+
+  if (fc.ReturnInfo.Kind == ArgKind::Extend) {
+    SmallVector<NamedAttribute> retAttrs;
+    retAttrs.push_back(noundefAttr);
+    StringRef extName =
+        fc.ReturnInfo.SignExtend ? "llvm.signext" : "llvm.zeroext";
+    retAttrs.push_back(rewriter.getNamedAttr(extName, rewriter.getUnitAttr()));
+    SmallVector<Attribute> resAttrDicts;
+    resAttrDicts.push_back(DictionaryAttr::get(ctx, retAttrs));
+    call->setAttr("res_attrs", ArrayAttr::get(ctx, resAttrDicts));
+  } else if (fc.ReturnInfo.Kind == ArgKind::Direct &&
+             call.getNumResults() > 0) {
+    auto modOp = call->getParentOfType<mlir::ModuleOp>();
+    bool isCXX = false;
+    if (auto langAttr = modOp->getAttrOfType<cir::SourceLanguageAttr>(
+            cir::CIRDialect::getSourceLanguageAttrName()))
+      isCXX = langAttr.isCXX();
+    if (isCXX) {
+      Type retTy = call.getResult().getType();
+      if (!isa<cir::RecordType, cir::ArrayType>(retTy)) {
+        SmallVector<Attribute> resAttrDicts;
+        resAttrDicts.push_back(DictionaryAttr::get(ctx, {noundefAttr}));
+        call->setAttr("res_attrs", ArrayAttr::get(ctx, resAttrDicts));
+      }
+    }
+  }
+}
+
 LogicalResult CIRABIRewriteContext::rewriteCallSite(
     Operation *callOp, const FunctionClassification &fc, OpBuilder &rewriter) {
   auto call = cast<cir::CallOp>(callOp);
   bool hasSRet = fc.ReturnInfo.Kind == ArgKind::Indirect;
+
+  // For indirect calls, set ABI attributes (noundef, signext/zeroext)
+  // directly on the call.  For direct calls, LowerToLLVM copies these
+  // from the callee declaration.  We do this before arg processing so
+  // that if no coercion is needed the attrs are still applied.
+  if (call.isIndirect())
+    setCallSiteABIAttrs(call, fc, hasSRet, rewriter);
 
   // Coerce arguments at the call site (e.g., extend i8 to i32, or
   // bitcast a struct to its coerced integer type).
