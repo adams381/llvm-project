@@ -1960,9 +1960,15 @@ rewriteCallOrInvoke(mlir::Operation *op, mlir::ValueRange callOperands,
       }
     }
   } else {
+    // TODO: This block should be moved to CallConvLowering's
+    // rewriteCallSite so all ABI attribute logic lives in one
+    // layer.  That requires separating Extend-as-type-coercion
+    // (for declarations) from Extend-as-signext-attribute (for
+    // call sites where the function pointer type is fixed).
+    //
     // Indirect call: no callee declaration to copy from.  Derive
-    // type-based attributes (noundef) from the CIR function type
-    // embedded in the function pointer operand.
+    // type-based attributes (noundef, signext/zeroext) from the
+    // CIR function type embedded in the function pointer operand.
     auto calleeTy = op->getOperands().front().getType();
     if (auto ptrTy = dyn_cast<cir::PointerType>(calleeTy)) {
       if (auto funcTy = dyn_cast<cir::FuncType>(ptrTy.getPointee())) {
@@ -3490,14 +3496,6 @@ static void prepareTypeConverter(mlir::LLVMTypeConverter &converter,
   });
   converter.addConversion([&](cir::VoidType type) -> mlir::Type {
     return mlir::LLVM::LLVMVoidType::get(type.getContext());
-  });
-  converter.addConversion([&](cir::DataMemberType type) -> mlir::Type {
-    return mlir::IntegerType::get(type.getContext(), 64);
-  });
-  converter.addConversion([&](cir::MethodType type) -> mlir::Type {
-    auto i64 = mlir::IntegerType::get(type.getContext(), 64);
-    return mlir::LLVM::LLVMStructType::getLiteral(type.getContext(),
-                                                  {i64, i64});
   });
 }
 
