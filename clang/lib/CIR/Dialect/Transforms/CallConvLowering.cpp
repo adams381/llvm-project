@@ -357,14 +357,20 @@ static const llvm::abi::Type *mapCIRType(mlir::Type type,
       if (!isUnion)
         offsetBits += fieldSize;
     }
-    // Use data size (excluding tail alignment padding) for the
+    // Use data size rounded up to the eightbyte boundary for the
     // ABI library.  CIR padded records include explicit tail
     // padding members that inflate the layout size beyond the
-    // data size.  The ABI classifier uses the data size to
-    // determine how many eightbytes to classify.
+    // data size.  Rounding to 64-bit alignment avoids partial
+    // eightbytes (e.g. i40 instead of i64 for f2_s1) while
+    // still excluding alignment-only trailing padding that would
+    // inflate the eightbyte count (e.g. aligned(16) structs).
     uint64_t dataSizeBits = recTy.getDataSizeInBits();
-    llvm::TypeSize size = dataSizeBits ? llvm::TypeSize::getFixed(dataSizeBits)
-                                       : dl.getTypeSizeInBits(type);
+    llvm::TypeSize size = dl.getTypeSizeInBits(type);
+    if (dataSizeBits) {
+      uint64_t layoutBits = size.getFixedValue();
+      uint64_t rounded = llvm::alignTo(dataSizeBits, 64);
+      size = llvm::TypeSize::getFixed(std::min(rounded, layoutBits));
+    }
     uint64_t rawAlign = recTy.getRecordAlignInBytes();
     if (!rawAlign)
       rawAlign = dl.getTypeABIAlignment(type);
