@@ -1843,6 +1843,12 @@ cir::FuncOp CIRGenModule::getAddrOfFunction(clang::GlobalDecl gd,
   return func;
 }
 
+cir::FuncOp CIRGenModule::getAddrOfThunk(StringRef name, mlir::Type fnTy,
+                                         GlobalDecl gd) {
+  return getOrCreateCIRFunction(name, fnTy, gd, /*ForVTable=*/true,
+                                /*DontDefer=*/true, /*IsThunk=*/true);
+}
+
 static std::string getMangledNameImpl(CIRGenModule &cgm, GlobalDecl gd,
                                       const NamedDecl *nd) {
   SmallString<256> buffer;
@@ -2714,9 +2720,6 @@ cir::FuncOp CIRGenModule::getOrCreateCIRFunction(
     bool dontDefer, bool isThunk, ForDefinition_t isForDefinition,
     mlir::ArrayAttr extraAttrs) {
   const Decl *d = gd.getDecl();
-
-  if (isThunk)
-    errorNYI(d->getSourceRange(), "getOrCreateCIRFunction: thunk");
 
   // In what follows, we continue past 'errorNYI' as if nothing happened because
   // the rest of the implementation is better than doing nothing.

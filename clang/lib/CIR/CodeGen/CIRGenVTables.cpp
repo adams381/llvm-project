@@ -13,15 +13,49 @@
 #include "CIRGenVTables.h"
 
 #include "CIRGenCXXABI.h"
+#include "CIRGenCall.h"
+#include "CIRGenFunction.h"
 #include "CIRGenModule.h"
+#include "mlir/IR/Builders.h"
 #include "mlir/IR/Types.h"
+#include "clang/AST/Mangle.h"
 #include "clang/AST/VTTBuilder.h"
 #include "clang/AST/VTableBuilder.h"
+#include "clang/CIR/Dialect/IR/CIROpsEnums.h"
+#include "llvm/ADT/SmallString.h"
 #include "llvm/ADT/SmallVector.h"
+#include "llvm/Support/raw_ostream.h"
 
 using namespace llvm;
 using namespace clang;
 using namespace clang::CIRGen;
+
+static bool shouldEmitVTableThunk(const CIRGenModule &cgm,
+                                  const CXXMethodDecl *md, bool isUnprototyped,
+                                  bool forVTable) {
+  if (cgm.getTarget().getCXXABI().isMicrosoft())
+    return true;
+
+  if (forVTable)
+    return cgm.getCodeGenOpts().OptimizationLevel && !isUnprototyped;
+
+  return true;
+}
+
+static void setThunkProperties(CIRGenModule &cgm, const ThunkInfo &thunk,
+                               cir::FuncOp thunkFn, bool forVTable,
+                               GlobalDecl gd) {
+  cgm.setFunctionLinkage(gd, thunkFn);
+  cgm.getCXXABI().setThunkLinkage(thunkFn, forVTable, gd,
+                                  !thunk.Return.isEmpty());
+  cgm.setGVProperties(thunkFn.getOperation(), cast<NamedDecl>(gd.getDecl()));
+  if (!cgm.getCXXABI().exportThunk()) {
+    assert(!cir::MissingFeatures::setDLLStorageClass());
+    cgm.setDSOLocal(thunkFn.getOperation());
+  }
+  if (cgm.supportsCOMDAT() && thunkFn.isWeakForLinker())
+    thunkFn.setComdat(true);
+}
 
 CIRGenVTables::CIRGenVTables(CIRGenModule &cgm)
     : cgm(cgm), vtContext(cgm.getASTContext().getVTableContext()) {}
@@ -161,8 +195,13 @@ mlir::Attribute CIRGenVTables::getVTableComponent(
     } else if (nextVTableThunkIndex < layout.vtable_thunks().size() &&
                layout.vtable_thunks()[nextVTableThunkIndex].first ==
                    componentIndex) {
-      cgm.errorNYI("getVTableComponent: CK_FunctionPointer: thunk");
-      return mlir::Attribute();
+      const ThunkInfo &thunkInfo =
+          layout.vtable_thunks()[nextVTableThunkIndex].second;
+      ++nextVTableThunkIndex;
+      cir::FuncOp thunkFn = maybeEmitThunk(gd, thunkInfo, /*ForVTable=*/true);
+      return cir::GlobalViewAttr::get(
+          builder.getUInt8PtrTy(),
+          mlir::FlatSymbolRefAttr::get(thunkFn.getSymNameAttr()));
     } else {
       // Otherwise we can use the method definition directly.
       cir::FuncType fnTy = cgm.getTypes().getFunctionTypeForVTable(gd);
@@ -524,5 +563,81 @@ void CIRGenVTables::emitThunks(GlobalDecl gd) {
   if (!thunkInfoVector)
     return;
 
-  cgm.errorNYI(md->getSourceRange(), "emitThunks");
+  for (const ThunkInfo &thunk : *thunkInfoVector)
+    (void)maybeEmitThunk(gd, thunk, /*ForVTable=*/false);
+}
+
+cir::FuncOp CIRGenVTables::maybeEmitThunk(GlobalDecl gd, const ThunkInfo &ti,
+                                          bool forVTable) {
+  const CXXMethodDecl *md = cast<CXXMethodDecl>(gd.getDecl());
+
+  SmallString<256> name;
+  MangleContext &mctx = cgm.getCXXABI().getMangleContext();
+  llvm::raw_svector_ostream out(name);
+
+  if (const auto *dd = dyn_cast<CXXDestructorDecl>(md)) {
+    cast<ItaniumMangleContext>(mctx).mangleCXXDtorThunk(
+        dd, gd.getDtorType(), ti, /*elideOverrideInfo=*/false, out);
+  } else {
+    mctx.mangleThunk(md, ti, /*elideOverrideInfo=*/false, out);
+  }
+
+  if (cgm.getASTContext().useAbbreviatedThunkName(gd, name.str())) {
+    name.clear();
+    llvm::raw_svector_ostream outAbbr(name);
+    if (const auto *dd = dyn_cast<CXXDestructorDecl>(md))
+      cast<ItaniumMangleContext>(mctx).mangleCXXDtorThunk(
+          dd, gd.getDtorType(), ti, /*elideOverrideInfo=*/true, outAbbr);
+    else
+      mctx.mangleThunk(md, ti, /*elideOverrideInfo=*/true, outAbbr);
+  }
+
+  cir::FuncType thunkVTableTy = cgm.getTypes().getFunctionTypeForVTable(gd);
+  cir::FuncOp thunk = cgm.getAddrOfThunk(name, thunkVTableTy, gd);
+
+  if (cgm.getTarget().getCXXABI().isMicrosoft()) {
+    cgm.errorNYI(md->getSourceRange(), "maybeEmitThunk: MS ABI");
+    return thunk;
+  }
+
+  bool isUnprototyped = !cgm.getTypes().isFuncTypeConvertible(
+      md->getType()->castAs<FunctionType>());
+
+  if (!shouldEmitVTableThunk(cgm, md, isUnprototyped, forVTable))
+    return thunk;
+
+  const CIRGenFunctionInfo &fnInfo =
+      cgm.getTypes().arrangeGlobalDeclaration(gd);
+  cir::FuncType thunkFnTy = cgm.getTypes().getFunctionType(fnInfo);
+
+  if (thunk.getFunctionType() != thunkFnTy) {
+    cgm.errorNYI(md->getSourceRange(),
+                 "maybeEmitThunk: thunk function type mismatch");
+    return thunk;
+  }
+
+  bool abiHasKeyFunctions = cgm.getTarget().getCXXABI().hasKeyFunctions();
+  bool useAvailableExternallyLinkage = forVTable && abiHasKeyFunctions;
+
+  if (!thunk.isDeclaration()) {
+    if (!abiHasKeyFunctions || useAvailableExternallyLinkage)
+      return thunk;
+    setThunkProperties(cgm, ti, thunk, forVTable, gd);
+    return thunk;
+  }
+
+  if (!isUnprototyped && fnInfo.isVariadic()) {
+    cgm.errorNYI(md->getSourceRange(), "thunk: variadic method");
+    return thunk;
+  }
+
+  cgm.setCIRFunctionAttributesForDefinition(cast<FunctionDecl>(gd.getDecl()),
+                                            thunk);
+  CIRGenFunction cgf(cgm, cgm.getBuilder());
+  CIRGenModule::CurCGFScope curCgfScope(cgm, &cgf);
+  mlir::OpBuilder::InsertionGuard guard(cgm.getBuilder());
+  cgf.generateThunk(thunk, fnInfo, gd, ti, isUnprototyped);
+
+  setThunkProperties(cgm, ti, thunk, forVTable, gd);
+  return thunk;
 }

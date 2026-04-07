@@ -32,6 +32,7 @@
 #include "clang/AST/Type.h"
 #include "clang/Basic/OperatorKinds.h"
 #include "clang/Basic/TargetBuiltins.h"
+#include "clang/Basic/Thunk.h"
 #include "clang/CIR/Dialect/IR/CIRDialect.h"
 #include "clang/CIR/MissingFeatures.h"
 #include "clang/CIR/TypeEvaluationKind.h"
@@ -951,6 +952,15 @@ public:
 
   cir::FuncOp generateCode(clang::GlobalDecl gd, cir::FuncOp fn,
                            cir::FuncType funcType);
+
+  void generateThunk(cir::FuncOp fn, const CIRGenFunctionInfo &fnInfo,
+                     clang::GlobalDecl gd, const ThunkInfo &thunk,
+                     bool isUnprototyped);
+
+  void emitCallAndReturnForThunk(const CIRGenCallee &callee,
+                                 const ThunkInfo *thunk, bool isUnprototyped);
+
+  void finishThunk(clang::SourceLocation endLoc);
 
   clang::QualType buildFunctionArgList(clang::GlobalDecl gd,
                                        FunctionArgList &args);

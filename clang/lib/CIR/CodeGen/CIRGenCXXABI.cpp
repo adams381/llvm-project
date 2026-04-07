@@ -15,6 +15,7 @@
 #include "CIRGenFunction.h"
 
 #include "clang/AST/Decl.h"
+#include "clang/AST/DeclCXX.h"
 #include "clang/AST/ExprCXX.h"
 #include "clang/AST/GlobalDecl.h"
 
@@ -95,4 +96,11 @@ bool CIRGenCXXABI::requiresArrayCookie(const CXXNewExpr *e) {
     return true;
 
   return e->getAllocatedType().isDestructedType();
+}
+
+void CIRGenCXXABI::emitReturnFromThunk(CIRGenFunction &cgf, mlir::Location loc,
+                                       RValue rv, QualType resultType) {
+  assert(!isa<CXXDestructorDecl>(cgf.curGD.getDecl()) ||
+         !CIRGenFunction::hasAggregateEvaluationKind(resultType));
+  cgf.emitReturnOfRValue(loc, rv, resultType);
 }

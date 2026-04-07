@@ -23,6 +23,8 @@
 #include "clang/AST/ExprCXX.h"
 #include "clang/AST/GlobalDecl.h"
 #include "clang/AST/VTableBuilder.h"
+#include "clang/Basic/Thunk.h"
+#include "clang/CIR/Dialect/IR/CIROpsEnums.h"
 #include "clang/CIR/MissingFeatures.h"
 #include "llvm/Support/ErrorHandling.h"
 
@@ -30,6 +32,61 @@ using namespace clang;
 using namespace clang::CIRGen;
 
 namespace {
+
+static mlir::Value performTypeAdjustment(CIRGenFunction &cgf,
+                                         mlir::Location loc, Address initialPtr,
+                                         const CXXRecordDecl *unadjustedClass,
+                                         int64_t nonVirtualAdjustment,
+                                         int64_t virtualAdjustment,
+                                         bool isReturnAdjustment) {
+  CIRGenBuilderTy &builder = cgf.getBuilder();
+  CIRGenModule &cgm = cgf.cgm;
+
+  if (!nonVirtualAdjustment && !virtualAdjustment)
+    return initialPtr.emitRawPointer();
+
+  Address v = initialPtr.withElementType(builder, builder.getUInt8Ty());
+
+  if (nonVirtualAdjustment && !isReturnAdjustment) {
+    mlir::Value amt = builder.getSInt64(nonVirtualAdjustment, loc);
+    mlir::Value ptr = cir::PtrStrideOp::create(builder, loc, cgm.uInt8PtrTy,
+                                               v.getPointer(), amt);
+    v = Address(ptr, builder.getUInt8Ty(), v.getAlignment());
+  }
+
+  mlir::Value resultPtr;
+  if (virtualAdjustment) {
+    mlir::Value vtablePtr = cgf.getVTablePtr(loc, v, unadjustedClass);
+    mlir::Value vtableBytePtr =
+        builder.createBitcast(vtablePtr, cgm.uInt8PtrTy);
+    mlir::Value offsetPtrAmt = builder.getSInt64(virtualAdjustment, loc);
+    mlir::Value offsetAddr = cir::PtrStrideOp::create(
+        builder, loc, cgm.uInt8PtrTy, vtableBytePtr, offsetPtrAmt);
+
+    mlir::Value offset;
+    if (cgm.getItaniumVTableContext().isRelativeLayout()) {
+      cgm.errorNYI(loc, "thunk: relative vtable layout");
+      return initialPtr.emitRawPointer();
+    }
+    mlir::Value loadPtr =
+        builder.createBitcast(offsetAddr, builder.getPointerTo(cgm.ptrDiffTy));
+    offset = builder.createLoad(
+        loc, Address(loadPtr, cgm.ptrDiffTy, cgf.getPointerAlign()));
+
+    resultPtr = cir::PtrStrideOp::create(builder, loc, cgm.uInt8PtrTy,
+                                         v.emitRawPointer(), offset);
+  } else {
+    resultPtr = v.emitRawPointer();
+  }
+
+  if (nonVirtualAdjustment && isReturnAdjustment) {
+    mlir::Value amt = builder.getSInt64(nonVirtualAdjustment, loc);
+    resultPtr =
+        cir::PtrStrideOp::create(builder, loc, cgm.uInt8PtrTy, resultPtr, amt);
+  }
+
+  return resultPtr;
+}
 
 class CIRGenItaniumCXXABI : public CIRGenCXXABI {
 protected:
@@ -162,6 +219,21 @@ public:
   Address initializeArrayCookie(CIRGenFunction &cgf, Address newPtr,
                                 mlir::Value numElements, const CXXNewExpr *e,
                                 QualType elementType) override;
+
+  mlir::Value performThisAdjustment(CIRGenFunction &cgf, mlir::Location loc,
+                                    Address thisAddr,
+                                    const CXXRecordDecl *unadjustedThisClass,
+                                    const ThunkInfo &ti) override;
+
+  mlir::Value performReturnAdjustment(CIRGenFunction &cgf, mlir::Location loc,
+                                      Address retAddr,
+                                      const CXXRecordDecl *unadjustedRetClass,
+                                      const ReturnAdjustment &ra) override;
+
+  void setThunkLinkage(cir::FuncOp thunk, bool forVTable, GlobalDecl gd,
+                       bool returnAdjustment) override;
+
+  bool exportThunk() const override { return true; }
 
 protected:
   CharUnits getArrayCookieSizeImpl(QualType elementType) override;
@@ -1911,6 +1983,35 @@ static void emitCallToBadCast(CIRGenFunction &cgf, mlir::Location loc) {
 void CIRGenItaniumCXXABI::emitBadCastCall(CIRGenFunction &cgf,
                                           mlir::Location loc) {
   emitCallToBadCast(cgf, loc);
+}
+
+mlir::Value CIRGenItaniumCXXABI::performThisAdjustment(
+    CIRGenFunction &cgf, mlir::Location loc, Address thisAddr,
+    const CXXRecordDecl *unadjustedThisClass, const ThunkInfo &ti) {
+  return performTypeAdjustment(cgf, loc, thisAddr, unadjustedThisClass,
+                               ti.This.NonVirtual,
+                               ti.This.Virtual.Itanium.VCallOffsetOffset,
+                               /*isReturnAdjustment=*/false);
+}
+
+mlir::Value CIRGenItaniumCXXABI::performReturnAdjustment(
+    CIRGenFunction &cgf, mlir::Location loc, Address retAddr,
+    const CXXRecordDecl *unadjustedRetClass, const ReturnAdjustment &ra) {
+  return performTypeAdjustment(cgf, loc, retAddr, unadjustedRetClass,
+                               ra.NonVirtual,
+                               ra.Virtual.Itanium.VBaseOffsetOffset,
+                               /*isReturnAdjustment=*/true);
+}
+
+void CIRGenItaniumCXXABI::setThunkLinkage(cir::FuncOp thunk, bool forVTable,
+                                          GlobalDecl gd,
+                                          bool returnAdjustment) {
+  (void)returnAdjustment;
+  if (forVTable && !cir::isLocalLinkage(thunk.getLinkage()))
+    thunk.setLinkageAttr(cir::GlobalLinkageKindAttr::get(
+        &cgm.getMLIRContext(),
+        cir::GlobalLinkageKind::AvailableExternallyLinkage));
+  cgm.setGVProperties(thunk.getOperation(), cast<NamedDecl>(gd.getDecl()));
 }
 
 // TODO(cir): This could be shared with classic codegen.

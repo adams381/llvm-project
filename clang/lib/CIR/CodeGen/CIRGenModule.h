@@ -100,6 +100,26 @@ private:
 
   llvm::SmallVector<mlir::Attribute> globalScopeAsm;
 
+public:
+  /// Temporarily set \p curCGF for nested codegen (e.g. vtable thunks) so
+  /// createCIRFunction inserts new \c cir.func ops relative to the right
+  /// enclosing function.  Restores the previous pointer on destruction.
+  class CurCGFScope {
+    CIRGenModule &module;
+    CIRGenFunction *oldCGF;
+
+  public:
+    CurCGFScope(CIRGenModule &m, CIRGenFunction *cgf)
+        : module(m), oldCGF(m.curCGF) {
+      m.curCGF = cgf;
+    }
+    ~CurCGFScope() { module.curCGF = oldCGF; }
+
+    CurCGFScope(const CurCGFScope &) = delete;
+    CurCGFScope &operator=(const CurCGFScope &) = delete;
+  };
+
+private:
   void createCUDARuntime();
 
 public:
@@ -462,6 +482,9 @@ public:
   getAddrOfFunction(clang::GlobalDecl gd, mlir::Type funcType = nullptr,
                     bool forVTable = false, bool dontDefer = false,
                     ForDefinition_t isForDefinition = NotForDefinition);
+
+  cir::FuncOp getAddrOfThunk(llvm::StringRef name, mlir::Type fnTy,
+                             clang::GlobalDecl gd);
 
   mlir::Operation *
   getAddrOfGlobal(clang::GlobalDecl gd,

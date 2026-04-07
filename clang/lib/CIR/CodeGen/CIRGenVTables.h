@@ -16,6 +16,7 @@
 #include "mlir/IR/Types.h"
 #include "clang/AST/GlobalDecl.h"
 #include "clang/AST/VTableBuilder.h"
+#include "clang/Basic/Thunk.h"
 #include "clang/CIR/Dialect/IR/CIRDialect.h"
 
 namespace clang {
@@ -50,6 +51,9 @@ class CIRGenVTables {
   getVTableComponent(const VTableLayout &layout, unsigned componentIndex,
                      mlir::Attribute rtti, unsigned &nextVTableThunkIndex,
                      unsigned vtableAddressPoint, bool vtableHasLocalLinkage);
+
+  cir::FuncOp maybeEmitThunk(GlobalDecl gd, const ThunkInfo &ti,
+                             bool forVTable);
 
   mlir::Type getVTableComponentType();
 

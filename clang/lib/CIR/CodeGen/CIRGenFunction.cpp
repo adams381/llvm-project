@@ -17,6 +17,7 @@
 #include "CIRGenValue.h"
 #include "mlir/IR/Location.h"
 #include "clang/AST/Attr.h"
+#include "clang/AST/DeclCXX.h"
 #include "clang/AST/ExprCXX.h"
 #include "clang/AST/GlobalDecl.h"
 #include "clang/CIR/MissingFeatures.h"
@@ -500,7 +501,7 @@ void CIRGenFunction::startFunction(GlobalDecl gd, QualType returnType,
   didCallStackSave = false;
   curCodeDecl = d;
   const auto *fd = dyn_cast_or_null<FunctionDecl>(d);
-  curFuncDecl = d->getNonClosureContext();
+  curFuncDecl = d ? d->getNonClosureContext() : nullptr;
 
   prologueCleanupDepth = ehStack.stable_begin();
 
@@ -1401,6 +1402,172 @@ Address CIRGenFunction::emitVAListRef(const Expr *e) {
   if (getContext().getBuiltinVaListType()->isArrayType())
     return emitPointerWithAlignment(e);
   return emitLValue(e).getAddress();
+}
+
+namespace {
+
+static RValue performReturnAdjustmentThunk(CIRGenFunction &cgf,
+                                           mlir::Location loc,
+                                           QualType resultType, RValue rv,
+                                           const ReturnAdjustment &retAdj) {
+  bool nullCheck = !resultType->isReferenceType();
+  mlir::Value returnVal = rv.getValue();
+
+  if (nullCheck) {
+    cgf.cgm.errorNYI(loc, "thunk: return adjustment with null check");
+    return rv;
+  }
+
+  const CXXRecordDecl *classDecl =
+      resultType->getPointeeType()->getAsCXXRecordDecl();
+  CharUnits classAlign = cgf.cgm.getClassPointerAlignment(classDecl);
+  Address retAddr(returnVal,
+                  cgf.convertTypeForMem(resultType->getPointeeType()),
+                  classAlign);
+  mlir::Value adjusted = cgf.cgm.getCXXABI().performReturnAdjustment(
+      cgf, loc, retAddr, classDecl, retAdj);
+  return RValue::get(adjusted);
+}
+
+} // namespace
+
+void CIRGenFunction::finishThunk(SourceLocation endLoc) {
+  curCodeDecl = nullptr;
+  curFuncDecl = nullptr;
+  finishFunction(endLoc);
+}
+
+void CIRGenFunction::emitCallAndReturnForThunk(const CIRGenCallee &callee,
+                                               const ThunkInfo *thunk,
+                                               bool isUnprototyped) {
+  const CXXMethodDecl *md = cast<CXXMethodDecl>(curGD.getDecl());
+  mlir::Location loc = getLoc(md->getLocation());
+
+  const CXXRecordDecl *thisValueClass =
+      md->getThisType()->getPointeeCXXRecordDecl();
+  if (thunk)
+    thisValueClass = thunk->ThisType->getPointeeCXXRecordDecl();
+
+  QualType thisType = md->getThisType();
+
+  Address thisAddr = loadCXXThisAddress();
+  mlir::Value adjustedThis =
+      thunk ? cgm.getCXXABI().performThisAdjustment(*this, loc, thisAddr,
+                                                    thisValueClass, *thunk)
+            : thisAddr.emitRawPointer();
+
+  mlir::Type formalThisPtrTy = convertType(thisType);
+  if (adjustedThis.getType() != formalThisPtrTy)
+    adjustedThis = builder.createBitcast(adjustedThis, formalThisPtrTy);
+
+  const CIRGenFunctionInfo &curFnInfo =
+      cgm.getTypes().arrangeGlobalDeclaration(curGD);
+
+  if (curFnInfo.isVariadic() || isUnprototyped) {
+    if (thunk && !thunk->Return.isEmpty()) {
+      if (isUnprototyped)
+        cgm.errorNYI(md->getSourceRange(),
+                     "return-adjusting thunk with incomplete parameter type");
+      else
+        cgm.errorNYI(md->getSourceRange(), "return-adjusting variadic thunk");
+      return;
+    }
+    cgm.errorNYI(md->getSourceRange(),
+                 "thunk: variadic or unprototyped musttail forwarding");
+    return;
+  }
+
+  CallArgList callArgs;
+  callArgs.add(RValue::get(adjustedThis), thisType);
+
+  if (isa<CXXDestructorDecl>(md))
+    cgm.getCXXABI().adjustCallArgsForDestructorThunk(*this, curGD, callArgs);
+
+  for (const ParmVarDecl *pd : md->parameters())
+    emitDelegateCallArg(callArgs, pd, SourceLocation());
+
+  const FunctionProtoType *fpt = md->getType()->castAs<FunctionProtoType>();
+  const CIRGenFunctionInfo &callFnInfo = cgm.getTypes().arrangeCXXMethodCall(
+      callArgs, fpt, RequiredArgs::getFromProtoWithExtraSlots(fpt, 1),
+      callArgs.size() - 1);
+
+  QualType resultType = cgm.getCXXABI().hasThisReturn(curGD) ? thisType
+                        : cgm.getCXXABI().hasMostDerivedReturn(curGD)
+                            ? getContext().VoidPtrTy
+                            : fpt->getReturnType();
+
+  (void)callFnInfo;
+  ReturnValueSlot slot;
+  if (!resultType->isVoidType() && hasAggregateEvaluationKind(resultType)) {
+    cgm.errorNYI(loc, "thunk: aggregate return");
+    return;
+  }
+
+  cir::CIRCallOpInterface callOrTry = nullptr;
+  RValue rv = emitCall(callFnInfo, callee, slot, callArgs, &callOrTry, loc);
+
+  if (thunk && !thunk->Return.isEmpty())
+    rv =
+        performReturnAdjustmentThunk(*this, loc, resultType, rv, thunk->Return);
+
+  if (!resultType->isVoidType() && slot.isNull())
+    cgm.getCXXABI().emitReturnFromThunk(*this, loc, rv, resultType);
+
+  finishThunk(md->getEndLoc());
+}
+
+void CIRGenFunction::generateThunk(cir::FuncOp fn,
+                                   const CIRGenFunctionInfo &fnInfo,
+                                   GlobalDecl gd, const ThunkInfo &thunk,
+                                   bool isUnprototyped) {
+  curGD = gd;
+
+  const CXXMethodDecl *md = cast<CXXMethodDecl>(gd.getDecl());
+
+  if (isUnprototyped) {
+    cgm.errorNYI(md->getSourceRange(), "thunk: unprototyped");
+    return;
+  }
+
+  if (cgm.getCXXABI().hasThisReturn(gd)) {
+    cgm.errorNYI(md->getSourceRange(), "thunk: this return");
+    return;
+  }
+  if (cgm.getCXXABI().hasMostDerivedReturn(gd)) {
+    cgm.errorNYI(md->getSourceRange(), "thunk: most derived return");
+    return;
+  }
+
+  QualType resultType =
+      md->getType()->castAs<FunctionProtoType>()->getReturnType();
+
+  FunctionArgList functionArgs;
+  cgm.getCXXABI().buildThisParam(*this, functionArgs);
+  functionArgs.append(md->param_begin(), md->param_end());
+  if (isa<CXXDestructorDecl>(md))
+    cgm.getCXXABI().addImplicitStructorParams(*this, resultType, functionArgs);
+
+  mlir::Block *entryBB = fn.addEntryBlock();
+  SymTableScopeTy varScope(symbolTable);
+  LexicalScope lexScope(*this, getLoc(md->getLocation()), entryBB);
+
+  cir::FuncType cirFuncTy = mlir::cast<cir::FuncType>(fn.getFunctionType());
+  startFunction(GlobalDecl(), resultType, fn, cirFuncTy, functionArgs,
+                md->getLocation(), md->getLocation());
+
+  cgm.getCXXABI().emitInstanceFunctionProlog(md->getLocation(), *this);
+  cxxThisValue = cxxabiThisValue;
+  curCodeDecl = md;
+  curFuncDecl = md;
+
+  cir::FuncOp callee =
+      cgm.getAddrOfFunction(gd, cgm.getTypes().getFunctionType(fnInfo),
+                            /*ForVTable=*/true);
+  emitCallAndReturnForThunk(
+      CIRGenCallee::forDirect(callee, CIRGenCalleeInfo(gd)), &thunk,
+      isUnprototyped);
+
+  eraseEmptyAndUnusedBlocks(fn);
 }
 
 } // namespace clang::CIRGen

@@ -20,6 +20,7 @@
 #include "CIRGenModule.h"
 
 #include "clang/AST/Mangle.h"
+#include "clang/Basic/Thunk.h"
 
 namespace clang::CIRGen {
 
@@ -285,6 +286,29 @@ public:
   virtual bool hasMostDerivedReturn(clang::GlobalDecl gd) const {
     return false;
   }
+
+  /// Apply a \p this pointer adjustment for a vtable thunk.
+  virtual mlir::Value performThisAdjustment(
+      CIRGenFunction &cgf, mlir::Location loc, Address thisAddr,
+      const CXXRecordDecl *unadjustedThisClass, const ThunkInfo &ti) = 0;
+
+  /// Apply a return pointer adjustment for a vtable thunk.
+  virtual mlir::Value performReturnAdjustment(
+      CIRGenFunction &cgf, mlir::Location loc, Address retAddr,
+      const CXXRecordDecl *unadjustedRetClass, const ReturnAdjustment &ra) = 0;
+
+  /// Emit a return from a thunk (scalar; aggregates use the return slot).
+  void emitReturnFromThunk(CIRGenFunction &cgf, mlir::Location loc, RValue rv,
+                           QualType resultType);
+
+  virtual void setThunkLinkage(cir::FuncOp thunk, bool forVTable, GlobalDecl gd,
+                               bool returnAdjustment) = 0;
+
+  virtual bool exportThunk() const = 0;
+
+  virtual void adjustCallArgsForDestructorThunk(CIRGenFunction &cgf,
+                                                GlobalDecl gd,
+                                                CallArgList &args) {}
 
   /// Returns true if the target allows calling a function through a pointer
   /// with a different signature than the actual function (or equivalently,
