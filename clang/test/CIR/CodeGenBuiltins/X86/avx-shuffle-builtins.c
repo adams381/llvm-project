@@ -17,17 +17,15 @@
 
 __m256d test0_mm256_insertf128_pd(__m256d a, __m128d b) {
   // CIR-LABEL: @test0_mm256_insertf128_pd(
-  // CIR: [[A:%.*]] = cir.load align(32) %0 : !cir.ptr<!cir.vector<4 x !cir.double>>, !cir.vector<4 x !cir.double>
-  // CIR: [[B:%.*]] = cir.load align(16) %1 : !cir.ptr<!cir.vector<2 x !cir.double>>, !cir.vector<2 x !cir.double>
-  // CIR: %{{.*}} = cir.vec.shuffle([[B]], %{{.*}} : !cir.vector<2 x !cir.double>) [#cir.int<0> : !s32i, #cir.int<1> : !s32i, #cir.int<2> : !s32i, #cir.int<3> : !s32i] : !cir.vector<4 x !cir.double>
-  // CIR-NEXT: %{{.*}} = cir.vec.shuffle([[A]], %{{.*}} : !s32i, #cir.int<5> : !s32i, #cir.int<2> : !s32i, #cir.int<3> : !s32i] : !cir.vector<4 x !cir.double>
+  // CIR: %{{.*}} = cir.vec.shuffle(%{{.*}}, %{{.*}} : !cir.vector<2 x !cir.double>) [#cir.int<0> : !s32i, #cir.int<1> : !s32i, #cir.int<2> : !s32i, #cir.int<3> : !s32i] : !cir.vector<4 x !cir.double>
+  // CIR-NEXT: %{{.*}} = cir.vec.shuffle(%{{.*}}, %{{.*}} : !cir.vector<4 x !cir.double>) [#cir.int<4> : !s32i, #cir.int<5> : !s32i, #cir.int<2> : !s32i, #cir.int<3> : !s32i] : !cir.vector<4 x !cir.double>
   // CIR: cir.return %{{.*}} : !cir.vector<4 x !cir.double>
 
   // LLVM-LABEL: @test0_mm256_insertf128_pd
-  // LLVM:    [[A:%.*]] = load <4 x double>, ptr %{{.*}}, align 32
-  // LLVM:    [[B:%.*]] = load <2 x double>, ptr %{{.*}}, align 16
-  // LLVM-NEXT:    [[WIDEN:%.*]] = shufflevector <2 x double> [[B]], <2 x double> poison, <4 x i32> <i32 0, i32 1, i32 2, i32 3>
-  // LLVM-NEXT:    [[INSERT:%.*]] = shufflevector <4 x double> [[A]], <4 x double> [[WIDEN]], <4 x i32> <i32 4, i32 5, i32 2, i32 3>
+  // LLVM:    %{{.*}} = load <4 x double>, ptr %{{.*}}, align 32
+  // LLVM:    %{{.*}} = load <2 x double>, ptr %{{.*}}, align 16
+  // LLVM-NEXT:    [[WIDEN:%.*]] = shufflevector <2 x double> %{{.*}}, <2 x double> poison, <4 x i32> <i32 0, i32 1, i32 2, i32 3>
+  // LLVM-NEXT:    [[INSERT:%.*]] = shufflevector <4 x double> %{{.*}}, <4 x double> [[WIDEN]], <4 x i32> <i32 4, i32 5, i32 2, i32 3>
   // LLVM:    ret <4 x double>
 
   // OGCG-LABEL: define dso_local <4 x double> @test0_mm256_insertf128_pd(
@@ -41,17 +39,15 @@ __m256d test0_mm256_insertf128_pd(__m256d a, __m128d b) {
 
 __m256d test1_mm256_insertf128_pd(__m256d a, __m128d b) {
   // CIR-LABEL: @test1_mm256_insertf128_pd(
-  // CIR: [[A:%.*]] = cir.load align(32) %0 : !cir.ptr<!cir.vector<4 x !cir.double>>, !cir.vector<4 x !cir.double>
-  // CIR: [[B:%.*]] = cir.load align(16) %1 : !cir.ptr<!cir.vector<2 x !cir.double>>, !cir.vector<2 x !cir.double>
-  // CIR: %{{.*}} = cir.vec.shuffle([[B]], %{{.*}} : !cir.vector<2 x !cir.double>) [#cir.int<0> : !s32i, #cir.int<1> : !s32i, #cir.int<2> : !s32i, #cir.int<3> : !s32i] : !cir.vector<4 x !cir.double>
-  // CIR-NEXT: %{{.*}} = cir.vec.shuffle([[A]], %{{.*}} : !cir.vector<4 x !cir.double>) [#cir.int<0> : !s32i, #cir.int<1> : !s32i, #cir.int<4> : !s32i, #cir.int<5> : !s32i] : !cir.vector<4 x !cir.double>
+  // CIR: %{{.*}} = cir.vec.shuffle(%{{.*}}, %{{.*}} : !cir.vector<2 x !cir.double>) [#cir.int<0> : !s32i, #cir.int<1> : !s32i, #cir.int<2> : !s32i, #cir.int<3> : !s32i] : !cir.vector<4 x !cir.double>
+  // CIR-NEXT: %{{.*}} = cir.vec.shuffle(%{{.*}}, %{{.*}} : !cir.vector<4 x !cir.double>) [#cir.int<0> : !s32i, #cir.int<1> : !s32i, #cir.int<4> : !s32i, #cir.int<5> : !s32i] : !cir.vector<4 x !cir.double>
   // CIR: cir.return %{{.*}} : !cir.vector<4 x !cir.double>
 
   // LLVM-LABEL: @test1_mm256_insertf128_pd
-  // LLVM:    [[A:%.*]] = load <4 x double>, ptr %{{.*}}, align 32
-  // LLVM:    [[B:%.*]] = load <2 x double>, ptr %{{.*}}, align 16
-  // LLVM-NEXT:    [[WIDEN:%.*]] = shufflevector <2 x double> [[B]], <2 x double> poison, <4 x i32> <i32 0, i32 1, i32 2, i32 3>
-  // LLVM-NEXT:    [[INSERT:%.*]] = shufflevector <4 x double> [[A]], <4 x double> [[WIDEN]], <4 x i32> <i32 0, i32 1, i32 4, i32 5>
+  // LLVM:    %{{.*}} = load <4 x double>, ptr %{{.*}}, align 32
+  // LLVM:    %{{.*}} = load <2 x double>, ptr %{{.*}}, align 16
+  // LLVM-NEXT:    [[WIDEN:%.*]] = shufflevector <2 x double> %{{.*}}, <2 x double> poison, <4 x i32> <i32 0, i32 1, i32 2, i32 3>
+  // LLVM-NEXT:    [[INSERT:%.*]] = shufflevector <4 x double> %{{.*}}, <4 x double> [[WIDEN]], <4 x i32> <i32 0, i32 1, i32 4, i32 5>
   // LLVM:    ret <4 x double>
 
   // OGCG-LABEL: define dso_local <4 x double> @test1_mm256_insertf128_pd(

@@ -9,7 +9,7 @@
 
 __m256bh test_mm512_mask_cvtneps_pbh(__m256bh src, __mmask16 k, __m512 a) {
   // CIR-LABEL: test_mm512_mask_cvtneps_pbh
-  // CIR: cir.call @_mm512_mask_cvtneps_pbh({{.+}}, {{.+}}, {{.+}}) {nobuiltin, nobuiltins = [{{.*}}]} : (!cir.vector<16 x !cir.bf16>, !u16i, !cir.vector<16 x !cir.float>) -> !cir.vector<16 x !cir.bf16>
+  // CIR: cir.call @_mm512_mask_cvtneps_pbh({{.+}}, {{.+}}, {{.+}}) {nobuiltin, nobuiltins = [{{.*}}]} : (!cir.vector<16 x !u16i>, !u16i, !cir.vector<16 x !cir.float>) -> !cir.vector<16 x !u16i>
 
   // LLVM-LABEL: @test_mm512_mask_cvtneps_pbh
   // LLVM: call <16 x bfloat> @llvm.x86.avx512bf16.cvtneps2bf16.512
@@ -21,7 +21,7 @@ __m256bh test_mm512_mask_cvtneps_pbh(__m256bh src, __mmask16 k, __m512 a) {
 
 __m256bh test_mm512_maskz_cvtneps_pbh(__mmask16 k, __m512 a) {
   // CIR-LABEL: test_mm512_maskz_cvtneps_pbh
-  // CIR: cir.call @_mm512_maskz_cvtneps_pbh({{.+}}, {{.+}}) {nobuiltin, nobuiltins = [{{.*}}]} : (!u16i, !cir.vector<16 x !cir.float>) -> !cir.vector<16 x !cir.bf16>
+  // CIR: cir.call @_mm512_maskz_cvtneps_pbh({{.+}}, {{.+}}) {nobuiltin, nobuiltins = [{{.*}}]} : (!u16i, !cir.vector<16 x !cir.float>) -> !cir.vector<16 x !u16i>
 
   // LLVM-LABEL: @test_mm512_maskz_cvtneps_pbh
   // LLVM: call <16 x bfloat> @llvm.x86.avx512bf16.cvtneps2bf16.512(<16 x float> {{.+}})
