@@ -357,13 +357,12 @@ static const llvm::abi::Type *mapCIRType(mlir::Type type,
       if (!isUnion)
         offsetBits += fieldSize;
     }
-    // Use data size rounded up to the eightbyte boundary for the
-    // ABI library.  CIR padded records include explicit tail
-    // padding members that inflate the layout size beyond the
-    // data size.  Rounding to 64-bit alignment avoids partial
-    // eightbytes (e.g. i40 instead of i64 for f2_s1) while
-    // still excluding alignment-only trailing padding that would
-    // inflate the eightbyte count (e.g. aligned(16) structs).
+    // Cap ABI size at the smaller of (layout, data-based bound).  CIR padded
+    // structs include explicit tail padding that inflates layout size beyond
+    // AST data size.  Rounding data size up to 64 bits avoids partial
+    // eightbytes (e.g. i40 as i64 for f2_s1).  Union layout size comes from
+    // RecordType::getTypeSizeInBits (largest member in bits); it must not use
+    // getTypeSize (bytes) or min() collapses to the wrong bound (test48).
     uint64_t dataSizeBits = recTy.getDataSizeInBits();
     llvm::TypeSize size = dl.getTypeSizeInBits(type);
     if (dataSizeBits) {
