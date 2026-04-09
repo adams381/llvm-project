@@ -62,6 +62,8 @@ static mlir::Type abiTypeToCIR(const llvm::abi::Type *ty, MLIRContext *ctx) {
     const llvm::fltSemantics *sem = fltTy->getSemantics();
     if (sem == &llvm::APFloat::IEEEhalf())
       return cir::FP16Type::get(ctx);
+    if (sem == &llvm::APFloat::BFloat())
+      return cir::BF16Type::get(ctx);
     if (sem == &llvm::APFloat::IEEEsingle())
       return cir::SingleType::get(ctx);
     if (sem == &llvm::APFloat::IEEEdouble())
@@ -248,6 +250,9 @@ static const llvm::abi::Type *mapCIRType(mlir::Type type,
                            safeAlign(dl.getTypeABIAlignment(type)));
   if (isa<cir::FP16Type>(type))
     return tb.getFloatType(llvm::APFloat::IEEEhalf(),
+                           safeAlign(dl.getTypeABIAlignment(type)));
+  if (isa<cir::BF16Type>(type))
+    return tb.getFloatType(llvm::APFloat::BFloat(),
                            safeAlign(dl.getTypeABIAlignment(type)));
   if (isa<cir::FP80Type>(type))
     return tb.getFloatType(llvm::APFloat::x87DoubleExtended(),
