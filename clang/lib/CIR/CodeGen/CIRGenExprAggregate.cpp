@@ -928,8 +928,33 @@ void AggExprEmitter::visitCXXParenListOrInitListExpr(
   LValue destLV = cgf.makeAddrLValue(dest.getAddress(), e->getType());
 
   if (record->isUnion()) {
-    cgf.cgm.errorNYI(e->getSourceRange(),
-                     "visitCXXParenListOrInitListExpr union type");
+    if (!initializedFieldInUnion) {
+#ifndef NDEBUG
+      for (const auto *field : record->fields())
+        assert(
+            (field->isUnnamedBitField() || field->isAnonymousStructOrUnion()) &&
+            "Only unnamed bitfields or anonymous class allowed");
+#endif
+      return;
+    }
+
+    assert(!cir::MissingFeatures::aggValueSlotVolatile());
+    FieldDecl *field = initializedFieldInUnion;
+    LValue fieldLoc =
+        cgf.emitLValueForFieldInitialization(destLV, field, field->getName());
+    bool zeroInitPadding = cgf.cgm.shouldZeroInitPadding() && !dest.isZeroed();
+    if (numInitElements) {
+      if (zeroInitPadding)
+        cgf.emitNullInitialization(cgf.getLoc(e->getSourceRange()),
+                                   dest.getAddress(), e->getType());
+      emitInitializationToLValue(args[0], fieldLoc);
+    } else {
+      if (zeroInitPadding)
+        emitNullInitializationToLValue(cgf.getLoc(e->getSourceRange()), destLV);
+      else
+        emitNullInitializationToLValue(cgf.getLoc(e->getSourceRange()),
+                                       fieldLoc);
+    }
     return;
   }
 
