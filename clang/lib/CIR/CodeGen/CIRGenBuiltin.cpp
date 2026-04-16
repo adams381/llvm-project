@@ -2585,7 +2585,44 @@ mlir::Value CIRGenFunction::emitBuiltinObjectSize(const Expr *e, unsigned type,
                                                   cir::IntType resType,
                                                   mlir::Value emittedE,
                                                   bool isDynamic) {
-  assert(!cir::MissingFeatures::opCallImplicitObjectSizeArgs());
+  // If this is a pass_object_size parameter, load the implicit size arg.
+  //
+  // BOS type compatibility: a pass_object_size annotation with one type can
+  // satisfy a __builtin_object_size query with a different type when the
+  // annotated type is a safe approximation.  Type 0 (max, whole object) is
+  // an overestimate for type 1 (max, closest surrounding subobject), and
+  // type 3 (min, closest surrounding subobject) is an underestimate for
+  // type 2 (min, whole object).
+  enum BOSType {
+    MaxWholeObject = 0,
+    MaxSubobject = 1,
+    MinWholeObject = 2,
+    MinSubobject = 3,
+  };
+  if (auto *d = dyn_cast<DeclRefExpr>(e->IgnoreParenImpCasts())) {
+    auto *param = dyn_cast<ParmVarDecl>(d->getDecl());
+    auto *ps = d->getDecl()->getAttr<PassObjectSizeAttr>();
+    if (param && ps) {
+      int from = ps->getType();
+      bool compatible =
+          from == static_cast<int>(type) ||
+          (from == MaxWholeObject && type == MaxSubobject) ||
+          (from == MinSubobject && type == MinWholeObject);
+      if (compatible) {
+        auto sizeIter = sizeArguments.find(param);
+        assert(sizeIter != sizeArguments.end());
+        auto [sizeParam, sizeDecl] = *sizeIter;
+
+        auto declIter = localDeclMap.find(sizeDecl);
+        assert(declIter != localDeclMap.end());
+        auto [decl, addr] = *declIter;
+
+        return emitLoadOfScalar(addr, /*volatile=*/false,
+                                getContext().getSizeType(), e->getBeginLoc(),
+                                LValueBaseInfo(AlignmentSource::Decl));
+      }
+    }
+  }
 
   // LLVM can't handle type=3 appropriately, and __builtin_object_size shouldn't
   // evaluate e for side-effects. In either case, just like original LLVM

@@ -727,20 +727,29 @@ static CanQual<FunctionProtoType> getFormalType(const CXXMethodDecl *md) {
       .getAs<FunctionProtoType>();
 }
 
-/// Adds the formal parameters in FPT to the given prefix. If any parameter in
-/// FPT has pass_object_size_attrs, then we'll add parameters for those, too.
+/// Adds the formal parameters in FPT to the given prefix.  If any parameter in
+/// FPT has pass_object_size attrs, then we'll add parameters for those, too.
 /// TODO(cir): this should be shared with LLVM codegen
 static void appendParameterTypes(const CIRGenTypes &cgt,
                                  SmallVectorImpl<CanQualType> &prefix,
                                  CanQual<FunctionProtoType> fpt) {
-  assert(!cir::MissingFeatures::opCallExtParameterInfo());
   // Fast path: don't touch param info if we don't need to.
   if (!fpt->hasExtParameterInfos()) {
     prefix.append(fpt->param_type_begin(), fpt->param_type_end());
     return;
   }
 
-  cgt.getCGModule().errorNYI("appendParameterTypes: hasExtParameterInfos");
+  // In the vast majority of cases, we'll have precisely fpt->getNumParams()
+  // parameters; the only thing that can change this is the presence of
+  // pass_object_size.  So, we preallocate for the common case.
+  prefix.reserve(prefix.size() + fpt->getNumParams());
+  ArrayRef<FunctionProtoType::ExtParameterInfo> extInfos =
+      fpt->getExtParameterInfos();
+  for (unsigned i = 0, e = fpt->getNumParams(); i != e; ++i) {
+    prefix.push_back(fpt->getParamType(i));
+    if (extInfos[i].hasPassObjectSize())
+      prefix.push_back(cgt.getASTContext().getCanonicalSizeType());
+  }
 }
 
 const CIRGenFunctionInfo &
@@ -875,10 +884,16 @@ arrangeFreeFunctionLikeCall(CIRGenTypes &cgt, CIRGenModule &cgm,
   RequiredArgs required = RequiredArgs::All;
 
   if (const auto *proto = dyn_cast<FunctionProtoType>(fnType)) {
-    if (proto->isVariadic())
-      required = RequiredArgs::getFromProtoWithExtraSlots(proto, 0);
+    unsigned numExtraSlots = 0;
     if (proto->hasExtParameterInfos())
-      cgm.errorNYI("call to functions with extra parameter info");
+      numExtraSlots += llvm::count_if(
+          proto->getExtParameterInfos(),
+          [](const FunctionProtoType::ExtParameterInfo &info) {
+            return info.hasPassObjectSize();
+          });
+    if (proto->isVariadic())
+      required =
+          RequiredArgs::getFromProtoWithExtraSlots(proto, numExtraSlots);
   } else if (cgm.getTargetCIRGenInfo().isNoProtoCallVariadic(
                  cast<FunctionNoProtoType>(fnType)))
     cgm.errorNYI("call to function without a prototype");
@@ -1441,8 +1456,17 @@ void CIRGenFunction::emitCallArgs(
     if (!ps)
       return;
 
-    assert(!cir::MissingFeatures::opCallImplicitObjectSizeArgs());
-    cgm.errorNYI("emit implicit object size for call arg");
+    QualType sizeTy = getContext().getSizeType();
+    cir::IntType cirSizeTy = cast<cir::IntType>(cgm.sizeTy);
+    assert(emittedArg.getValue() && "We emitted nothing for the arg?");
+    mlir::Value v = evaluateOrEmitBuiltinObjectSize(
+        arg, ps->getType(), cirSizeTy, emittedArg.getValue(), ps->isDynamic());
+    args.add(RValue::get(v), sizeTy);
+    // When emitting right-to-left, the size arg was appended after the
+    // pointer arg; swap them so the size follows the pointer in the final
+    // argument list after the outer reverse.
+    if (!leftToRight)
+      std::iter_swap(args.rbegin(), std::next(args.rbegin()));
   };
 
   // Evaluate each argument in the appropriate order.

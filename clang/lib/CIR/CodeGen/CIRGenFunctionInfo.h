@@ -51,7 +51,11 @@ public:
       return All;
 
     if (prototype->hasExtParameterInfos())
-      llvm_unreachable("NYI");
+      additional += llvm::count_if(
+          prototype->getExtParameterInfos(),
+          [](const clang::FunctionProtoType::ExtParameterInfo &info) {
+            return info.hasPassObjectSize();
+          });
 
     return RequiredArgs(prototype->getNumParams() + additional);
   }
