@@ -31,7 +31,7 @@ A *a() {
 // LLVM: define {{.*}} ptr @_Z1av() {{.*}} personality ptr @__gxx_personality_v0 {
 // LLVM:   %[[RETVAL:.*]] = alloca ptr
 // LLVM:   %[[NEW_RESULT:.*]] = alloca ptr
-// LLVM:   %[[PTR:.*]] = call ptr @_Znwm(i64 8) #[[ATTR_BUILTIN_NEW:.*]]
+// LLVM:   %[[PTR:.*]] = call nonnull ptr @_Znwm(i64 8) #[[ATTR_BUILTIN_NEW:.*]]
 // LLVM:   br label %[[EH_SCOPE:.*]]
 // LLVM: [[EH_SCOPE]]:
 // LLVM:   store ptr %[[PTR]], ptr %[[NEW_RESULT]]
@@ -106,7 +106,7 @@ A *b() {
 // LLVM: define {{.*}} ptr @_Z1bv() {{.*}} personality ptr @__gxx_personality_v0 {
 // LLVM:   %[[RETVAL:.*]] = alloca ptr
 // LLVM:   %[[NEW_RESULT:.*]] = alloca ptr
-// LLVM:   %[[PTR:.*]] = call ptr @_Znwm(i64 8) #[[ATTR_BUILTIN_NEW]]
+// LLVM:   %[[PTR:.*]] = call nonnull ptr @_Znwm(i64 8) #[[ATTR_BUILTIN_NEW]]
 // LLVM:   br label %[[EH_SCOPE:.*]]
 // LLVM: [[EH_SCOPE]]:
 // LLVM:   store ptr %[[PTR]], ptr %[[NEW_RESULT]]
