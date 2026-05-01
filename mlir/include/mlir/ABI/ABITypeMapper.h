@@ -45,7 +45,7 @@ public:
   const llvm::abi::Type *map(mlir::Type type);
 
   /// Access the underlying TypeBuilder for advanced use.
-  llvm::abi::TypeBuilder &getTypeBuilder() { return builder; }
+  llvm::abi::TypeBuilder &getTypeBuilder() { return Builder; }
 
 private:
   const llvm::abi::Type *mapIntegerType(mlir::IntegerType type);
@@ -55,9 +55,9 @@ private:
   const llvm::abi::Type *mapMemRefType(mlir::MemRefType type);
   const llvm::abi::Type *mapNoneType(mlir::NoneType type);
 
-  const DataLayout &dl;
-  llvm::BumpPtrAllocator allocator;
-  llvm::abi::TypeBuilder builder;
+  const DataLayout &DL;
+  llvm::BumpPtrAllocator Allocator;
+  llvm::abi::TypeBuilder Builder;
 };
 
 } // namespace abi

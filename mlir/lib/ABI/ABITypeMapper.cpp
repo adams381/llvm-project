@@ -13,8 +13,8 @@
 using namespace mlir;
 using namespace mlir::abi;
 
-ABITypeMapper::ABITypeMapper(const DataLayout &dataLayout)
-    : dl(dataLayout), builder(allocator) {}
+ABITypeMapper::ABITypeMapper(const DataLayout &dl)
+    : DL(dl), Builder(Allocator) {}
 
 const llvm::abi::Type *ABITypeMapper::map(mlir::Type type) {
   if (auto intTy = dyn_cast<mlir::IntegerType>(type))
@@ -37,30 +37,34 @@ const llvm::abi::Type *ABITypeMapper::map(mlir::Type type) {
 
   // For dialect-specific types, fall back to DataLayout queries.
   // The type must implement DataLayoutTypeInterface for this to work.
-  llvm::TypeSize sizeInBits = dl.getTypeSizeInBits(type);
-  uint64_t abiAlign = dl.getTypeABIAlignment(type);
-  return builder.getIntegerType(sizeInBits.getFixedValue(),
+  llvm::TypeSize sizeInBits = DL.getTypeSizeInBits(type);
+  uint64_t abiAlign = DL.getTypeABIAlignment(type);
+  return Builder.getIntegerType(sizeInBits.getFixedValue(),
                                 llvm::Align(abiAlign),
                                 /*Signed=*/false);
 }
 
-const llvm::abi::Type *ABITypeMapper::mapIntegerType(mlir::IntegerType type) {
+const llvm::abi::Type *
+ABITypeMapper::mapIntegerType(mlir::IntegerType type) {
   uint64_t width = type.getWidth();
-  uint64_t abiAlign = dl.getTypeABIAlignment(type);
+  uint64_t abiAlign = DL.getTypeABIAlignment(type);
+  // MLIR signless integers are treated as signed for ABI purposes.
+  // Most C/C++ integer types are signless in MLIR but behave as
+  // signed for ABI classification (sign extension, etc.).
   bool isSigned = type.isSigned() || type.isSignless();
-  return builder.getIntegerType(width, llvm::Align(abiAlign), isSigned);
+  return Builder.getIntegerType(width, llvm::Align(abiAlign), isSigned);
 }
 
 const llvm::abi::Type *ABITypeMapper::mapFloatType(mlir::FloatType type) {
-  uint64_t abiAlign = dl.getTypeABIAlignment(type);
+  uint64_t abiAlign = DL.getTypeABIAlignment(type);
   const llvm::fltSemantics &semantics = type.getFloatSemantics();
-  return builder.getFloatType(semantics, llvm::Align(abiAlign));
+  return Builder.getFloatType(semantics, llvm::Align(abiAlign));
 }
 
 const llvm::abi::Type *ABITypeMapper::mapIndexType(mlir::IndexType type) {
-  llvm::TypeSize sizeInBits = dl.getTypeSizeInBits(type);
-  uint64_t abiAlign = dl.getTypeABIAlignment(type);
-  return builder.getIntegerType(sizeInBits.getFixedValue(),
+  llvm::TypeSize sizeInBits = DL.getTypeSizeInBits(type);
+  uint64_t abiAlign = DL.getTypeABIAlignment(type);
+  return Builder.getIntegerType(sizeInBits.getFixedValue(),
                                 llvm::Align(abiAlign),
                                 /*Signed=*/false);
 }
@@ -71,26 +75,29 @@ const llvm::abi::Type *ABITypeMapper::mapVectorType(mlir::VectorType type) {
     return nullptr;
 
   auto shape = type.getShape();
+  // MLIR VectorType is always fixed-length and can be multi-dimensional.
+  // Flatten to a single dimension for ABI purposes.
   uint64_t totalElements = 1;
   for (int64_t dim : shape)
     totalElements *= dim;
 
   llvm::ElementCount ec = llvm::ElementCount::getFixed(totalElements);
-  uint64_t abiAlign = dl.getTypeABIAlignment(type);
-  return builder.getVectorType(elementTy, ec, llvm::Align(abiAlign));
+  uint64_t abiAlign = DL.getTypeABIAlignment(type);
+  return Builder.getVectorType(elementTy, ec, llvm::Align(abiAlign));
 }
 
 const llvm::abi::Type *ABITypeMapper::mapMemRefType(mlir::MemRefType type) {
-  llvm::TypeSize sizeInBits = dl.getTypeSizeInBits(type);
-  uint64_t abiAlign = dl.getTypeABIAlignment(type);
+  // MemRef is pointer-like for ABI purposes.
+  llvm::TypeSize sizeInBits = DL.getTypeSizeInBits(type);
+  uint64_t abiAlign = DL.getTypeABIAlignment(type);
   unsigned addrSpace = 0;
   if (auto as = type.getMemorySpace())
     if (auto intAttr = dyn_cast<IntegerAttr>(as))
       addrSpace = intAttr.getInt();
-  return builder.getPointerType(sizeInBits.getFixedValue(),
+  return Builder.getPointerType(sizeInBits.getFixedValue(),
                                 llvm::Align(abiAlign), addrSpace);
 }
 
 const llvm::abi::Type *ABITypeMapper::mapNoneType(mlir::NoneType type) {
-  return builder.getVoidType();
+  return Builder.getVoidType();
 }

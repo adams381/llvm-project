@@ -55,51 +55,52 @@ enum class ArgKind : uint8_t {
 /// Describes how a single argument or return value is passed after ABI
 /// lowering.
 struct ArgClassification {
-  ArgKind kind = ArgKind::Direct;
+  ArgKind Kind = ArgKind::Direct;
 
   /// The ABI-coerced type, if different from the original.  Null means
   /// use the original type.
-  Type coercedType = nullptr;
+  Type CoercedType = nullptr;
 
   /// For Indirect: alignment of the pointed-to object.
-  llvm::Align indirectAlign = llvm::Align(1);
+  llvm::Align IndirectAlign = llvm::Align(1);
 
   /// For Extend: whether to sign-extend (true) or zero-extend (false).
-  bool signExtend = false;
+  bool SignExtend = false;
 
   /// For Direct: whether a struct coercion can be flattened into
   /// individual register-width arguments.
-  bool canFlatten = true;
+  bool CanFlatten = true;
 
   /// For Indirect: whether the callee gets ownership (byval).
-  bool byVal = false;
+  bool ByVal = false;
 
   static ArgClassification getDirect(Type coerced = nullptr) {
     ArgClassification c;
-    c.kind = ArgKind::Direct;
-    c.coercedType = coerced;
+    c.Kind = ArgKind::Direct;
+    c.CoercedType = coerced;
     return c;
   }
 
   static ArgClassification getIgnore() {
     ArgClassification c;
-    c.kind = ArgKind::Ignore;
+    c.Kind = ArgKind::Ignore;
     return c;
   }
 
-  static ArgClassification getIndirect(llvm::Align align, bool byVal = true) {
+  static ArgClassification getIndirect(llvm::Align align,
+                                       bool byVal = true) {
     ArgClassification c;
-    c.kind = ArgKind::Indirect;
-    c.indirectAlign = align;
-    c.byVal = byVal;
+    c.Kind = ArgKind::Indirect;
+    c.IndirectAlign = align;
+    c.ByVal = byVal;
     return c;
   }
 
   static ArgClassification getExtend(Type coerced, bool signExt) {
     ArgClassification c;
-    c.kind = ArgKind::Extend;
-    c.coercedType = coerced;
-    c.signExtend = signExt;
+    c.Kind = ArgKind::Extend;
+    c.CoercedType = coerced;
+    c.SignExtend = signExt;
     return c;
   }
 };
@@ -107,8 +108,8 @@ struct ArgClassification {
 /// Holds the full ABI classification for a function: return type and
 /// all arguments.
 struct FunctionClassification {
-  ArgClassification returnInfo;
-  SmallVector<ArgClassification> argInfos;
+  ArgClassification ReturnInfo;
+  SmallVector<ArgClassification> ArgInfos;
 };
 
 /// ABIRewriteContext is the abstract interface that each dialect
