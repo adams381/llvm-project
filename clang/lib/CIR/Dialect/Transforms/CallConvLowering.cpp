@@ -310,6 +310,11 @@ mapCIRType(mlir::Type type, ABITypeMapper &typeMapper, const DataLayout &dl,
   }
 
   if (auto recTy = dyn_cast<cir::RecordType>(type)) {
+    if (!recTy.isComplete()) {
+      // Treat incomplete records as opaque pointer-sized integers
+      // for classification.  The pass won't coerce them.
+      return tb.getIntegerType(64, llvm::Align(8), /*Signed=*/false);
+    }
     SmallVector<llvm::abi::FieldInfo> fields;
     bool isUnion = recTy.isUnion();
     bool isPacked = recTy.getPacked();
@@ -590,8 +595,6 @@ struct CallConvLoweringPass
     llvm::DenseMap<StringRef, FunctionClassification> classificationMap;
 
     module.walk([&](FunctionOpInterface funcOp) {
-      // Skip coroutine functions — their return semantics are handled
-      // by the coroutine lowering passes and must not be rewritten.
       if (funcOp->hasAttr("coroutine"))
         return;
 
@@ -707,6 +710,32 @@ struct CallConvLoweringPass
       OpBuilder builder(callOp);
       if (failed(rewriteCtx.rewriteCallSite(callOp, fc, builder)))
         return signalPassFailure();
+    });
+
+    // Phase 4: Fix stale arg_attrs on all operations.
+    // After function types are rewritten, some calls/functions may
+    // have arg_attrs arrays that no longer match their operand count.
+    // Resize: truncate if too long, pad with empty dicts if too short.
+    auto fixArgAttrs = [](mlir::Operation *op, unsigned expected) {
+      auto argAttrs = op->getAttrOfType<mlir::ArrayAttr>("arg_attrs");
+      if (!argAttrs || argAttrs.size() == expected)
+        return;
+      MLIRContext *ctx = op->getContext();
+      SmallVector<mlir::Attribute> fixed;
+      for (unsigned i = 0; i < expected; ++i) {
+        if (i < argAttrs.size())
+          fixed.push_back(argAttrs[i]);
+        else
+          fixed.push_back(DictionaryAttr::get(ctx));
+      }
+      op->setAttr("arg_attrs", ArrayAttr::get(ctx, fixed));
+    };
+    module.walk([&](cir::CallOp callOp) {
+      fixArgAttrs(callOp, callOp.getArgOperands().size());
+    });
+    module.walk([&](FunctionOpInterface funcOp) {
+      auto fnTy = mlir::cast<cir::FuncType>(funcOp.getFunctionType());
+      fixArgAttrs(funcOp, fnTy.getNumInputs());
     });
   }
 };

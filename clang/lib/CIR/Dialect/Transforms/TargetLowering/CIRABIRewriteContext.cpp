@@ -660,7 +660,14 @@ LogicalResult CIRABIRewriteContext::rewriteFunctionDefinition(
         argAttrDicts[newIdx] = DictionaryAttr::get(ctx, attrs);
       }
 
-      funcOp->setAttr("arg_attrs", ArrayAttr::get(ctx, argAttrDicts));
+      // Only set arg_attrs if the count matches the function type's
+      // arg count.  Mismatch can occur when flatten/ignore changes
+      // the arg count but attr tracking gets out of sync.
+      auto fnTy = mlir::cast<cir::FuncType>(funcOp.getFunctionType());
+      if (argAttrDicts.size() == fnTy.getNumInputs())
+        funcOp->setAttr("arg_attrs", ArrayAttr::get(ctx, argAttrDicts));
+      else
+        funcOp->removeAttr("arg_attrs");
     }
 
     // Add signext/zeroext to return value for Extend returns.
@@ -724,7 +731,10 @@ static void setCallSiteABIAttrs(cir::CallOp call,
       argAttrDicts[newIdx] = DictionaryAttr::get(ctx, attrs);
   }
 
-  call->setAttr("arg_attrs", ArrayAttr::get(ctx, argAttrDicts));
+  if (argAttrDicts.size() == call.getArgOperands().size())
+    call->setAttr("arg_attrs", ArrayAttr::get(ctx, argAttrDicts));
+  else
+    call->removeAttr("arg_attrs");
 
   if (fc.ReturnInfo.Kind == ArgKind::Extend) {
     SmallVector<NamedAttribute> retAttrs;
