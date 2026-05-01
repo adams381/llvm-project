@@ -10,10 +10,10 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "clang/AST/ASTContext.h"
-#include "clang/Basic/TargetInfo.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/Pass/PassManager.h"
+#include "clang/AST/ASTContext.h"
+#include "clang/Basic/TargetInfo.h"
 #include "clang/CIR/Dialect/Passes.h"
 #include "llvm/Support/TimeProfiler.h"
 #include "llvm/TargetParser/Triple.h"

@@ -143,11 +143,16 @@ static ArgClassification convertABIArgInfo(const llvm::abi::ABIArgInfo &info,
     // 2. Original is a scalar (not record/complex/vector) — the
     //    mapper fallback produces spurious integer coercions.
     // 3. Same-width integer signedness difference on records.
+    // 4. When recordCoercionEnabled is false and the original is a
+    //    record type — the coercion may corrupt expression template
+    //    data in C++ code.
     if (coerced && origTy) {
       if (coerced == origTy)
         coerced = nullptr;
       else if (!isa<cir::RecordType, cir::ComplexType, cir::VectorType,
                     cir::MethodType, cir::DataMemberType>(origTy))
+        coerced = nullptr;
+      else if (!recordCoercionEnabled && isa<cir::RecordType>(origTy))
         coerced = nullptr;
       else if (auto coercedInt = dyn_cast<cir::IntType>(coerced))
         if (auto origInt = dyn_cast<cir::IntType>(origTy))
@@ -212,11 +217,9 @@ static ArgClassification convertABIArgInfo(const llvm::abi::ABIArgInfo &info,
 /// types (cir::IntType, cir::PointerType, cir::RecordType, etc.)
 /// need dialect-aware mapping to preserve signedness, field layout,
 /// and pointer semantics.
-static const llvm::abi::Type *mapCIRType(mlir::Type type,
-                                         ABITypeMapper &typeMapper,
-                                         const DataLayout &dl,
-                                         bool recordCoercionEnabled,
-                                         mlir::ModuleOp module) {
+static const llvm::abi::Type *
+mapCIRType(mlir::Type type, ABITypeMapper &typeMapper, const DataLayout &dl,
+           bool recordCoercionEnabled, mlir::ModuleOp module) {
   llvm::abi::TypeBuilder &tb = typeMapper.getTypeBuilder();
 
   // llvm::Align requires a power of 2.  DataLayout may return
@@ -277,9 +280,9 @@ static const llvm::abi::Type *mapCIRType(mlir::Type type,
   }
 
   if (auto complexTy = dyn_cast<cir::ComplexType>(type)) {
-    const llvm::abi::Type *elemAbi = mapCIRType(
-        complexTy.getElementType(), typeMapper, dl, recordCoercionEnabled,
-        module);
+    const llvm::abi::Type *elemAbi =
+        mapCIRType(complexTy.getElementType(), typeMapper, dl,
+                   recordCoercionEnabled, module);
     return tb.getComplexType(elemAbi, safeAlign(dl.getTypeABIAlignment(type)));
   }
 
@@ -417,12 +420,10 @@ static const llvm::abi::Type *mapCIRType(mlir::Type type,
 /// Maps CIR types to abi::Type* via CIR-aware mapping, calls the
 /// X86_64 classifier, and converts the results back to
 /// FunctionClassification.
-FunctionClassification classifyWithABILibrary(FunctionOpInterface funcOp,
-                                              ABITypeMapper &typeMapper,
-                                              const DataLayout &dl,
-                                              const llvm::abi::ABIInfo &abiInfo,
-                                              bool recordCoercionEnabled,
-                                              ModuleOp module) {
+FunctionClassification
+classifyWithABILibrary(FunctionOpInterface funcOp, ABITypeMapper &typeMapper,
+                       const DataLayout &dl, const llvm::abi::ABIInfo &abiInfo,
+                       bool recordCoercionEnabled, ModuleOp module) {
   FunctionClassification fc;
   MLIRContext *ctx = funcOp->getContext();
 
@@ -432,9 +433,8 @@ FunctionClassification classifyWithABILibrary(FunctionOpInterface funcOp,
   if (resultTypes.empty())
     retAbiTy = typeMapper.getTypeBuilder().getVoidType();
   else
-    retAbiTy =
-        mapCIRType(resultTypes[0], typeMapper, dl, recordCoercionEnabled,
-                   module);
+    retAbiTy = mapCIRType(resultTypes[0], typeMapper, dl, recordCoercionEnabled,
+                          module);
 
   // Map argument types.
   SmallVector<const llvm::abi::Type *> argAbiTypes;
@@ -595,9 +595,9 @@ struct CallConvLoweringPass
       if (funcOp->hasAttr("coroutine"))
         return;
 
-      FunctionClassification fc = classifyWithABILibrary(
-          funcOp, typeMapper, dataLayout, abiInfo, recordCoercionEnabled,
-          module);
+      FunctionClassification fc =
+          classifyWithABILibrary(funcOp, typeMapper, dataLayout, abiInfo,
+                                 recordCoercionEnabled, module);
 
       // Don't change the return type of address-taken functions
       // — function pointer variables would have stale function
@@ -673,9 +673,8 @@ struct CallConvLoweringPass
 
         SmallVector<const llvm::abi::Type *> argAbiTypes;
         for (Type argTy : funcTy.getInputs()) {
-          const llvm::abi::Type *mapped =
-              mapCIRType(argTy, typeMapper, dataLayout, recordCoercionEnabled,
-                         module);
+          const llvm::abi::Type *mapped = mapCIRType(
+              argTy, typeMapper, dataLayout, recordCoercionEnabled, module);
           if (!mapped)
             return;
           argAbiTypes.push_back(mapped);
@@ -699,10 +698,9 @@ struct CallConvLoweringPass
         auto argTypes = funcTy.getInputs();
         for (unsigned i = 0; i < abiFI->getNumArgs(); ++i) {
           Type origArgTy = (i < argTypes.size()) ? argTypes[i] : Type();
-          fc.ArgInfos.push_back(convertABIArgInfo(abiFI->getArgInfo(i).ArgInfo,
-                                                  ctx, origArgTy,
-                                                  recordCoercionEnabled,
-                                                  module));
+          fc.ArgInfos.push_back(
+              convertABIArgInfo(abiFI->getArgInfo(i).ArgInfo, ctx, origArgTy,
+                                recordCoercionEnabled, module));
         }
       }
 

@@ -522,8 +522,7 @@ LogicalResult CIRABIRewriteContext::rewriteFunctionDefinition(
           Block &entry = funcOp->getRegion(0).front();
           for (unsigned i = 0; i < blockArgs; ++i)
             fixedArgTypes.push_back(entry.getArgument(i).getType());
-          Type fixedFnTy =
-              funcOp.cloneTypeWith(fixedArgTypes, newResultTypes);
+          Type fixedFnTy = funcOp.cloneTypeWith(fixedArgTypes, newResultTypes);
           funcOp.setFunctionTypeAttr(TypeAttr::get(fixedFnTy));
           numArgs = blockArgs;
           attrCount = blockArgs;
@@ -543,8 +542,7 @@ LogicalResult CIRABIRewriteContext::rewriteFunctionDefinition(
               fc.ArgInfos[oldIdx].Kind == ArgKind::Ignore)
             continue;
           if (newIdx < attrCount) {
-            auto dict =
-                mlir::cast<DictionaryAttr>(existingAttrs[oldIdx]);
+            auto dict = mlir::cast<DictionaryAttr>(existingAttrs[oldIdx]);
             bool isCoerced = oldIdx < fc.ArgInfos.size() &&
                              fc.ArgInfos[oldIdx].Kind == ArgKind::Direct &&
                              fc.ArgInfos[oldIdx].CoercedType;

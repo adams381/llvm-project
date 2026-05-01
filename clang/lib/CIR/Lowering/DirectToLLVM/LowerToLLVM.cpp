@@ -1718,8 +1718,7 @@ static void lowerCallAttributes(cir::CIRCallOpInterface op,
       for (mlir::Attribute dictAttr : argAttrs) {
         auto dict = mlir::cast<mlir::DictionaryAttr>(dictAttr);
         bool isPtr = idx < op->getNumOperands() &&
-                     mlir::isa<cir::PointerType>(
-                         op->getOperand(idx).getType());
+                     mlir::isa<cir::PointerType>(op->getOperand(idx).getType());
         if (!isPtr && !dict.empty()) {
           SmallVector<mlir::NamedAttribute> entries;
           for (mlir::NamedAttribute entry : dict) {
@@ -1738,8 +1737,7 @@ static void lowerCallAttributes(cir::CIRCallOpInterface op,
               mlir::Type llvmTy = converter->convertType(cirTy);
               if (llvmTy && llvmTy != cirTy) {
                 entries.push_back(mlir::NamedAttribute(
-                    entry.getName(),
-                    mlir::TypeAttr::get(llvmTy)));
+                    entry.getName(), mlir::TypeAttr::get(llvmTy)));
                 continue;
               }
             }
@@ -1753,8 +1751,7 @@ static void lowerCallAttributes(cir::CIRCallOpInterface op,
         ++idx;
       }
       result.push_back(mlir::NamedAttribute(
-          attr.getName(),
-          mlir::ArrayAttr::get(op->getContext(), filtered)));
+          attr.getName(), mlir::ArrayAttr::get(op->getContext(), filtered)));
       continue;
     }
 
@@ -2287,8 +2284,7 @@ void CIRToLLVMFuncOpLowering::lowerFuncAttributes(
         ++idx;
       }
       result.push_back(mlir::NamedAttribute(
-          attr.getName(),
-          mlir::ArrayAttr::get(func->getContext(), filtered)));
+          attr.getName(), mlir::ArrayAttr::get(func->getContext(), filtered)));
       continue;
     }
 
@@ -2428,9 +2424,9 @@ mlir::LogicalResult CIRToLLVMFuncOpLowering::matchAndRewrite(
     unsigned argIdx = 0;
     for (mlir::Attribute dictAttr : argAttrs) {
       auto dict = mlir::cast<mlir::DictionaryAttr>(dictAttr);
-      bool isPtr = argIdx < fnTy.getNumParams() &&
-                   mlir::isa<mlir::LLVM::LLVMPointerType>(
-                       fnTy.getParamType(argIdx));
+      bool isPtr =
+          argIdx < fnTy.getNumParams() &&
+          mlir::isa<mlir::LLVM::LLVMPointerType>(fnTy.getParamType(argIdx));
       SmallVector<mlir::NamedAttribute> newEntries;
       bool dictChanged = false;
       for (mlir::NamedAttribute entry : dict) {
@@ -2447,13 +2443,12 @@ mlir::LogicalResult CIRToLLVMFuncOpLowering::matchAndRewrite(
             continue;
           }
         }
-        if (!isPtr &&
-            (entry.getName() == "llvm.nonnull" ||
-             entry.getName() == "llvm.dereferenceable" ||
-             entry.getName() == "llvm.dereferenceable_or_null" ||
-             entry.getName() == "llvm.align" ||
-             entry.getName() == "llvm.sret" ||
-             entry.getName() == "llvm.byval")) {
+        if (!isPtr && (entry.getName() == "llvm.nonnull" ||
+                       entry.getName() == "llvm.dereferenceable" ||
+                       entry.getName() == "llvm.dereferenceable_or_null" ||
+                       entry.getName() == "llvm.align" ||
+                       entry.getName() == "llvm.sret" ||
+                       entry.getName() == "llvm.byval")) {
           dictChanged = true;
           continue;
         }

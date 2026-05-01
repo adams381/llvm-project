@@ -39,7 +39,7 @@ struct RecordABIInfo {
 /// cir.record_layouts attribute.  Returns safe defaults for
 /// anonymous records or records without a layout entry.
 inline RecordABIInfo getRecordABIInfo(mlir::ModuleOp module,
-                                     cir::RecordType recTy) {
+                                      cir::RecordType recTy) {
   RecordABIInfo info;
   auto name = recTy.getName();
   if (!name)
