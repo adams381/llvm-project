@@ -419,12 +419,29 @@ LogicalResult CIRABIRewriteContext::rewriteFunctionDefinition(
 
     // Erase block arguments for Ignore'd args (in reverse to keep
     // indices valid).  Replace any remaining uses with undef first.
+    // Adjust indices for args that were expanded by flattening:
+    // each flattened arg adds (N-1) extra block args before any
+    // subsequent arg.
     if (!ignoredArgIndices.empty()) {
+      // Compute index adjustment: for each flattened arg before an
+      // Ignore'd arg, add (numFields - 1) to the block index.
+      auto computeBlockIdx = [&](unsigned origIdx) -> unsigned {
+        unsigned adj = 0;
+        for (auto [fIdx, ac] : llvm::enumerate(fc.ArgInfos)) {
+          if (fIdx >= origIdx)
+            break;
+          if (ac.Kind == ArgKind::Direct && ac.CanFlatten && ac.CoercedType)
+            if (auto cr = dyn_cast<cir::RecordType>(ac.CoercedType))
+              if (cr.getMembers().size() > 1)
+                adj += cr.getMembers().size() - 1;
+        }
+        return origIdx + sretOffset + adj;
+      };
       Region &body = funcOp->getRegion(0);
       if (!body.empty()) {
         Block &entry = body.front();
         for (int i = ignoredArgIndices.size() - 1; i >= 0; --i) {
-          unsigned blockIdx = ignoredArgIndices[i] + sretOffset;
+          unsigned blockIdx = computeBlockIdx(ignoredArgIndices[i]);
           if (blockIdx < entry.getNumArguments()) {
             BlockArgument arg = entry.getArgument(blockIdx);
             if (!arg.use_empty()) {

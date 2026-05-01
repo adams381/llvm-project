@@ -600,13 +600,17 @@ struct CallConvLoweringPass
           module);
 
       // Don't change the return type of address-taken functions
-      // to void — function pointer variables would have stale
-      // function types (e.g. lambda conversion operators store
-      // the address of __invoke with the original return type).
+      // — function pointer variables would have stale function
+      // types.  This applies to both Ignore (empty→void) and
+      // Direct coercion (record→integer) returns.
       if (auto nameAttr = funcOp->getAttrOfType<StringAttr>("sym_name")) {
-        if (fc.ReturnInfo.Kind == ArgKind::Ignore &&
-            addressTakenFns.contains(nameAttr.getValue()))
-          fc.ReturnInfo = ArgClassification::getDirect(nullptr);
+        if (addressTakenFns.contains(nameAttr.getValue())) {
+          if (fc.ReturnInfo.Kind == ArgKind::Ignore)
+            fc.ReturnInfo = ArgClassification::getDirect(nullptr);
+          else if (fc.ReturnInfo.Kind == ArgKind::Direct &&
+                   fc.ReturnInfo.CoercedType)
+            fc.ReturnInfo = ArgClassification::getDirect(nullptr);
+        }
         classificationMap[nameAttr.getValue()] = fc;
       }
 
