@@ -732,10 +732,17 @@ CIRGenTypes::computeRecordLayout(const RecordDecl *rd, cir::RecordType *ty) {
       hasTrivialDestructor = cxxRD->hasTrivialDestructor();
     const auto &astLayout = astContext.getASTRecordLayout(rd);
     uint64_t recordAlignInBytes = astLayout.getAlignment().getQuantity();
+    bool isEmpty = rd->field_empty();
+    if (auto *cxxRD2 = dyn_cast<CXXRecordDecl>(rd))
+      isEmpty = isEmpty && cxxRD2->isEmpty();
+    uint64_t dataSizeInBits =
+        astLayout.getDataSize().getQuantity() * 8;
 
-    cgm.addRecordLayout(ty->getName(), cir::RecordLayoutAttr::get(
-                                           mlirCtx, apk, hasTrivialDestructor,
-                                           recordAlignInBytes));
+    cgm.addRecordLayout(
+        ty->getName(),
+        cir::RecordLayoutAttr::get(mlirCtx, apk, hasTrivialDestructor,
+                                   recordAlignInBytes, isEmpty,
+                                   dataSizeInBits));
   }
 
   auto rl = std::make_unique<CIRGenRecordLayout>(

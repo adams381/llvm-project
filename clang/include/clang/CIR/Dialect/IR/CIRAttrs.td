@@ -137,6 +137,11 @@ def CIR_RecordLayoutAttr : CIR_Attr<"RecordLayout", "record_layout"> {
     - `record_align_in_bytes`: from `ASTRecordLayout::getAlignment()`.
       Needed because CIR's DataLayout cannot account for
       `__attribute__((aligned(N)))`.
+    - `is_empty`: from `ASTContext::isEmptyRecord()`.  True when the
+      record has no data-carrying members.
+    - `data_size_in_bits`: from `ASTRecordLayout::getDataSize()`.
+      Excludes tail alignment padding; needed for ABI classification
+      of aligned structs.
 
     Example:
     ```
@@ -145,11 +150,15 @@ def CIR_RecordLayoutAttr : CIR_Attr<"RecordLayout", "record_layout"> {
         "Trivial" = #cir.record_layout<
           arg_passing_kind = can_pass_in_regs,
           has_trivial_dtor = true,
-          record_align = 4>,
+          record_align = 4,
+          is_empty = false,
+          data_size = 4>,
         "NonTrivialDtor" = #cir.record_layout<
           arg_passing_kind = cannot_pass_in_regs,
           has_trivial_dtor = false,
-          record_align = 4>
+          record_align = 4,
+          is_empty = false,
+          data_size = 4>
       }
     }
     ```
@@ -158,14 +167,18 @@ def CIR_RecordLayoutAttr : CIR_Attr<"RecordLayout", "record_layout"> {
   let parameters = (ins
     EnumParameter<CIR_ArgPassingKind>:$arg_passing_kind,
     "bool":$has_trivial_dtor,
-    "uint64_t":$record_align
+    "uint64_t":$record_align,
+    "bool":$is_empty,
+    "uint64_t":$data_size
   );
 
   let assemblyFormat = [{
     `<`
       `arg_passing_kind` `=` $arg_passing_kind `,`
       `has_trivial_dtor` `=` $has_trivial_dtor `,`
-      `record_align` `=` $record_align
+      `record_align` `=` $record_align `,`
+      `is_empty` `=` $is_empty `,`
+      `data_size` `=` $data_size
     `>`
   }];
 

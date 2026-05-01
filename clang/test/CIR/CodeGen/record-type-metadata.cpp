@@ -23,7 +23,7 @@ void takesNTD(NonTrivialDtor n) {}
 // CIR-DAG: !rec_NonTrivialDtor = !cir.record<class "NonTrivialDtor" {!s32i}>
 
 // ABI metadata lives in module-level cir.record_layouts attribute.
-// CIR-DAG: Trivial = #cir.record_layout<arg_passing_kind = can_pass_in_regs, has_trivial_dtor = true, record_align = 4>
-// CIR-DAG: Empty = #cir.record_layout<arg_passing_kind = can_pass_in_regs, has_trivial_dtor = true, record_align = 1>
-// CIR-DAG: Aligned = #cir.record_layout<arg_passing_kind = can_pass_in_regs, has_trivial_dtor = true, record_align = 16>
-// CIR-DAG: NonTrivialDtor = #cir.record_layout<arg_passing_kind = cannot_pass_in_regs, has_trivial_dtor = false, record_align = 4>
+// CIR-DAG: Trivial = #cir.record_layout<arg_passing_kind = can_pass_in_regs, has_trivial_dtor = true, record_align = 4, is_empty = false, data_size = {{[0-9]+}}>
+// CIR-DAG: Empty = #cir.record_layout<arg_passing_kind = can_pass_in_regs, has_trivial_dtor = true, record_align = 1, is_empty = true, data_size = {{[0-9]+}}>
+// CIR-DAG: Aligned = #cir.record_layout<arg_passing_kind = can_pass_in_regs, has_trivial_dtor = true, record_align = 16, is_empty = false, data_size = {{[0-9]+}}>
+// CIR-DAG: NonTrivialDtor = #cir.record_layout<arg_passing_kind = cannot_pass_in_regs, has_trivial_dtor = false, record_align = 4, is_empty = false, data_size = {{[0-9]+}}>
