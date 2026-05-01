@@ -32,7 +32,8 @@ namespace cir {
 mlir::LogicalResult
 runCIRToCIRPasses(mlir::ModuleOp theModule, mlir::MLIRContext &mlirCtx,
                   clang::ASTContext &astCtx, bool enableVerifier,
-                  bool enableIdiomRecognizer, bool enableCIRSimplify);
+                  bool enableCIRSimplify,
+                  bool passByValueIsNoAlias = false);
 
 } // namespace cir
 

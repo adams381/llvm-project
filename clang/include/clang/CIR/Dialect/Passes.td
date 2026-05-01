@@ -150,6 +150,27 @@ def TargetLowering : Pass<"cir-target-lowering", "mlir::ModuleOp"> {
   let dependentDialects = ["cir::CIRDialect"];
 }
 
+def CallConvLowering : Pass<"cir-call-conv-lowering", "mlir::ModuleOp"> {
+  let summary = "Lower CIR calling conventions to ABI-specific form";
+  let description = [{
+    This pass rewrites CIR function signatures and call sites to match
+    the target ABI calling conventions.
+  }];
+  let constructor = "mlir::createCallConvLoweringPass()";
+  let dependentDialects = ["cir::CIRDialect"];
+  let options = [
+    Option<"recordCoercionEnabled", "record-coercion", "bool",
+      /*default=*/"true",
+      "Enable ABI coercion for record types.">,
+    Option<"passByValueIsNoAlias", "pass-by-value-is-noalias", "bool",
+      /*default=*/"false",
+      "Add noalias to byval parameters.">,
+    Option<"x86AvxAbiLevel", "x86-avx-abi-level", "unsigned",
+      /*default=*/"0",
+      "X86 AVX ABI level: 0=None, 1=AVX, 2=AVX512.">
+  ];
+}
+
 def CIREHABILowering : Pass<"cir-eh-abi-lowering", "mlir::ModuleOp"> {
   let summary = "Lower flattened CIR EH operations to target-specific ABI form";
   let description = [{

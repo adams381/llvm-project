@@ -257,7 +257,11 @@ enum RecordFlags : unsigned {
   IsCXXRecord = 1 << 3,
   IsPolymorphic = 1 << 4,
   HasFlexibleArrayMember = 1 << 5,
-  LLVM_MARK_AS_BITMASK_ENUM(/* LargestValue = */ HasFlexibleArrayMember),
+  IsCoercedRecord = 1 << 6,
+  HasNonTrivialCopyConstructor = 1 << 7,
+  HasNonTrivialDestructor = 1 << 8,
+  HasUnalignedFields = 1 << 9,
+  LLVM_MARK_AS_BITMASK_ENUM(/* LargestValue = */ HasUnalignedFields),
 };
 
 class RecordType : public Type {
@@ -302,6 +306,20 @@ public:
   bool isTransparentUnion() const {
     return static_cast<unsigned>(Flags & RecordFlags::IsTransparent) != 0;
   }
+  bool isCoercedRecord() const {
+    return static_cast<unsigned>(Flags & RecordFlags::IsCoercedRecord) != 0;
+  }
+  bool hasNonTrivialCopyConstructor() const {
+    return static_cast<unsigned>(
+               Flags & RecordFlags::HasNonTrivialCopyConstructor) != 0;
+  }
+  bool hasNonTrivialDestructor() const {
+    return static_cast<unsigned>(Flags & RecordFlags::HasNonTrivialDestructor) !=
+           0;
+  }
+  bool hasUnalignedFields() const {
+    return static_cast<unsigned>(Flags & RecordFlags::HasUnalignedFields) != 0;
+  }
   ArrayRef<FieldInfo> getFields() const { return Fields; }
   ArrayRef<FieldInfo> getBaseClasses() const { return BaseClasses; }
   ArrayRef<FieldInfo> getVirtualBaseClasses() const {
@@ -309,6 +327,26 @@ public:
   }
 
   bool isEmpty() const;
+
+  /// Returns the field (or base class) containing the given bit offset,
+  /// or nullptr if no such field exists.
+  const FieldInfo *getElementContainingOffset(uint64_t OffsetInBits) const {
+    // Check base classes first
+    for (const auto &Base : BaseClasses) {
+      uint64_t BaseEnd =
+          Base.OffsetInBits + Base.FieldType->getSizeInBits().getFixedValue();
+      if (OffsetInBits >= Base.OffsetInBits && OffsetInBits < BaseEnd)
+        return &Base;
+    }
+    // Then check fields
+    const FieldInfo *LastField = nullptr;
+    for (const auto &Field : Fields) {
+      if (Field.OffsetInBits > OffsetInBits)
+        break;
+      LastField = &Field;
+    }
+    return LastField;
+  }
 
   static bool classof(const Type *T) {
     return T->getKind() == TypeKind::Record;
@@ -429,6 +467,14 @@ public:
                                                 Align Align) {
     return new (Allocator.Allocate<MemberPointerType>())
         MemberPointerType(IsFunctionPointer, SizeInBits, Align);
+  }
+
+  /// Creates a record type used for ABI coercion (not from source).
+  const RecordType *
+  getCoercedRecordType(ArrayRef<FieldInfo> Fields, TypeSize Size, Align Align,
+                       StructPacking Pack = StructPacking::Default) {
+    return getRecordType(Fields, Size, Align, Pack, {}, {},
+                         RecordFlags::IsCoercedRecord);
   }
 };
 

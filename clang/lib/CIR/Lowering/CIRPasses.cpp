@@ -10,17 +10,19 @@
 //
 //===----------------------------------------------------------------------===//
 
-// #include "clang/AST/ASTContext.h"
+#include "clang/AST/ASTContext.h"
+#include "clang/Basic/TargetInfo.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/Pass/PassManager.h"
 #include "clang/CIR/Dialect/Passes.h"
 #include "llvm/Support/TimeProfiler.h"
+#include "llvm/TargetParser/Triple.h"
 
 namespace cir {
 mlir::LogicalResult
 runCIRToCIRPasses(mlir::ModuleOp theModule, mlir::MLIRContext &mlirContext,
                   clang::ASTContext &astContext, bool enableVerifier,
-                  bool enableIdiomRecognizer, bool enableCIRSimplify) {
+                  bool enableCIRSimplify, bool passByValueIsNoAlias) {
 
   llvm::TimeTraceScope scope("CIR To CIR Passes");
 
@@ -30,11 +32,22 @@ runCIRToCIRPasses(mlir::ModuleOp theModule, mlir::MLIRContext &mlirContext,
   if (enableCIRSimplify)
     pm.addPass(mlir::createCIRSimplifyPass());
 
-  if (enableIdiomRecognizer)
-    pm.addPass(mlir::createIdiomRecognizerPass(&astContext));
-
   pm.addPass(mlir::createTargetLoweringPass());
   pm.addPass(mlir::createCXXABILoweringPass());
+
+  unsigned avxLevel = 0;
+  if (astContext.getTargetInfo().getTriple().getArch() ==
+      llvm::Triple::x86_64) {
+    llvm::StringRef abi = astContext.getTargetInfo().getABI();
+    if (abi == "avx512")
+      avxLevel = 2;
+    else if (abi == "avx")
+      avxLevel = 1;
+  }
+
+  pm.addPass(mlir::createCallConvLoweringPass(/*recordCoercionEnabled=*/false,
+                                              passByValueIsNoAlias, avxLevel));
+
   pm.addPass(mlir::createLoweringPreparePass(&astContext));
 
   pm.enableVerifier(enableVerifier);
