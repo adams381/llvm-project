@@ -496,7 +496,8 @@ LogicalResult CIRABIRewriteContext::rewriteFunctionDefinition(
 
       // Preserve existing arg_attrs from CodeGen (e.g. this pointer
       // nonnull/dereferenceable/align/dead_on_return), shifting by
-      // sretOff and skipping Ignore'd args.
+      // sretOff and skipping Ignore'd args.  When an arg is coerced
+      // from pointer to non-pointer, strip pointer-only attributes.
       unsigned sretOff = hasSRet ? 1 : 0;
       if (auto existingAttrs = funcOp->getAttrOfType<ArrayAttr>("arg_attrs")) {
         unsigned newIdx = sretOff;
@@ -504,8 +505,29 @@ LogicalResult CIRABIRewriteContext::rewriteFunctionDefinition(
           if (oldIdx < fc.ArgInfos.size() &&
               fc.ArgInfos[oldIdx].Kind == ArgKind::Ignore)
             continue;
-          if (newIdx < numArgs)
-            argAttrDicts[newIdx] = existingAttrs[oldIdx];
+          if (newIdx < numArgs) {
+            auto dict =
+                mlir::cast<DictionaryAttr>(existingAttrs[oldIdx]);
+            bool isCoerced = oldIdx < fc.ArgInfos.size() &&
+                             fc.ArgInfos[oldIdx].Kind == ArgKind::Direct &&
+                             fc.ArgInfos[oldIdx].CoercedType;
+            if (isCoerced && !dict.empty()) {
+              SmallVector<NamedAttribute> filtered;
+              for (NamedAttribute entry : dict) {
+                if (entry.getName() == "llvm.nonnull" ||
+                    entry.getName() == "llvm.dereferenceable" ||
+                    entry.getName() == "llvm.dereferenceable_or_null" ||
+                    entry.getName() == "llvm.align" ||
+                    entry.getName() == "llvm.sret" ||
+                    entry.getName() == "llvm.byval")
+                  continue;
+                filtered.push_back(entry);
+              }
+              argAttrDicts[newIdx] = DictionaryAttr::get(ctx, filtered);
+            } else {
+              argAttrDicts[newIdx] = existingAttrs[oldIdx];
+            }
+          }
           // Account for flattened args (one original → N new).
           if (oldIdx < fc.ArgInfos.size()) {
             auto &ac = fc.ArgInfos[oldIdx];

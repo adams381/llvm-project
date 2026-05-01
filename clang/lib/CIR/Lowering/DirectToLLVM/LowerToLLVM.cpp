@@ -1700,7 +1700,8 @@ mlir::LogicalResult CIRToLLVMRotateOpLowering::matchAndRewrite(
 }
 
 static void lowerCallAttributes(cir::CIRCallOpInterface op,
-                                SmallVectorImpl<mlir::NamedAttribute> &result) {
+                                SmallVectorImpl<mlir::NamedAttribute> &result,
+                                const mlir::TypeConverter *converter) {
   for (mlir::NamedAttribute attr : op->getAttrs()) {
     if (attr.getName() == CIRDialect::getCalleeAttrName() ||
         attr.getName() == CIRDialect::getSideEffectAttrName() ||
@@ -1709,6 +1710,51 @@ static void lowerCallAttributes(cir::CIRCallOpInterface op,
         attr.getName() == CIRDialect::getNoReturnAttrName() ||
         attr.getName() == CIRDialect::getMustTailAttrName())
       continue;
+
+    if (attr.getName() == "arg_attrs") {
+      auto argAttrs = mlir::cast<mlir::ArrayAttr>(attr.getValue());
+      SmallVector<mlir::Attribute> filtered;
+      unsigned idx = 0;
+      for (mlir::Attribute dictAttr : argAttrs) {
+        auto dict = mlir::cast<mlir::DictionaryAttr>(dictAttr);
+        bool isPtr = idx < op->getNumOperands() &&
+                     mlir::isa<cir::PointerType>(
+                         op->getOperand(idx).getType());
+        if (!isPtr && !dict.empty()) {
+          SmallVector<mlir::NamedAttribute> entries;
+          for (mlir::NamedAttribute entry : dict) {
+            if (entry.getName() == "llvm.nonnull" ||
+                entry.getName() == "llvm.dereferenceable" ||
+                entry.getName() == "llvm.dereferenceable_or_null" ||
+                entry.getName() == "llvm.align")
+              continue;
+            if ((entry.getName() == "llvm.sret" ||
+                 entry.getName() == "llvm.byval") &&
+                mlir::isa<mlir::TypeAttr>(entry.getValue())) {
+              mlir::Type cirTy =
+                  mlir::cast<mlir::TypeAttr>(entry.getValue()).getValue();
+              mlir::Type llvmTy = converter->convertType(cirTy);
+              if (llvmTy && llvmTy != cirTy) {
+                entries.push_back(mlir::NamedAttribute(
+                    entry.getName(),
+                    mlir::TypeAttr::get(llvmTy)));
+                continue;
+              }
+            }
+            entries.push_back(entry);
+          }
+          filtered.push_back(
+              mlir::DictionaryAttr::get(op->getContext(), entries));
+        } else {
+          filtered.push_back(dictAttr);
+        }
+        ++idx;
+      }
+      result.push_back(mlir::NamedAttribute(
+          attr.getName(),
+          mlir::ArrayAttr::get(op->getContext(), filtered)));
+      continue;
+    }
 
     assert(!cir::MissingFeatures::opFuncExtraAttrs());
     result.push_back(attr);
@@ -1739,7 +1785,7 @@ rewriteCallOrInvoke(mlir::Operation *op, mlir::ValueRange callOperands,
                            memoryEffects, noUnwind, willReturn, noReturn);
 
   SmallVector<mlir::NamedAttribute, 4> attributes;
-  lowerCallAttributes(call, attributes);
+  lowerCallAttributes(call, attributes, converter);
 
   mlir::LLVM::LLVMFunctionType llvmFnTy;
 
@@ -2333,11 +2379,19 @@ mlir::LogicalResult CIRToLLVMFuncOpLowering::matchAndRewrite(
 
   // Convert CIR types inside arg_attrs (e.g. llvm.sret, llvm.byval)
   // to LLVM types so the LLVM dialect-to-LLVM-IR translation works.
+  // Also strip pointer-only attributes (nonnull, dereferenceable,
+  // align) from non-pointer arguments — these can leak through when
+  // CallConvLowering coerces a pointer arg to an integer type.
   if (auto argAttrs = fn->getAttrOfType<mlir::ArrayAttr>("arg_attrs")) {
     SmallVector<mlir::Attribute> converted;
     bool changed = false;
+    auto fnTy = fn.getFunctionType();
+    unsigned argIdx = 0;
     for (mlir::Attribute dictAttr : argAttrs) {
       auto dict = mlir::cast<mlir::DictionaryAttr>(dictAttr);
+      bool isPtr = argIdx < fnTy.getNumParams() &&
+                   mlir::isa<mlir::LLVM::LLVMPointerType>(
+                       fnTy.getParamType(argIdx));
       SmallVector<mlir::NamedAttribute> newEntries;
       bool dictChanged = false;
       for (mlir::NamedAttribute entry : dict) {
@@ -2354,6 +2408,14 @@ mlir::LogicalResult CIRToLLVMFuncOpLowering::matchAndRewrite(
             continue;
           }
         }
+        if (!isPtr &&
+            (entry.getName() == "llvm.nonnull" ||
+             entry.getName() == "llvm.dereferenceable" ||
+             entry.getName() == "llvm.dereferenceable_or_null" ||
+             entry.getName() == "llvm.align")) {
+          dictChanged = true;
+          continue;
+        }
         newEntries.push_back(entry);
       }
       if (dictChanged) {
@@ -2363,6 +2425,7 @@ mlir::LogicalResult CIRToLLVMFuncOpLowering::matchAndRewrite(
       } else {
         converted.push_back(dictAttr);
       }
+      ++argIdx;
     }
     if (changed)
       fn->setAttr("arg_attrs",
