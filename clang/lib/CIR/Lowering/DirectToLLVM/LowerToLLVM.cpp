@@ -1726,7 +1726,9 @@ static void lowerCallAttributes(cir::CIRCallOpInterface op,
             if (entry.getName() == "llvm.nonnull" ||
                 entry.getName() == "llvm.dereferenceable" ||
                 entry.getName() == "llvm.dereferenceable_or_null" ||
-                entry.getName() == "llvm.align")
+                entry.getName() == "llvm.align" ||
+                entry.getName() == "llvm.sret" ||
+                entry.getName() == "llvm.byval")
               continue;
             if ((entry.getName() == "llvm.sret" ||
                  entry.getName() == "llvm.byval") &&
@@ -2253,6 +2255,43 @@ void CIRToLLVMFuncOpLowering::lowerFuncAttributes(
           attr.getName() == func.getResAttrsAttrName())))
       continue;
 
+    // Filter arg_attrs: strip pointer-only attributes from non-pointer
+    // args BEFORE the LLVM func op is created (its verifier rejects
+    // byval/sret on non-pointer types).
+    if (attr.getName() == func.getArgAttrsAttrName()) {
+      auto argAttrs = mlir::cast<mlir::ArrayAttr>(attr.getValue());
+      auto inputs = func.getFunctionType().getInputs();
+      SmallVector<mlir::Attribute> filtered;
+      unsigned idx = 0;
+      for (mlir::Attribute dictAttr : argAttrs) {
+        bool isCIRPtr =
+            idx < inputs.size() && mlir::isa<cir::PointerType>(inputs[idx]);
+        if (!isCIRPtr) {
+          auto dict = mlir::cast<mlir::DictionaryAttr>(dictAttr);
+          SmallVector<mlir::NamedAttribute> entries;
+          for (mlir::NamedAttribute entry : dict) {
+            if (entry.getName() == "llvm.nonnull" ||
+                entry.getName() == "llvm.dereferenceable" ||
+                entry.getName() == "llvm.dereferenceable_or_null" ||
+                entry.getName() == "llvm.align" ||
+                entry.getName() == "llvm.sret" ||
+                entry.getName() == "llvm.byval")
+              continue;
+            entries.push_back(entry);
+          }
+          filtered.push_back(
+              mlir::DictionaryAttr::get(func->getContext(), entries));
+        } else {
+          filtered.push_back(dictAttr);
+        }
+        ++idx;
+      }
+      result.push_back(mlir::NamedAttribute(
+          attr.getName(),
+          mlir::ArrayAttr::get(func->getContext(), filtered)));
+      continue;
+    }
+
     assert(!cir::MissingFeatures::opFuncExtraAttrs());
     result.push_back(attr);
   }
@@ -2412,7 +2451,9 @@ mlir::LogicalResult CIRToLLVMFuncOpLowering::matchAndRewrite(
             (entry.getName() == "llvm.nonnull" ||
              entry.getName() == "llvm.dereferenceable" ||
              entry.getName() == "llvm.dereferenceable_or_null" ||
-             entry.getName() == "llvm.align")) {
+             entry.getName() == "llvm.align" ||
+             entry.getName() == "llvm.sret" ||
+             entry.getName() == "llvm.byval")) {
           dictChanged = true;
           continue;
         }

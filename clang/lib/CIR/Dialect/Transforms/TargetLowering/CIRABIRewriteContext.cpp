@@ -509,7 +509,27 @@ LogicalResult CIRABIRewriteContext::rewriteFunctionDefinition(
       needsAttrs = true;
 
     if (needsAttrs) {
-      SmallVector<Attribute> argAttrDicts(numArgs, DictionaryAttr::get(ctx));
+      // Use the actual block arg count if it differs from newArgTypes
+      // (can happen when flatten/ignore rewriting changes arg count).
+      unsigned attrCount = numArgs;
+      if (!isDecl && !funcOp->getRegion(0).empty()) {
+        unsigned blockArgs = funcOp->getRegion(0).front().getNumArguments();
+        if (blockArgs != numArgs) {
+          // Mismatch — use the larger to avoid out-of-bounds.
+          attrCount = std::max(numArgs, blockArgs);
+          // Also fix the function type to match the block.
+          SmallVector<Type> fixedArgTypes;
+          Block &entry = funcOp->getRegion(0).front();
+          for (unsigned i = 0; i < blockArgs; ++i)
+            fixedArgTypes.push_back(entry.getArgument(i).getType());
+          Type fixedFnTy =
+              funcOp.cloneTypeWith(fixedArgTypes, newResultTypes);
+          funcOp.setFunctionTypeAttr(TypeAttr::get(fixedFnTy));
+          numArgs = blockArgs;
+          attrCount = blockArgs;
+        }
+      }
+      SmallVector<Attribute> argAttrDicts(attrCount, DictionaryAttr::get(ctx));
 
       // Preserve existing arg_attrs from CodeGen (e.g. this pointer
       // nonnull/dereferenceable/align/dead_on_return), shifting by
@@ -522,7 +542,7 @@ LogicalResult CIRABIRewriteContext::rewriteFunctionDefinition(
           if (oldIdx < fc.ArgInfos.size() &&
               fc.ArgInfos[oldIdx].Kind == ArgKind::Ignore)
             continue;
-          if (newIdx < numArgs) {
+          if (newIdx < attrCount) {
             auto dict =
                 mlir::cast<DictionaryAttr>(existingAttrs[oldIdx]);
             bool isCoerced = oldIdx < fc.ArgInfos.size() &&
@@ -576,9 +596,24 @@ LogicalResult CIRABIRewriteContext::rewriteFunctionDefinition(
         argAttrDicts[0] = DictionaryAttr::get(ctx, sretAttrs);
       }
 
+      // Compute the adjusted index into newArgTypes/argAttrDicts for
+      // a given fc.ArgInfos index, accounting for flatten expansions.
+      auto adjustedIdx = [&](unsigned origIdx) -> unsigned {
+        unsigned adj = 0;
+        for (unsigned f = 0; f < origIdx && f < fc.ArgInfos.size(); ++f) {
+          auto &ac = fc.ArgInfos[f];
+          if (ac.Kind == ArgKind::Direct && ac.CanFlatten && ac.CoercedType)
+            if (auto cr = dyn_cast<cir::RecordType>(ac.CoercedType))
+              if (cr.getMembers().size() > 1)
+                adj += cr.getMembers().size() - 1;
+        }
+        return origIdx + sretOff + adj;
+      };
+
       for (auto [idx, argClass] : llvm::enumerate(fc.ArgInfos)) {
         if (argClass.Kind != ArgKind::Indirect)
           continue;
+        unsigned adjIdx = adjustedIdx(idx);
         if (argClass.ByVal) {
           SmallVector<NamedAttribute> byvalAttrs;
           byvalAttrs.push_back(rewriter.getNamedAttr(
@@ -594,7 +629,8 @@ LogicalResult CIRABIRewriteContext::rewriteFunctionDefinition(
               byvalAttrs.push_back(rewriter.getNamedAttr(
                   "llvm.noalias", rewriter.getUnitAttr()));
           }
-          argAttrDicts[idx + sretOff] = DictionaryAttr::get(ctx, byvalAttrs);
+          if (adjIdx < attrCount)
+            argAttrDicts[adjIdx] = DictionaryAttr::get(ctx, byvalAttrs);
         } else {
           SmallVector<NamedAttribute> indirectAttrs;
           indirectAttrs.push_back(
@@ -605,7 +641,8 @@ LogicalResult CIRABIRewriteContext::rewriteFunctionDefinition(
                 "llvm.dead_on_return",
                 rewriter.getI64IntegerAttr(
                     std::numeric_limits<uint64_t>::max())));
-          argAttrDicts[idx + sretOff] = DictionaryAttr::get(ctx, indirectAttrs);
+          if (adjIdx < attrCount)
+            argAttrDicts[adjIdx] = DictionaryAttr::get(ctx, indirectAttrs);
         }
       }
 
@@ -613,8 +650,8 @@ LogicalResult CIRABIRewriteContext::rewriteFunctionDefinition(
       for (auto [idx, argClass] : llvm::enumerate(fc.ArgInfos)) {
         if (argClass.Kind != ArgKind::Extend)
           continue;
-        unsigned newIdx = idx + sretOff;
-        if (newIdx >= numArgs)
+        unsigned newIdx = adjustedIdx(idx);
+        if (newIdx >= attrCount)
           continue;
         auto existing = mlir::cast<DictionaryAttr>(argAttrDicts[newIdx]);
         SmallVector<NamedAttribute> attrs(existing.begin(), existing.end());
