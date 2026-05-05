@@ -67,14 +67,17 @@ static SmallString<128> getTransformedFileName(mlir::ModuleOp mlirModule) {
   return fileName;
 }
 
-/// Return the FuncOp called by `callOp`.
-static cir::FuncOp getCalledFunction(cir::CallOp callOp) {
+/// Return the FuncOp called by `callOp`.  Uses the cached
+/// `SymbolTableCollection` to avoid the O(M) module-wide scan that the
+/// static `mlir::SymbolTable::lookupNearestSymbolFrom` would do per call.
+static cir::FuncOp
+getCalledFunction(cir::CallOp callOp,
+                  mlir::SymbolTableCollection &symbolTables) {
   mlir::SymbolRefAttr sym = llvm::dyn_cast_if_present<mlir::SymbolRefAttr>(
       callOp.getCallableForCallee());
   if (!sym)
     return nullptr;
-  return dyn_cast_or_null<cir::FuncOp>(
-      mlir::SymbolTable::lookupNearestSymbolFrom(callOp, sym));
+  return symbolTables.lookupNearestSymbolFrom<cir::FuncOp>(callOp, sym);
 }
 
 namespace {
@@ -92,7 +95,8 @@ struct LoweringPreparePass
   void lowerThreeWayCmpOp(cir::CmpThreeWayOp op);
   void lowerArrayDtor(cir::ArrayDtor op);
   void lowerArrayCtor(cir::ArrayCtor op);
-  void lowerTrivialCopyCall(cir::CallOp op);
+  void lowerTrivialCopyCall(cir::CallOp op,
+                            mlir::SymbolTableCollection &symbolTables);
   void lowerStoreOfConstAggregate(cir::StoreOp op,
                                   mlir::SymbolTableCollection &symbolTables);
   void lowerLocalInitOp(cir::LocalInitOp op,
@@ -981,7 +985,14 @@ cir::FuncOp LoweringPreparePass::getOrCreateDtorFunc(CIRBaseBuilderTy &builder,
     if (yieldOp && callOp && callOp.getNumOperands() == 1 &&
         callOp.getArgOperand(0) == ggop) {
       dtorCall = callOp;
-      return getCalledFunction(callOp);
+      // Cold path (per-global, not per-call); use the static lookup.
+      mlir::SymbolRefAttr sym =
+          llvm::dyn_cast_if_present<mlir::SymbolRefAttr>(
+              callOp.getCallableForCallee());
+      if (!sym)
+        return nullptr;
+      return dyn_cast_or_null<cir::FuncOp>(
+          mlir::SymbolTable::lookupNearestSymbolFrom(callOp, sym));
     }
   }
 
@@ -1676,8 +1687,9 @@ void LoweringPreparePass::lowerArrayCtor(cir::ArrayCtor op) {
                              /*isCtor=*/true);
 }
 
-void LoweringPreparePass::lowerTrivialCopyCall(cir::CallOp op) {
-  cir::FuncOp funcOp = getCalledFunction(op);
+void LoweringPreparePass::lowerTrivialCopyCall(
+    cir::CallOp op, mlir::SymbolTableCollection &symbolTables) {
+  cir::FuncOp funcOp = getCalledFunction(op, symbolTables);
   if (!funcOp)
     return;
 
@@ -1835,7 +1847,7 @@ void LoweringPreparePass::runOnOp(mlir::Operation *op,
   } else if (auto unaryOp = mlir::dyn_cast<cir::UnaryOpInterface>(op)) {
     lowerUnaryOp(unaryOp);
   } else if (auto callOp = dyn_cast<cir::CallOp>(op)) {
-    lowerTrivialCopyCall(callOp);
+    lowerTrivialCopyCall(callOp, symbolTables);
   } else if (auto storeOp = dyn_cast<cir::StoreOp>(op)) {
     lowerStoreOfConstAggregate(storeOp, symbolTables);
   } else if (auto fnOp = dyn_cast<cir::FuncOp>(op)) {
