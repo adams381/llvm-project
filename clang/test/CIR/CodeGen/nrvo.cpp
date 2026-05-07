@@ -22,26 +22,34 @@ struct S f1() {
   return s;
 }
 
-// CIR:      cir.func{{.*}} @_Z2f1v() -> !rec_S
+// `struct S` (two ints, 8 bytes) is coerced to a single `!u64i` /
+// `i64` eightbyte by the calling-convention lowering pass, matching
+// OGCG.  The CIR body now contains a coerce alloca and a struct load
+// rebuilt from the integer eightbyte before the return.
+// CIR:      cir.func{{.*}} @_Z2f1v() -> !u64i
 // CIR-NEXT:   %[[RETVAL:.*]] = cir.alloca !rec_S, !cir.ptr<!rec_S>, ["__retval", init]
 // CIR-NEXT:   cir.call @_ZN1SC1Ev(%[[RETVAL]]) : (!cir.ptr<!rec_S> {{.*}}) -> ()
 // CIR-NEXT:   %[[RET:.*]] = cir.load %[[RETVAL]] : !cir.ptr<!rec_S>, !rec_S
-// CIR-NEXT:   cir.return %[[RET]]
+// CIR-NEXT:   %[[COERCE:.*]] = cir.alloca !rec_S, !cir.ptr<!rec_S>, ["coerce"]
+// CIR-NEXT:   cir.store %[[RET]], %[[COERCE]] : !rec_S, !cir.ptr<!rec_S>
 
-// CIR-NOELIDE:      cir.func{{.*}} @_Z2f1v() -> !rec_S
+// CIR-NOELIDE:      cir.func{{.*}} @_Z2f1v() -> !u64i
 // CIR-NOELIDE-NEXT:   %[[RETVAL:.*]] = cir.alloca !rec_S, !cir.ptr<!rec_S>, ["__retval"]
 // CIR-NOELIDE-NEXT:   %[[S:.*]] = cir.alloca !rec_S, !cir.ptr<!rec_S>, ["s", init]
 // CIR-NOELIDE-NEXT:   cir.call @_ZN1SC1Ev(%[[S]]) : (!cir.ptr<!rec_S> {{.*}}) -> ()
 // CIR-NOELIDE-NEXT:   cir.copy %[[S]] to %[[RETVAL]] : !cir.ptr<!rec_S>
 // CIR-NOELIDE-NEXT:   %[[RET:.*]] = cir.load %[[RETVAL]] : !cir.ptr<!rec_S>, !rec_S
-// CIR-NOELIDE-NEXT:   cir.return %[[RET]]
+// CIR-NOELIDE-NEXT:   %[[COERCE:.*]] = cir.alloca !rec_S, !cir.ptr<!rec_S>, ["coerce"]
+// CIR-NOELIDE-NEXT:   cir.store %[[RET]], %[[COERCE]] : !rec_S, !cir.ptr<!rec_S>
 
-// FIXME: Update this when calling convetnion lowering is implemented.
-// LLVM:      define{{.*}} %struct.S @_Z2f1v()
+// LLVM:      define{{.*}} i64 @_Z2f1v()
 // LLVM-NEXT:   %[[RETVAL:.*]] = alloca %struct.S
 // LLVM-NEXT:   call void @_ZN1SC1Ev(ptr {{.*}} %[[RETVAL]])
 // LLVM-NEXT:   %[[RET:.*]] = load %struct.S, ptr %[[RETVAL]]
-// LLVM-NEXT:   ret %struct.S %[[RET]]
+// LLVM-NEXT:   %[[COERCE:.*]] = alloca %struct.S
+// LLVM-NEXT:   store %struct.S %[[RET]], ptr %[[COERCE]]
+// LLVM-NEXT:   %[[I:.*]] = load i64, ptr %[[COERCE]]
+// LLVM-NEXT:   ret i64 %[[I]]
 
 // OGCG:      define{{.*}} i64 @_Z2f1v()
 // OGCG-NEXT: entry:
@@ -64,7 +72,10 @@ NonTrivial test_nrvo() {
 
 // TODO(cir): Handle normal cleanup properly.
 
-// CIR: cir.func {{.*}} @_Z9test_nrvov()
+// The CallConvLowering pass rewrites the non-trivially-copyable return into
+// an `sret` argument, matching the x86_64 SysV ABI used by classic codegen.
+
+// CIR: cir.func {{.*}} @_Z9test_nrvov(%[[SRET_ARG:.*]]: !cir.ptr<!rec_NonTrivial> {llvm.align = 1 : i64, llvm.dead_on_unwind, llvm.noalias, llvm.sret = !rec_NonTrivial, llvm.writable}
 // CIR:   %[[RESULT:.*]] = cir.alloca !rec_NonTrivial, !cir.ptr<!rec_NonTrivial>, ["__retval"]
 // CIR:   %[[NRVO_FLAG:.*]] = cir.alloca !cir.bool, !cir.ptr<!cir.bool>, ["nrvo"]
 // CIR:   %[[FALSE:.*]] = cir.const #false
@@ -74,7 +85,8 @@ NonTrivial test_nrvo() {
 // CIR:     %[[TRUE:.*]] = cir.const #true
 // CIR:     cir.store{{.*}} %[[TRUE]], %[[NRVO_FLAG]]
 // CIR:     %[[RET:.*]] = cir.load %[[RESULT]]
-// CIR:     cir.return %[[RET]]
+// CIR:     cir.store %[[RET]], %[[SRET_ARG]]
+// CIR:     cir.return
 // CIR:   } cleanup  normal {
 // CIR:     %[[NRVO_FLAG_VAL:.*]] = cir.load{{.*}} %[[NRVO_FLAG]]
 // CIR:     %[[NOT_NRVO_VAL:.*]] = cir.not %[[NRVO_FLAG_VAL]]
@@ -88,12 +100,14 @@ NonTrivial test_nrvo() {
 //            artifact of us falling through to emitImplicitReturn().
 // CIR:   cir.trap
 
-// LLVM: define {{.*}} %struct.NonTrivial @_Z9test_nrvov()
+// LLVM: define {{.*}} void @_Z9test_nrvov(ptr dead_on_unwind noalias writable sret(%struct.NonTrivial) align 1 %[[SRET:.*]])
 // LLVM:   %[[RESULT:.*]] = alloca %struct.NonTrivial
 // LLVM:   %[[NRVO_FLAG:.*]] = alloca i8
 // LLVM:   store i8 0, ptr %[[NRVO_FLAG]]
 // LLVM:   call void @_Z10maybeThrowv()
 // LLVM:   store i8 1, ptr %[[NRVO_FLAG]]
+// LLVM:   %[[RET:.*]] = load %struct.NonTrivial, ptr %[[RESULT]]
+// LLVM:   store %struct.NonTrivial %[[RET]], ptr %[[SRET]]
 // LLVM:   %[[NRVO_VAL:.*]] = load i8, ptr %[[NRVO_FLAG]]
 // LLVM:   %[[NRVO_VAL_TRUNC:.*]] = trunc i8 %[[NRVO_VAL]] to i1
 // LLVM:   %[[NOT_NRVO_VAL:.*]] = xor i1 %[[NRVO_VAL_TRUNC]], true
@@ -102,8 +116,7 @@ NonTrivial test_nrvo() {
 // LLVM:   call void @_ZN10NonTrivialD1Ev(ptr {{.*}} %[[RESULT]])
 // LLVM:   br label %[[NRVO_USED]]
 // LLVM: [[NRVO_USED]]:
-// LLVM:   %[[RET:.*]] = load %struct.NonTrivial, ptr %[[RESULT]]
-// LLVM:   ret %struct.NonTrivial %[[RET]]
+// LLVM:   ret void
 
 // OGCG: define {{.*}} void @_Z9test_nrvov(ptr {{.*}} sret(%struct.NonTrivial) {{.*}} %[[RESULT:.*]])
 // OGCG:   %[[RESULT_ADDR:.*]] = alloca ptr

@@ -150,11 +150,27 @@ static ArgClassification convertABIArgInfo(const llvm::abi::ABIArgInfo &info,
       if (coerced == origTy)
         coerced = nullptr;
       else if (!isa<cir::RecordType, cir::ComplexType, cir::VectorType,
-                    cir::MethodType, cir::DataMemberType>(origTy))
-        coerced = nullptr;
-      else if (!recordCoercionEnabled && isa<cir::RecordType>(origTy))
-        coerced = nullptr;
-      else if (auto coercedInt = dyn_cast<cir::IntType>(coerced))
+                    cir::MethodType, cir::DataMemberType>(origTy)) {
+        // Scalar origin: keep the coercion only when the ABI library
+        // returned a multi-eightbyte struct (e.g. `_BitInt(127)` ->
+        // `{i64, i64}`).  Drop scalar-to-scalar coercions; the
+        // width-equal check below handles the spurious cases.
+        if (!isa<cir::RecordType>(coerced))
+          coerced = nullptr;
+      } else if (!recordCoercionEnabled && isa<cir::RecordType>(origTy)) {
+        // Record origin: honor the ABI library's coercion only when
+        // CIRGen marked the record as can-pass-in-registers (or it's
+        // an anonymous record synthesized by CXXABILowering).
+        // Otherwise the coerce-to-flatten fallback would split by
+        // source fields instead of ABI eightbytes (e.g. `dim3` would
+        // become three i32s instead of `(i64, i32)`).
+        auto recTy = cast<cir::RecordType>(origTy);
+        bool isAnon = !recTy.getName();
+        bool canPass =
+            isAnon || cir::getRecordABIInfo(module, recTy).canPassInRegs;
+        if (!canPass)
+          coerced = nullptr;
+      } else if (auto coercedInt = dyn_cast<cir::IntType>(coerced))
         if (auto origInt = dyn_cast<cir::IntType>(origTy))
           if (coercedInt.getWidth() == origInt.getWidth())
             coerced = nullptr;
@@ -393,19 +409,29 @@ mapCIRType(mlir::Type type, ABITypeMapper &typeMapper, const DataLayout &dl,
     uint64_t rawAlign = recABI.recordAlignInBytes;
     if (!rawAlign)
       rawAlign = dl.getTypeABIAlignment(type);
-    // CIRGen sets the canPassInRegs flag from
-    // RecordDecl::canPassInRegisters() via complete().  Anonymous
-    // records default to cannot-pass-in-regs in RecordABIInfo.
-    // The recordCoercionEnabled override handles cir-opt tests
-    // where text-parsed records default to non-trivially-copyable.
-    bool canPass = recABI.canPassInRegs || recordCoercionEnabled;
+    // CIRGen sets canPassInRegs from RecordDecl::canPassInRegisters()
+    // for named records.  Anonymous records (no name) are synthesized
+    // by CXXABILowering (e.g. for member-function-pointer lowering)
+    // and have no RecordABIInfo entry, so they default to
+    // canPassInRegs=false.  These synthesized records contain only
+    // scalar fields, so they are always trivially copyable -- treat
+    // them as can-pass-in-regs unconditionally.  The
+    // recordCoercionEnabled override handles cir-opt tests where
+    // text-parsed records lack a RecordABIInfo entry.
+    bool isAnonymous = !recTy.getName();
+    bool canPass =
+        recABI.canPassInRegs || recordCoercionEnabled || isAnonymous;
     llvm::abi::RecordFlags unionFlags = llvm::abi::RecordFlags::None;
     if (canPass)
       unionFlags = unionFlags | llvm::abi::RecordFlags::CanPassInRegisters;
     if (isUnion)
       return tb.getUnionType(fields, size, safeAlign(rawAlign),
                              llvm::abi::StructPacking::Default, unionFlags);
-    bool nonTrivial = !recABI.canPassInRegs;
+    // nonTrivial means user-defined copy/dtor -- only set when CIRGen
+    // explicitly says so (anonymous records have no entry, so don't
+    // mark them non-trivial just because the lookup defaulted to
+    // canPassInRegs=false).
+    bool nonTrivial = !recABI.canPassInRegs && !isAnonymous;
     llvm::abi::RecordFlags recFlags = llvm::abi::RecordFlags::None;
     if (canPass)
       recFlags = recFlags | llvm::abi::RecordFlags::CanPassInRegisters;

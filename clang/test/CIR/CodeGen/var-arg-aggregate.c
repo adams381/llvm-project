@@ -19,7 +19,12 @@ struct Bar varargs_aggregate(int count, ...) {
   return res;
 }
 
-// CIR-LABEL: cir.func {{.*}} @varargs_aggregate(
+// `Bar { float a; float b; int c; }` is 12 bytes spanning 1.5 eightbytes
+// (one SSE eightbyte for the two floats, one INTEGER eightbyte for the
+// int).  The calling-convention lowering pass coerces the return to
+// `{<2 x float>, i32}` (CIR's `!rec_anon_struct`), matching OGCG's
+// `{ <2 x float>, i32 }` ABI.
+// CIR-LABEL: cir.func {{.*}} @varargs_aggregate({{.*}}) -> !rec_anon_struct
 // CIR:   %[[RET_ADDR:.+]] = cir.alloca !rec_Bar, !cir.ptr<!rec_Bar>, ["__retval", init]
 // CIR:   %[[VAAREA:.+]] = cir.alloca !cir.array<!rec___va_list_tag x 1>, !cir.ptr<!cir.array<!rec___va_list_tag x 1>>, ["args"]
 // CIR:   %[[TMP_ADDR:.+]] = cir.alloca !rec_Bar, !cir.ptr<!rec_Bar>, ["vaarg.tmp"]
@@ -31,10 +36,8 @@ struct Bar varargs_aggregate(int count, ...) {
 // CIR:   cir.copy %[[TMP_ADDR]] to %[[RET_ADDR]] : !cir.ptr<!rec_Bar>
 // CIR:   %[[VA_PTR2:.+]] = cir.cast array_to_ptrdecay %[[VAAREA]] : !cir.ptr<!cir.array<!rec___va_list_tag x 1>> -> !cir.ptr<!rec___va_list_tag>
 // CIR:   cir.va_end %[[VA_PTR2]] : !cir.ptr<!rec___va_list_tag>
-// CIR:   %[[RETVAL:.+]] = cir.load{{.*}} %[[RET_ADDR]] : !cir.ptr<!rec_Bar>, !rec_Bar
-// CIR:   cir.return %[[RETVAL]] : !rec_Bar
 
-// LLVM-LABEL: define dso_local %struct.Bar @varargs_aggregate(
+// LLVM-LABEL: define dso_local { <2 x float>, i32 } @varargs_aggregate(
 // LLVM:   call void @llvm.va_start.p0(ptr %{{.*}})
 // LLVM:   %[[VA_PTR1:.+]] = getelementptr %struct.__va_list_tag, ptr %{{.*}}, i32 0
 // LLVM:   %[[VA_ARG:.+]] = va_arg ptr %[[VA_PTR1]], %struct.Bar

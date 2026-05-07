@@ -6,7 +6,13 @@ struct HasOps {
 };
 
 void use(int x, unsigned int y, float f, HasOps ops) {
-  // CHECK: cir.func{{.*}}(%[[X_ARG:.*]]: !s32i{{.*}}, %[[Y_ARG:.*]]: !u32i{{.*}}, %[[F_ARG:.*]]: !cir.float{{.*}}){{.*}}, %[[OPS_ARG:.*]]: !rec_HasOps{{.*}}) {{.*}}{
+  // The CallConvLowering pass drops the empty `HasOps` parameter (Ignore
+  // class per x86_64 SysV, matching classic Clang).  The body still
+  // references the by-value object via a synthesized `["ignored"]`
+  // alloca + load that feeds the local `ops`.
+  // CHECK: cir.func{{.*}}(%[[X_ARG:.*]]: !s32i{{.*}}, %[[Y_ARG:.*]]: !u32i{{.*}}, %[[F_ARG:.*]]: !cir.float{{.*}}) {{.*}}{
+  // CHECK-NEXT: %[[OPS_IGNORED_ALLOCA:.*]] = cir.alloca !rec_HasOps, !cir.ptr<!rec_HasOps>, ["ignored"]
+  // CHECK-NEXT: %[[OPS_IGNORED_LOAD:.*]] = cir.load %[[OPS_IGNORED_ALLOCA]] : !cir.ptr<!rec_HasOps>, !rec_HasOps
   // CHECK-NEXT: %[[X_ALLOCA:.*]] = cir.alloca !s32i, !cir.ptr<!s32i>, ["x", init]
   // CHECK-NEXT: %[[Y_ALLOCA:.*]] = cir.alloca !u32i, !cir.ptr<!u32i>, ["y", init]
   // CHECK-NEXT: %[[F_ALLOCA:.*]] = cir.alloca !cir.float, !cir.ptr<!cir.float>, ["f", init]
@@ -14,7 +20,7 @@ void use(int x, unsigned int y, float f, HasOps ops) {
   // CHECK-NEXT: cir.store %[[X_ARG]], %[[X_ALLOCA]] : !s32i, !cir.ptr<!s32i>
   // CHECK-NEXT: cir.store %[[Y_ARG]], %[[Y_ALLOCA]] : !u32i, !cir.ptr<!u32i>
   // CHECK-NEXT: cir.store %[[F_ARG]], %[[F_ALLOCA]] : !cir.float, !cir.ptr<!cir.float>
-  // CHECK-NEXT: cir.store %[[OPS_ARG]], %[[OPS_ALLOCA]] : !rec_HasOps, !cir.ptr<!rec_HasOps>
+  // CHECK-NEXT: cir.store %[[OPS_IGNORED_LOAD]], %[[OPS_ALLOCA]] : !rec_HasOps, !cir.ptr<!rec_HasOps>
 
   // CHECK-NEXT: acc.atomic.update %[[X_ALLOCA]] : !cir.ptr<!s32i> {
   // CHECK-NEXT: ^bb0(%[[RECIPE_ARG:.*]]: !s32i{{.*}}):

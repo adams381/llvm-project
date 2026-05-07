@@ -52,8 +52,10 @@ void calls(MemPtrTy mpt) {
   // LLVM: call void @_Z16not_noundef_voidv()
 
   not_noundef_memptr(mpt);
-  // CIR: cir.call @_Z18not_noundef_memptrM6StructFvvE(%2) : (!rec_anon_struct) -> !rec_anon_struct
-  // LLVM: call { i64, i64 } @_Z18not_noundef_memptrM6StructFvvE({{.*}})
+  // The calling-convention lowering pass coerces the member-function-
+  // pointer (a 16-byte {i64, i64}) into two i64 scalars, matching OGCG.
+  // CIR: cir.call @_Z18not_noundef_memptrM6StructFvvE(%{{.*}}, %{{.*}}) : (!s64i, !s64i) -> !rec_anon_struct
+  // LLVM: call { i64, i64 } @_Z18not_noundef_memptrM6StructFvvE(i64 {{.*}}, i64 {{.*}})
 
   has_noundef_ref();
   // CIR: cir.call @_Z15has_noundef_refv() : () -> (!cir.ptr<!s32i> {llvm.align = 4 : i64, llvm.dereferenceable = 4 : i64, llvm.nonnull, llvm.noundef})

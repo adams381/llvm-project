@@ -184,16 +184,21 @@ void foo() {
 // CIR:    ^bb1:
 // CIR:     cir.label "label"
 
+// `S` is an empty struct, so the CallConvLowering pass classifies it as
+// Ignore: it is dropped from `bar(struct S)`'s parameter list and from
+// `get()`'s return type, matching classic codegen.  The body still has
+// allocas + load/store for the by-value temporaries (no-ops at the
+// machine-code level once optimised).
 // LLVM: define dso_local void @foo(){{.*}} {
-// LLVM:  [[ALLOC:%.*]] = alloca %struct.S, i64 1, align 1
-// LLVM:  br label %2
-// LLVM:2:
-// LLVM:  br label %3
-// LLVM:3:
-// LLVM:  [[CALL:%.*]] = call %struct.S @get()
-// LLVM:  store %struct.S [[CALL]], ptr [[ALLOC]], align 1
-// LLVM:  [[LOAD:%.*]] = load %struct.S, ptr [[ALLOC]], align 1
-// LLVM:  call void @bar(%struct.S [[LOAD]])
+// LLVM:  [[ALLOC1:%.*]] = alloca %struct.S, i64 1, align 1
+// LLVM:  [[ALLOC2:%.*]] = alloca %struct.S, i64 1, align 1
+// LLVM:  br label %{{.*}}
+// LLVM:  br label %{{.*}}
+// LLVM:  call void @get()
+// LLVM:  [[LOAD2:%.*]] = load %struct.S, ptr [[ALLOC2]], align 1
+// LLVM:  store %struct.S [[LOAD2]], ptr [[ALLOC1]], align 1
+// LLVM:  [[LOAD1:%.*]] = load %struct.S, ptr [[ALLOC1]], align 1
+// LLVM:  call void @bar()
 
 // OGCG: define dso_local void @foo()
 // OGCG:   %agg.tmp = alloca %struct.S, align 1

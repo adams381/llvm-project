@@ -22,32 +22,34 @@ bool cmp_eq(void (Foo::*lhs)(int), void (Foo::*rhs)(int)) {
 // CIR-BEFORE:   %[[CMP:.*]] = cir.cmp eq %[[LHS]], %[[RHS]] : !cir.method<!cir.func<(!cir.ptr<!rec_Foo>, !s32i)> in !rec_Foo>
 // CIR-BEFORE:   cir.store %[[CMP]], %{{.*}} : !cir.bool, !cir.ptr<!cir.bool>
 
-// CIR-AFTER: @_Z6cmp_eqM3FooFviES1_
-// CIR-AFTER:   %[[LHS:.*]] = cir.load{{.*}} %0 : !cir.ptr<!rec_anon_struct>, !rec_anon_struct
-// CIR-AFTER:   %[[RHS:.*]] = cir.load{{.*}} %1 : !cir.ptr<!rec_anon_struct>, !rec_anon_struct
+// The calling-convention lowering pass coerces `!rec_anon_struct {i64,i64}`
+// arguments into two separate i64 scalars, then reassembles them in the
+// callee via per-arg coerce + alloca + store + alloca + cir.copy / load
+// before the original cmp logic runs against the lhs/rhs allocas.
+// CIR-AFTER: @_Z6cmp_eqM3FooFviES1_(%{{.*}}: !s64i {{.*}}, %{{.*}}: !s64i {{.*}}, %{{.*}}: !s64i {{.*}}, %{{.*}}: !s64i {{.*}})
 // CIR-AFTER:   %[[NULL:.*]] = cir.const #cir.int<0> : !s64i
-// CIR-AFTER:   %[[LHS_PTR:.*]] = cir.extract_member %[[LHS]][0] : !rec_anon_struct -> !s64i
-// CIR-AFTER:   %[[RHS_PTR:.*]] = cir.extract_member %[[RHS]][0] : !rec_anon_struct -> !s64i
+// CIR-AFTER:   %[[LHS_PTR:.*]] = cir.extract_member {{.*}}[0] : !rec_anon_struct -> !s64i
+// CIR-AFTER:   %[[RHS_PTR:.*]] = cir.extract_member {{.*}}[0] : !rec_anon_struct -> !s64i
 // CIR-AFTER:   %[[PTR_CMP:.*]] = cir.cmp eq %[[LHS_PTR]], %[[RHS_PTR]] : !s64i
 // CIR-AFTER:   %[[PTR_NULL:.*]] = cir.cmp eq %[[LHS_PTR]], %[[NULL]] : !s64i
-// CIR-AFTER:   %[[LHS_ADJ:.*]] = cir.extract_member %[[LHS]][1] : !rec_anon_struct -> !s64i
-// CIR-AFTER:   %[[RHS_ADJ:.*]] = cir.extract_member %[[RHS]][1] : !rec_anon_struct -> !s64i
+// CIR-AFTER:   %[[LHS_ADJ:.*]] = cir.extract_member {{.*}}[1] : !rec_anon_struct -> !s64i
+// CIR-AFTER:   %[[RHS_ADJ:.*]] = cir.extract_member {{.*}}[1] : !rec_anon_struct -> !s64i
 // CIR-AFTER:   %[[ADJ_CMP:.*]] = cir.cmp eq %[[LHS_ADJ]], %[[RHS_ADJ]] : !s64i
 // CIR-AFTER:   %[[TMP:.*]] = cir.or %[[PTR_NULL]], %[[ADJ_CMP]] : !cir.bool
 // CIR-AFTER:   %[[RESULT:.*]] = cir.and %[[PTR_CMP]], %[[TMP]] : !cir.bool
 
-// LLVM: define {{.*}} i1 @_Z6cmp_eqM3FooFviES1_
-// LLVM:   %[[LHS:.*]] = load { i64, i64 }, ptr %{{.+}}
-// LLVM:   %[[RHS:.*]] = load { i64, i64 }, ptr %{{.+}}
-// LLVM:   %[[LHS_PTR:.*]] = extractvalue { i64, i64 } %[[LHS]], 0
-// LLVM:   %[[RHS_PTR:.*]] = extractvalue { i64, i64 } %[[RHS]], 0
-// LLVM:   %[[PTR_CMP:.*]] = icmp eq i64 %[[LHS_PTR]], %[[RHS_PTR]]
-// LLVM:   %[[PTR_NULL:.*]] = icmp eq i64 %[[LHS_PTR]], 0
-// LLVM:   %[[LHS_ADJ:.*]] = extractvalue { i64, i64 } %[[LHS]], 1
-// LLVM:   %[[RHS_ADJ:.*]] = extractvalue { i64, i64 } %[[RHS]], 1
-// LLVM:   %[[ADJ_CMP:.*]] = icmp eq i64 %[[LHS_ADJ]], %[[RHS_ADJ]]
-// LLVM:   %[[TMP:.*]] = or i1 %[[PTR_NULL]], %[[ADJ_CMP]]
-// LLVM:   %[[RESULT:.*]] = and i1 %[[PTR_CMP]], %[[TMP]]
+// LLVM: define {{.*}} i1 @_Z6cmp_eqM3FooFviES1_(i64 %{{.*}}, i64 %{{.*}}, i64 %{{.*}}, i64 %{{.*}})
+// LLVM:   {{.*}} = load { i64, i64 }, ptr %{{.+}}
+// LLVM:   {{.*}} = load { i64, i64 }, ptr %{{.+}}
+// LLVM:   {{.*}} = extractvalue { i64, i64 } {{.*}}, 0
+// LLVM:   {{.*}} = extractvalue { i64, i64 } {{.*}}, 0
+// LLVM:   {{.*}} = icmp eq i64
+// LLVM:   {{.*}} = icmp eq i64
+// LLVM:   {{.*}} = extractvalue { i64, i64 } {{.*}}, 1
+// LLVM:   {{.*}} = extractvalue { i64, i64 } {{.*}}, 1
+// LLVM:   {{.*}} = icmp eq i64
+// LLVM:   {{.*}} = or i1
+// LLVM:   {{.*}} = and i1
 
 // OGCG: define {{.*}} i1 @_Z6cmp_eqM3FooFviES1_
 // OGCG:   %[[LHS_TMP:.*]] = alloca { i64, i64 }
@@ -76,32 +78,30 @@ bool cmp_ne(void (Foo::*lhs)(int), void (Foo::*rhs)(int)) {
 // CIR-BEFORE:   %[[CMP:.*]] = cir.cmp ne %[[LHS]], %[[RHS]] : !cir.method<!cir.func<(!cir.ptr<!rec_Foo>, !s32i)> in !rec_Foo>
 // CIR-BEFORE:   cir.store %[[CMP]], %{{.*}} : !cir.bool, !cir.ptr<!cir.bool>
 
-// CIR-AFTER: cir.func {{.*}} @_Z6cmp_neM3FooFviES1_
-// CIR-AFTER:   %[[LHS:.*]] = cir.load{{.*}} %0 : !cir.ptr<!rec_anon_struct>, !rec_anon_struct
-// CIR-AFTER:   %[[RHS:.*]] = cir.load{{.*}} %1 : !cir.ptr<!rec_anon_struct>, !rec_anon_struct
+// CIR-AFTER: cir.func {{.*}} @_Z6cmp_neM3FooFviES1_(%{{.*}}: !s64i {{.*}}, %{{.*}}: !s64i {{.*}}, %{{.*}}: !s64i {{.*}}, %{{.*}}: !s64i {{.*}})
 // CIR-AFTER:   %[[NULL:.*]] = cir.const #cir.int<0> : !s64i
-// CIR-AFTER:   %[[LHS_PTR:.*]] = cir.extract_member %[[LHS]][0] : !rec_anon_struct -> !s64i
-// CIR-AFTER:   %[[RHS_PTR:.*]] = cir.extract_member %[[RHS]][0] : !rec_anon_struct -> !s64i
+// CIR-AFTER:   %[[LHS_PTR:.*]] = cir.extract_member {{.*}}[0] : !rec_anon_struct -> !s64i
+// CIR-AFTER:   %[[RHS_PTR:.*]] = cir.extract_member {{.*}}[0] : !rec_anon_struct -> !s64i
 // CIR-AFTER:   %[[PTR_CMP:.*]] = cir.cmp ne %[[LHS_PTR]], %[[RHS_PTR]] : !s64i
 // CIR-AFTER:   %[[PTR_NULL:.*]] = cir.cmp ne %[[LHS_PTR]], %[[NULL]] : !s64i
-// CIR-AFTER:   %[[LHS_ADJ:.*]] = cir.extract_member %[[LHS]][1] : !rec_anon_struct -> !s64i
-// CIR-AFTER:   %[[RHS_ADJ:.*]] = cir.extract_member %[[RHS]][1] : !rec_anon_struct -> !s64i
+// CIR-AFTER:   %[[LHS_ADJ:.*]] = cir.extract_member {{.*}}[1] : !rec_anon_struct -> !s64i
+// CIR-AFTER:   %[[RHS_ADJ:.*]] = cir.extract_member {{.*}}[1] : !rec_anon_struct -> !s64i
 // CIR-AFTER:   %[[ADJ_CMP:.*]] = cir.cmp ne %[[LHS_ADJ]], %[[RHS_ADJ]] : !s64i
 // CIR-AFTER:   %[[TMP:.*]] = cir.and %[[PTR_NULL]], %[[ADJ_CMP]] : !cir.bool
 // CIR-AFTER:   %[[RESULT:.*]] = cir.or %[[PTR_CMP]], %[[TMP]] : !cir.bool
 
-// LLVM: define {{.*}} i1 @_Z6cmp_neM3FooFviES1_
-// LLVM:   %[[LHS:.*]] = load { i64, i64 }, ptr %{{.*}}
-// LLVM:   %[[RHS:.*]] = load { i64, i64 }, ptr %{{.*}}
-// LLVM:   %[[LHS_PTR:.*]] = extractvalue { i64, i64 } %[[LHS]], 0
-// LLVM:   %[[RHS_PTR:.*]] = extractvalue { i64, i64 } %[[RHS]], 0
-// LLVM:   %[[PTR_CMP:.*]] = icmp ne i64 %[[LHS_PTR]], %[[RHS_PTR]]
-// LLVM:   %[[PTR_NULL:.*]] = icmp ne i64 %[[LHS_PTR]], 0
-// LLVM:   %[[LHS_ADJ:.*]] = extractvalue { i64, i64 } %[[LHS]], 1
-// LLVM:   %[[RHS_ADJ:.*]] = extractvalue { i64, i64 } %[[RHS]], 1
-// LLVM:   %[[ADJ_CMP:.*]] = icmp ne i64 %[[LHS_ADJ]], %[[RHS_ADJ]]
-// LLVM:   %[[TMP:.*]] = and i1 %[[PTR_NULL]], %[[ADJ_CMP]]
-// LLVM:   %[[RESULT:.*]] = or i1 %[[PTR_CMP]], %[[TMP]]
+// LLVM: define {{.*}} i1 @_Z6cmp_neM3FooFviES1_(i64 %{{.*}}, i64 %{{.*}}, i64 %{{.*}}, i64 %{{.*}})
+// LLVM:   {{.*}} = load { i64, i64 }, ptr %{{.*}}
+// LLVM:   {{.*}} = load { i64, i64 }, ptr %{{.*}}
+// LLVM:   {{.*}} = extractvalue { i64, i64 } {{.*}}, 0
+// LLVM:   {{.*}} = extractvalue { i64, i64 } {{.*}}, 0
+// LLVM:   {{.*}} = icmp ne i64
+// LLVM:   {{.*}} = icmp ne i64
+// LLVM:   {{.*}} = extractvalue { i64, i64 } {{.*}}, 1
+// LLVM:   {{.*}} = extractvalue { i64, i64 } {{.*}}, 1
+// LLVM:   {{.*}} = icmp ne i64
+// LLVM:   {{.*}} = and i1
+// LLVM:   {{.*}} = or i1
 
 // OGCG: define {{.*}} i1 @_Z6cmp_neM3FooFviES1_
 // OGCG:   %[[LHS_TMP:.*]] = alloca { i64, i64 }

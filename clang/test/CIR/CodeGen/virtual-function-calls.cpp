@@ -114,7 +114,7 @@ void call_virtual_fn_in_cleanup_scope() {
 // LLVM:    %[[B_VPTR:.*]] = load ptr, ptr %[[B]]
 // LLVM:    %[[FN_PTR_ADDR:.*]] = getelementptr inbounds ptr, ptr %[[B_VPTR]], i32 0
 // LLVM:    %[[FN_PTR:.*]] = load ptr, ptr %[[FN_PTR_ADDR]]
-// LLVM:    call void %[[FN_PTR]](ptr {{.*}} %[[B]], i8 noundef 99)
+// LLVM:    call void %[[FN_PTR]](ptr {{.*}} %[[B]], i8 noundef signext 99)
 // LLVM:    br label %[[NORMAL_CLEANUP:.*]]
 // LLVM: [[NORMAL_CLEANUP]]:
 // LLVM:    call void @_ZN1BD1Ev(ptr {{.*}} %[[B]])

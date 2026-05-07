@@ -35,8 +35,9 @@ auto three_way_strong(int x, int y) {
 // AFTER-NEXT:   %[[SELECT_1:.*]] = cir.select if %[[CMP_LT]] then %[[LT]] else %[[GT]] : (!cir.bool, !s8i, !s8i) -> !s8i{{.*}}
 // AFTER-NEXT:   %[[CMP_EQ:.*]] = cir.cmp eq %[[LHS]], %[[RHS]] : !s32i{{.*}}
 // AFTER-NEXT:   %[[SELECT_2:.*]] = cir.select if %[[CMP_EQ]] then %[[EQ]] else %[[SELECT_1]] : (!cir.bool, !s8i, !s8i) -> !s8i{{.*}}
-// AFTER:   %{{.+}} = cir.load %{{.+}} : !cir.ptr<!rec_std3A3A__13A3Astrong_ordering>, !rec_std3A3A__13A3Astrong_ordering{{.*}}
-// AFTER-NEXT:   cir.return %{{.+}} : !rec_std3A3A__13A3Astrong_ordering{{.*}}
+// `strong_ordering` is a single-byte record so the calling-convention
+// lowering pass coerces the return to `!s8i` (matching OGCG's `i8`).
+// AFTER:   cir.return %{{.+}} : !s8i{{.*}}
 
 // LLVM:  %[[LHS:.*]] = load i32, ptr %{{.*}}, align 4
 // LLVM-NEXT:  %[[RHS:.*]] = load i32, ptr %{{.*}}, align 4
@@ -73,8 +74,8 @@ auto three_way_partial(float x, float y) {
 // AFTER-NEXT:   %[[SELECT_2:.*]] = cir.select if %[[CMP_GT]] then %[[GT]] else %[[SELECT_1]] : (!cir.bool, !s8i, !s8i) -> !s8i{{.*}}
 // AFTER-NEXT:   %[[CMP_LT:.*]] = cir.cmp lt %[[LHS]], %[[RHS]] : !cir.float{{.*}}
 // AFTER-NEXT:   %[[SELECT_3:.*]] = cir.select if %[[CMP_LT]] then %[[LT]] else %[[SELECT_2]] : (!cir.bool, !s8i, !s8i) -> !s8i{{.*}}
-// AFTER:   %{{.+}} = cir.load %{{.+}} : !cir.ptr<!rec_std3A3A__13A3Apartial_ordering>, !rec_std3A3A__13A3Apartial_ordering{{.*}}
-// AFTER-NEXT:   cir.return %{{.+}} : !rec_std3A3A__13A3Apartial_ordering{{.*}}
+// `partial_ordering` is also a single-byte record, coerced to `!s8i`.
+// AFTER:   cir.return %{{.+}} : !s8i{{.*}}
 
 // LLVM:  %[[LHS:.*]] = load float, ptr %{{.*}}, align 4
 // LLVM:  %[[RHS:.*]] = load float, ptr %{{.*}}, align 4
@@ -105,7 +106,9 @@ struct HasMember {
 };
 
 void use_pseudo_ordering(HasMember m1, HasMember m2) {
-  // BOTH: cir.func {{.*}}@_ZNK9HasMemberssERKS_(%{{.*}}: !cir.ptr<!rec_HasMember>{{.*}}, %{{.*}}: !cir.ptr<!rec_HasMember>{{.*}}) -> !rec_std3A3A__13A3Astrong_ordering
+  // The strong_ordering return is coerced to `!s8i` (matching OGCG's
+  // `i8`) by the calling-convention lowering pass.
+  // BOTH: cir.func {{.*}}@_ZNK9HasMemberssERKS_(%{{.*}}: !cir.ptr<!rec_HasMember>{{.*}}, %{{.*}}: !cir.ptr<!rec_HasMember>{{.*}}) -> !s8i
   // BOTH: %[[LHS_ALLOCA:.*]] = cir.alloca !cir.ptr<!rec_HasMember>, !cir.ptr<!cir.ptr<!rec_HasMember>>, ["this", init]
   // BOTH: %[[RHS_ALLOCA:.*]] = cir.alloca !cir.ptr<!rec_HasMember>, !cir.ptr<!cir.ptr<!rec_HasMember>>, ["", init, const]
   // BOTH: %[[RET_ALLOCA:.*]] = cir.alloca !rec_std3A3A__13A3Astrong_ordering, !cir.ptr<!rec_std3A3A__13A3Astrong_ordering>, ["__retval"]
@@ -133,26 +136,32 @@ void use_pseudo_ordering(HasMember m1, HasMember m2) {
   // BOTH:   }) : (!cir.bool) -> !cir.ptr<!rec_std3A3A__13A3Astrong_ordering>
   // BOTH:   cir.copy %[[TOP_TERN_RES]] to %[[CMP_RES]] : !cir.ptr<!rec_std3A3A__13A3Astrong_ordering>
   // BOTH:   cir.copy %[[CMP_RES]] to %[[CMP_TEMP]] : !cir.ptr<!rec_std3A3A__13A3Astrong_ordering>
-  // BOTH:   %[[UNSPEC_TEMP:.*]] = cir.const #cir.const_record<{#cir.int<0> : !s64i, #cir.int<0> : !s64i}>
-  // BOTH:   %[[CMP_TEMP_LOAD:.*]] = cir.load {{.*}}%[[CMP_TEMP]] : !cir.ptr<!rec_std3A3A__13A3Astrong_ordering>, !rec_std3A3A__13A3Astrong_ordering
-  // BOTH:   %[[SO_NE_RES:.*]] = cir.call @_ZNSt3__1neENS_15strong_orderingEMNS_19_CmpUnspecifiedTypeEFvvE(%14, %[[UNSPEC_TEMP]])
+  // The unspecified-type member-function-pointer (a 16-byte {i64, i64})
+  // is treated as can-pass-in-registers by the calling-convention
+  // lowering pass and coerced into two scalar i64 arguments — so the
+  // call signature is `(strong_ordering, i64, i64)` matching OGCG.
+  // BEFORE/AFTER differ in how the pmf is materialized (cir.const vs
+  // global+cir.copy) so we only check the final call as BOTH.
+  // BEFORE:   %[[UNSPEC_CONST:.*]] = cir.const #cir.const_record<{#cir.int<0> : !s64i, #cir.int<0> : !s64i}>
+  // AFTER:    {{.*}} = cir.get_global @__const._ZNK9HasMemberssERKS_.coerce : !cir.ptr<!rec_anon_struct>
+  // BOTH:   %[[SO_NE_RES:.*]] = cir.call @_ZNSt3__1neENS_15strong_orderingEMNS_19_CmpUnspecifiedTypeEFvvE(%{{[0-9]+}}, %{{[0-9]+}}, %{{[0-9]+}})
   // BOTH:   cir.if %[[SO_NE_RES]] {
   // BOTH:     cir.copy %[[CMP_RES]] to %[[RET_ALLOCA]] : !cir.ptr<!rec_std3A3A__13A3Astrong_ordering>
-  // BOTH:     %[[RET_LOAD:.*]] = cir.load %[[RET_ALLOCA]] : !cir.ptr<!rec_std3A3A__13A3Astrong_ordering>, !rec_std3A3A__13A3Astrong_ordering
-  // BOTH:     cir.return %[[RET_LOAD]] : !rec_std3A3A__13A3Astrong_ordering
+  // The strong_ordering record is coerced to `i8` for the return.
+  // BOTH:     cir.return {{.*}} : !s8i
   // BOTH:   }
   // BOTH: }
   // BOTH: %[[EQ_GLOB:.*]] = cir.get_global @_ZNSt3__115strong_ordering5equalE : !cir.ptr<!rec_std3A3A__13A3Astrong_ordering>
   // BOTH: cir.copy %[[EQ_GLOB]] to %[[RET_ALLOCA]] : !cir.ptr<!rec_std3A3A__13A3Astrong_ordering>
-  // BOTH: %[[RET_LOAD:.*]] = cir.load %[[RET_ALLOCA]] : !cir.ptr<!rec_std3A3A__13A3Astrong_ordering>, !rec_std3A3A__13A3Astrong_ordering
-  // BOTH: cir.return %[[RET_LOAD]] : !rec_std3A3A__13A3Astrong_ordering
+  // BOTH: cir.return {{.*}} : !s8i
 
+  // The return of `operator<=>` (strong_ordering, single-byte) is
+  // coerced to `i8` matching OGCG.
   // BOTH: cir.func {{.*}} @_Z19use_pseudo_ordering9HasMemberS_(%[[M1:.*]]: !rec_HasMember{{.*}}, %[[M2:.*]]: !rec_HasMember{{.*}})
   // BOTH: %[[M1_ALLOCA:.*]] = cir.alloca !rec_HasMember, !cir.ptr<!rec_HasMember>, ["m1", init]
   // BOTH: %[[M2_ALLOCA:.*]] = cir.alloca !rec_HasMember, !cir.ptr<!rec_HasMember>, ["m2", init] {alignment = 1 : i64}
   // BOTH: %[[G_ALLOCA:.*]] = cir.alloca !rec_std3A3A__13A3Astrong_ordering, !cir.ptr<!rec_std3A3A__13A3Astrong_ordering>, ["g", init]
-  // BOTH: %[[CALL_RES:.*]] = cir.call @_ZNK9HasMemberssERKS_(%[[M1_ALLOCA]], %[[M2_ALLOCA]]) : (!cir.ptr<!rec_HasMember> {{.*}}, !cir.ptr<!rec_HasMember> {{.*}}) -> !rec_std3A3A__13A3Astrong_ordering
-  // BOTH: cir.store {{.*}}%[[CALL_RES]], %[[G_ALLOCA]] : !rec_std3A3A__13A3Astrong_ordering, !cir.ptr<!rec_std3A3A__13A3Astrong_ordering>
+  // BOTH: cir.call @_ZNK9HasMemberssERKS_(%[[M1_ALLOCA]], %[[M2_ALLOCA]]) : (!cir.ptr<!rec_HasMember> {{.*}}, !cir.ptr<!rec_HasMember> {{.*}}) -> !s8i
   std::strong_ordering g = (m1 <=> m2);
   // LLVM: define {{.*}} @_ZNK9HasMemberssERKS_(ptr {{.*}}, ptr {{.*}})
   // LLVM:   %[[TMP_SO:.*]] = alloca %"class.std::__1::strong_ordering"
@@ -167,7 +176,7 @@ void use_pseudo_ordering(HasMember m1, HasMember m2) {
   // LLVM:   br i1 %[[EQ_RES]], label %[[EQ_TRUE:.*]], label %[[EQ_FALSE:.*]]
   //
   // LLVM: [[EQ_TRUE]]:
-  // LLVM:   br label %20
+  // LLVM:   br label %{{[0-9]+}}
   //
   // LLVM: [[EQ_FALSE]]:
   // LLVM:   %[[LT_RES:.*]] = call noundef i1 @_ZNK6MemberltERKS_(ptr {{.*}}%[[LHS_LOAD]], ptr {{.*}}%[[RHS_LOAD]])
@@ -193,30 +202,29 @@ void use_pseudo_ordering(HasMember m1, HasMember m2) {
   // LLVM: [[AFTER_CMPS_CTD]]:
   // LLVM:   call void @llvm.memcpy.p0.p0.i64(ptr %[[TMP_SO]], ptr %[[CMP_RES]], i64 1, i1 false)
   // LLVM:   call void @llvm.memcpy.p0.p0.i64(ptr %[[RET_ALLOCA]], ptr %[[TMP_SO]], i64 1, i1 false)
-  // LLVM:   %[[RET_LOAD:.*]] = load %"class.std::__1::strong_ordering", ptr %[[RET_ALLOCA]]
-  // LLVM:   %[[SO_NE_RES:.*]] = call noundef i1 @_ZNSt3__1neENS_15strong_orderingEMNS_19_CmpUnspecifiedTypeEFvvE(%"class.std::__1::strong_ordering" %[[RET_LOAD]],
+  // After ABI lowering, strong_ordering / pmf args / returns are
+  // coerced to scalar eightbytes — `i8` for strong_ordering, two i64
+  // scalars for the unspec member-function-pointer.
+  // LLVM:   %[[SO_NE_RES:.*]] = call noundef i1 @_ZNSt3__1neENS_15strong_orderingEMNS_19_CmpUnspecifiedTypeEFvvE(i8 {{.*}}, i64 {{.*}}, i64 {{.*}})
   // LLVM:   br i1 %[[SO_NE_RES]], label %[[SO_NE_RES_TRUE:.*]], label %[[SO_NE_RES_FALSE:.*]]
   //
   // LLVM: [[SO_NE_RES_TRUE]]:
-  // LLVM:   call void @llvm.memcpy.p0.p0.i64(ptr %[[TMP_SO2]], ptr %[[TMP_SO]], i64 1, i1 false)
-  // LLVM:   %[[TMP_SO2_LOAD:.*]] = load %"class.std::__1::strong_ordering", ptr %[[TMP_SO2]]
-  // LLVM:   ret %"class.std::__1::strong_ordering" %[[TMP_SO2_LOAD]]
+  // LLVM:   ret i8 {{.*}}
   //
   // LLVM: [[SO_NE_RES_FALSE]]:
   // LLVM:   br label %[[SO_NE_RES_FALSE_CTD:.*]]
   //
   // LLVM: [[SO_NE_RES_FALSE_CTD]]:
   // LLVM:   call void @llvm.memcpy.p0.p0.i64(ptr %[[TMP_SO2]], ptr @_ZNSt3__115strong_ordering5equalE, i64 1, i1 false)
-  // LLVM:   %[[TMP_SO2_LOAD:.*]] = load %"class.std::__1::strong_ordering", ptr %[[TMP_SO2]]
-  // LLVM:   ret %"class.std::__1::strong_ordering" %[[TMP_SO2_LOAD]]
+  // LLVM:   ret i8 {{.*}}
   // LLVM: }
 
+  // The strong_ordering return is now coerced to `i8` (matching OGCG).
   // LLVM: define {{.*}}void @_Z19use_pseudo_ordering9HasMemberS_(%struct.HasMember %{{.*}}, %struct.HasMember %{{.*}}) #0 {
   // LLVM:   %[[M1_ALLOCA:.*]] = alloca %struct.HasMember
   // LLVM:   %[[M2_ALLOCA:.*]] = alloca %struct.HasMember
   // LLVM:   %[[G_ALLOCA:.*]] = alloca %"class.std::__1::strong_ordering"
-  // LLVM:   %[[CALL_RES:.*]] = call %"class.std::__1::strong_ordering" @_ZNK9HasMemberssERKS_(ptr {{.*}}%[[M1_ALLOCA]], ptr {{.*}}%[[M2_ALLOCA]])
-  // LLVM:   store %"class.std::__1::strong_ordering" %[[CALL_RES]], ptr %[[G_ALLOCA]]
+  // LLVM:   %[[CALL_RES:.*]] = call i8 @_ZNK9HasMemberssERKS_(ptr {{.*}}%[[M1_ALLOCA]], ptr {{.*}}%[[M2_ALLOCA]])
   // LLVM:   ret void
   // LLVM: }
 

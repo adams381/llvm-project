@@ -30,8 +30,12 @@ A *deact_simple() { return new A(makeB()); }
 // CIR:   cir.cleanup.scope {
 // CIR:     %[[TRUE:.*]] = cir.const #true
 // CIR:     cir.store %[[TRUE]], %[[ACTIVE]] : !cir.bool, !cir.ptr<!cir.bool>
-// CIR:     %[[MAKEB:.*]] = cir.call @_Z5makeBv() : () -> !rec_B
-// CIR:     cir.store{{.*}} %[[MAKEB]], %[[TMP]] : !rec_B, !cir.ptr<!rec_B>
+// `B` has a non-trivial destructor, so `makeB()` is rewritten to take an
+// `sret` argument (matching classic Clang's `void @_Z5makeBv(ptr sret(...))`).
+// The result is loaded out of the sret alloca and copied into the
+// `ref.tmp0` alloca that the test tracked as `%[[TMP]]`.
+// CIR:     cir.call @_Z5makeBv({{.*}}) : (!cir.ptr<!rec_B>) -> ()
+// CIR:     cir.store{{.*}} %{{.*}}, %[[TMP]] : !rec_B, !cir.ptr<!rec_B>
 // CIR:     cir.cleanup.scope {
 // CIR:       %[[CONV:.*]] = cir.call @_ZN1BcviEv(%[[TMP]])
 // CIR:       cir.call @_ZN1AC1Ei({{.*}})
@@ -48,11 +52,16 @@ A *deact_simple() { return new A(makeB()); }
 // CIR:   }
 
 // LLVM-LABEL: define dso_local ptr @_Z12deact_simplev() {{.*}} personality ptr @__gxx_personality_v0 {
-// LLVM:   %[[TMP:.*]] = alloca %struct.B
-// LLVM:   %[[ACTIVE:.*]] = alloca i8
+// The CallConvLowering pass adds an `align 8` sret slot for the rewritten
+// `void @_Z5makeBv(ptr sret)`; the original `ref.tmp0` (align 4) is what
+// the dtor cleanup walks.  Classic Clang only allocates the latter.
+// LLVM-DAG:   %[[SRET:.*]] = alloca %struct.B, i64 1, align 8
+// LLVM-DAG:   %[[TMP:.*]] = alloca %struct.B, i64 1, align 4
+// LLVM-DAG:   %[[ACTIVE:.*]] = alloca i8
 // LLVM:   %[[PTR:.*]] = call nonnull ptr @_Znwm(i64 1) #[[ATTR_BUILTIN_NEW:.*]]
 // LLVM:   store i8 1, ptr %[[ACTIVE]]
-// LLVM:   %[[MAKEB:.*]] = invoke %struct.B @_Z5makeBv()
+// LLVM:   store ptr {{.*}}, ptr {{.*}}
+// LLVM:   invoke void @_Z5makeBv(ptr %[[SRET]])
 // LLVM:           to label %[[INVOKE_CONT:.*]] unwind label %[[UNWIND_OUTER:.*]]
 // LLVM: [[INVOKE_CONT]]:
 // LLVM:   invoke void @_ZN1AC1Ei(ptr {{.*}} %[[PTR]], i32 {{.*}})
@@ -122,7 +131,7 @@ A *deact_if(bool cond) {
 // CIR:     }
 // CIR:   }
 
-// LLVM-LABEL: define dso_local ptr @_Z8deact_ifb(i1 %0) {{.*}} personality ptr @__gxx_personality_v0 {
+// LLVM-LABEL: define dso_local ptr @_Z8deact_ifb(i1 zeroext %0) {{.*}} personality ptr @__gxx_personality_v0 {
 // LLVM:   br i1 %{{.*}}, label %[[THEN:.*]], label %[[END:.*]]
 // LLVM: [[THEN]]:
 // LLVM:   %[[PTR:.*]] = call nonnull ptr @_Znwm(i64 1) #[[ATTR_BUILTIN_NEW]]
@@ -177,7 +186,7 @@ A *deact_ternary(bool cond) { return (new A(makeB()), cond) ? nullptr : nullptr;
 // CIR:     }
 // CIR:   }
 
-// LLVM-LABEL: define dso_local ptr @_Z13deact_ternaryb(i1 %0) {{.*}} personality ptr @__gxx_personality_v0 {
+// LLVM-LABEL: define dso_local ptr @_Z13deact_ternaryb(i1 zeroext %0) {{.*}} personality ptr @__gxx_personality_v0 {
 // LLVM:   %[[PTR:.*]] = call nonnull ptr @_Znwm(i64 1) #[[ATTR_BUILTIN_NEW]]
 // LLVM:   store i8 1, ptr %[[ACTIVE:.*]]
 // LLVM:   invoke void @_ZN1AC1Ei(ptr {{.*}} %[[PTR]], i32 {{.*}})
@@ -237,13 +246,17 @@ A *deact_while_cond(int n) {
 // CIR:   } do {
 
 // LLVM-LABEL: define dso_local ptr @_Z16deact_while_condi(i32 %0) {{.*}} personality ptr @__gxx_personality_v0 {
-// LLVM:   %[[TMP:.*]] = alloca %struct.B
-// LLVM:   %[[ACTIVE:.*]] = alloca i8
+// See deact_simple: pin allocas by alignment to match the sret-vs-ref.tmp0
+// roles regardless of their relative emission order in the function.
+// LLVM-DAG:   %[[SRET:.*]] = alloca %struct.B, i64 1, align 8
+// LLVM-DAG:   %[[TMP:.*]] = alloca %struct.B, i64 1, align 4
+// LLVM-DAG:   %[[ACTIVE:.*]] = alloca i8
 // LLVM:   br label %[[WHILE_COND:.*]]
 // LLVM: [[WHILE_COND]]:
 // LLVM:   %[[PTR:.*]] = call nonnull ptr @_Znwm(i64 1) #[[ATTR_BUILTIN_NEW]]
 // LLVM:   store i8 1, ptr %[[ACTIVE]]
-// LLVM:   invoke %struct.B @_Z5makeBv()
+// LLVM:   store ptr {{.*}}, ptr {{.*}}
+// LLVM:   invoke void @_Z5makeBv(ptr %[[SRET]])
 // LLVM:           to label %[[INVOKE_CONT:.*]] unwind label %[[UNWIND_OUTER:.*]]
 // LLVM: [[INVOKE_CONT]]:
 // LLVM:   invoke void @_ZN1AC1Ei(ptr {{.*}} %[[PTR]], i32 {{.*}})

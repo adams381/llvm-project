@@ -18,17 +18,19 @@ void use() {
 
 // CIR: cir.global external @fp = #cir.ptr<null> : !cir.ptr<!cir.func<() -> !rec_Delayed>>
 
+// `Delayed` is a single-i32 record that is coerced to `i32` by the ABI
+// pass.  The indirect call's function-pointer type is bitcast from
+// `() -> Delayed` to `() -> i32` before the call is issued.
 // CIR: cir.func {{.*}} @_Z3usev()
 // CIR:   %[[FP:.*]] = cir.get_global @fp
 // CIR:   %[[LOAD:.*]] = cir.load {{.*}} %[[FP]]
-// CIR:   cir.call %[[LOAD]]() : (!cir.ptr<!cir.func<() -> !rec_Delayed>>) -> !rec_Delayed
-
-// The difference between LLVM and OGCG is due to missing ABI lowering.
+// CIR:   %[[CAST:.*]] = cir.cast bitcast %[[LOAD]] : !cir.ptr<!cir.func<() -> !rec_Delayed>> -> !cir.ptr<!cir.func<() -> !s32i>>
+// CIR:   cir.call %[[CAST]]() : (!cir.ptr<!cir.func<() -> !s32i>>) -> !s32i
 
 // LLVM: @fp = global ptr null
 // LLVM: define {{.*}} void @_Z3usev()
 // LLVM:   %[[FP:.*]] = load ptr, ptr @fp
-// LLVM:   %[[CALL:.*]] = call %struct.Delayed %[[FP]]()
+// LLVM:   %[[CALL:.*]] = call i32 %[[FP]]()
 
 // OGCG: @fp = global ptr null
 // OGCG: define {{.*}} void @_Z3usev()

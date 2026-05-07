@@ -50,12 +50,9 @@ HasMem get_m() { return m; }
 // LLVM-BOTH-LABEL: define {{.*}}@_Z5get_mIXtl6HasMemLi2EEEES0_v()
 // LLVM-BOTH: %[[RET_ALLOCA:.*]] = alloca %struct.HasMem
 // LLVM-BOTH: call void @llvm.memcpy.p0.p0.i64(ptr {{.*}}%[[RET_ALLOCA]], ptr {{.*}}@_ZTAXtl6HasMemLi2EEE, i64 4, i1 false)
-// LLVM: %[[LOAD_RET:.*]] = load %struct.HasMem, ptr %[[RET_ALLOCA]]
-// LLVM: ret %struct.HasMem %[[LOAD_RET]]
-
-// OGCG: %[[COERCE:.*]] = getelementptr{{.*}} %struct.HasMem, ptr %[[RET_ALLOCA]], i32 0, i32 0
-// OGCG: %[[TO_RET:.*]] = load i32, ptr %[[COERCE]]
-// OGCG: ret i32 %[[TO_RET]]
+// `HasMem { int x; }` is a single-i32 record, coerced to `i32` for the
+// return — both CIR and OGCG produce the same `i32` ABI shape now.
+// LLVM-BOTH: ret i32 {{.*}}
 
 void caller() {
   get_x<{1}>();

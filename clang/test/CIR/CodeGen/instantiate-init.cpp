@@ -44,8 +44,10 @@ void init_vec_using_initalizer_list() {
 // CIR: %[[CONST_U64_3:.*]] = cir.const #cir.int<3> : !u64i
 // CIR: %[[SIZE_PTR:.*]] = cir.get_member %[[AGG_ADDR]][1] {name = "size"} : !cir.ptr<!rec_std3A3Ainitializer_list3Cint3E> -> !cir.ptr<!u64i>
 // CIR: cir.store {{.*}} %[[CONST_U64_3]], %[[SIZE_PTR]] : !u64i, !cir.ptr<!u64i>
-// CIR: %[[TMP_AGG:.*]] = cir.load {{.*}} %[[AGG_ADDR]] : !cir.ptr<!rec_std3A3Ainitializer_list3Cint3E>, !rec_std3A3Ainitializer_list3Cint3E
-// CIR: cir.call @_ZN6VectorC1ESt16initializer_listIiE(%[[VEC_ADDR]], %[[TMP_AGG]]) : (!cir.ptr<!rec_Vector> {llvm.align = 1 : i64, llvm.dereferenceable = 1 : i64, llvm.nonnull, llvm.noundef}, !rec_std3A3Ainitializer_list3Cint3E) -> ()
+// The calling-convention lowering pass coerces std::initializer_list
+// into (ptr, i64) per the x86_64 System V ABI (two scalar eightbytes),
+// so the call gets three operands: this, data-ptr, size.
+// CIR: cir.call @_ZN6VectorC1ESt16initializer_listIiE(%[[VEC_ADDR]], {{.*}}) : (!cir.ptr<!rec_Vector> {{{.*}}}, !cir.ptr<!void>, !u64i) -> ()
 // CIR: cir.cleanup.scope {
 // CIR:   cir.yield
 // CIR: } cleanup normal {
@@ -66,8 +68,9 @@ void init_vec_using_initalizer_list() {
 // LLVM:   store ptr %[[INIT_LIST_ADDR]], ptr %[[DATA_PTR]], align 8
 // LLVM:   %[[SIZE_PTR:.*]] = getelementptr inbounds nuw %"class.std::initializer_list<int>", ptr %[[AGG_ADDR]], i32 0, i32 1
 // LLVM:   store i64 3, ptr %[[SIZE_PTR]], align 8
-// LLVM:   %[[TMP_AGG:.*]] = load %"class.std::initializer_list<int>", ptr %[[AGG_ADDR]], align 8
-// LLVM:   call void @_ZN6VectorC1ESt16initializer_listIiE(ptr noundef nonnull align 1 dereferenceable(1) %[[VEC_ADDR]], %"class.std::initializer_list<int>" %[[TMP_AGG]])
+// The ABI coerces std::initializer_list into (ptr, i64), so the LLVM
+// call site passes the data pointer and size as separate scalar args.
+// LLVM:   call void @_ZN6VectorC1ESt16initializer_listIiE(ptr noundef nonnull align 1 dereferenceable(1) %[[VEC_ADDR]], ptr {{.*}}, i64 {{.*}})
 // LLVM:   br label %[[SCOPE_CONT:.*]]
 // LLVM: [[SCOPE_CONT]]:
 // LLVM:   br label %[[CLEANUP_START:.*]]

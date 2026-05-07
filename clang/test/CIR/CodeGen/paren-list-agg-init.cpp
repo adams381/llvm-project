@@ -152,11 +152,12 @@ constexpr int arr4[](1);
 // CIR-DAG: cir.global "private" constant internal dso_local @_ZL4arr5 = #cir.const_array<[#cir.int<2> : !s32i, #cir.int<0> : !s32i]> : !cir.array<!s32i x 2> {alignment = 4 : i64}
 constexpr int arr5[2](2);
 
-// LLVM: define dso_local {{.*}} @{{.*foo1.*}}
+// `struct A { char c; double d; }` (16 bytes) is coerced to
+// `{ i8, double }` (one INTEGER + one SSE eightbyte) — matching OGCG.
+// LLVM: define dso_local { i8, double } @{{.*foo1.*}}
 // LLVM: [[RETVAL:%.*]] = alloca [[STRUCT_A]]
 // LLVM-NEXT: call void @llvm.memcpy.p0.p0.i64(ptr {{.*}}[[RETVAL]], ptr {{.*}}[[A1]], i64 16, i1 false)
-// LLVM-NEXT: [[TMP_0:%.*]] = load {{.*}}, ptr [[RETVAL]], align 8
-// LLVM-NEXT: ret {{.*}}[[TMP_0]]
+// LLVM:      ret { i8, double } {{.*}}
 // CIR-LABEL: cir.func {{.*}}@_Z4foo1v()
 // CIR: %[[A_ALLOCA:.*]] = cir.alloca ![[STRUCT_A]], !cir.ptr<![[STRUCT_A]]>, ["__retval"] {alignment = 8 : i64}
 // CIR: %[[GET_A1:.*]] = cir.get_global @_ZL2a1 : !cir.ptr<![[STRUCT_A]]>
@@ -167,7 +168,7 @@ A foo1() {
 
 // LLVM: define dso_local {{.*}}@{{.*foo2.*}}
 // LLVM: call void @llvm.memcpy.p0.p0.i64(ptr {{.*}}, ptr {{.*}}[[B1]], i64 24, i1 false)
-// CIR: cir.func {{.*}}@_Z4foo2v()
+// CIR: cir.func {{.*}}@_Z4foo2v(%{{.*}}: !cir.ptr<![[STRUCT_B]]> {{{.*}}llvm.sret = ![[STRUCT_B]]{{.*}}}
 // CIR: %[[B_ALLOCA:.*]] = cir.alloca ![[STRUCT_B]], !cir.ptr<![[STRUCT_B]]>, ["__retval"] {alignment = 8 : i64}
 // CIR: %[[GET_GLOB:.*]] = cir.get_global @_ZL2b1 : !cir.ptr<![[STRUCT_B]]>
 // CIR: cir.copy %[[GET_GLOB]] to %[[B_ALLOCA]] : !cir.ptr<![[STRUCT_B]]>
@@ -177,7 +178,7 @@ B foo2() {
 
 // LLVM: define dso_local {{.*}}@{{.*foo3.*}}
 // LLVM: call void @llvm.memcpy.p0.p0.i64(ptr {{.*}}, ptr {{.*}}[[C1]], i64 48, i1 false)
-// CIR: cir.func {{.*}}@_Z4foo3v()
+// CIR: cir.func {{.*}}@_Z4foo3v(%{{.*}}: !cir.ptr<![[STRUCT_C]]> {{{.*}}llvm.sret = ![[STRUCT_C]]{{.*}}}
 // CIR: %[[C_ALLOCA:.*]] = cir.alloca ![[STRUCT_C]], !cir.ptr<![[STRUCT_C]]>, ["__retval"] {alignment = 8 : i64}
 // CIR: %[[GET_GLOB:.*]] = cir.get_global @_ZL2c1
 // CIR: %[[GLOB_CAST:.*]] = cir.cast bitcast %[[GET_GLOB]] : !cir.ptr<!{{.*}}> -> !cir.ptr<![[STRUCT_C]]>
@@ -254,8 +255,10 @@ U foo5() {
 
 // LLVM: define dso_local {{.*}}@{{.*foo6.*}}
 // LLVM-DAG:   [[RETVAL:%.*]] = alloca [[UNION_U]]
-// LLVM-DAG:   [[A:%.*]] = alloca [[STRUCT_A]]
-// LLVM:   call void @llvm.memcpy.p0.p0.i64(ptr {{.*}}[[RETVAL]], ptr {{.*}}[[A]], i64 16, i1 false)
+// The pass adds an intermediate %struct.A copy alloca; the memcpy uses
+// it as the source rather than the parameter alloca that the test had
+// originally captured.
+// LLVM:   call void @llvm.memcpy.p0.p0.i64(ptr {{.*}}, ptr {{.*}}, i64 16, i1 false)
 // CIR-LABEL: cir.func no_inline dso_local @_Z4foo61A(
 // CIR: %[[A_ALLOCA:.*]] = cir.alloca ![[STRUCT_A]], !cir.ptr<![[STRUCT_A]]>, ["a", init] {alignment = 8 : i64}
 // CIR: %[[RET_ALLOCA:.*]] = cir.alloca ![[UNION_U]], !cir.ptr<![[UNION_U]]>, ["__retval"] {alignment = 8 : i64}
@@ -315,7 +318,8 @@ void foo7() {
 
 // LLVM: dso_local {{.*}}@{{.*foo8.*}}(
 // LLVM: call void @llvm.memcpy.p0.p0.i64(ptr {{.*}}, ptr {{.*}}[[D1]], i64 56, i1 false)
-// CIR-LABEL: cir.func no_inline dso_local @_Z4foo8v() 
+// CIR-LABEL: cir.func no_inline dso_local @_Z4foo8v
+// CIR-SAME: (%{{.*}}: !cir.ptr<![[STRUCT_D]]> {{{.*}}llvm.sret = ![[STRUCT_D]]{{.*}}}
 // CIR: %[[RET_ALLOCA:.*]] = cir.alloca ![[STRUCT_D]], !cir.ptr<![[STRUCT_D]]>, ["__retval"] {alignment = 8 : i64}
 // CIR: %[[GET_GLOB:.*]] = cir.get_global @_ZL2d1 :
 // CIR: %[[GLOB_CAST:.*]] = cir.cast bitcast %[[GET_GLOB]] : !cir.ptr<!{{.*}}> -> !cir.ptr<![[STRUCT_D]]>
@@ -450,11 +454,10 @@ void foo12(int a, int b) {
   int arr3[](a, b);
 }
 
-// LLVM: define {{.*}}@{{.*foo13.*}}
+// LLVM: define {{.*}}{ i8, double } @{{.*foo13.*}}
 // LLVM: [[RETVAL:%.*]] = alloca [[STRUCT_A]]
 // LLVM-NEXT: call void @llvm.memcpy.p0.p0.i64(ptr {{.*}}[[RETVAL]], ptr {{.*}}[[A2]], i64 16, i1 false)
-// LLVM-NEXT: [[TMP_0:%.*]] = load {{.*}}, ptr [[RETVAL]], align 8
-// LLVM-NEXT: ret {{.*}}[[TMP_0]]
+// LLVM:      ret { i8, double } {{.*}}
 // CIR-LABEL: cir.func no_inline dso_local @_Z5foo13v()
 // CIR: %[[RET_ALLOCA:.*]] = cir.alloca ![[STRUCT_A]], !cir.ptr<![[STRUCT_A]]>, ["__retval"] {alignment = 8 : i64}
 // CIR; %[[GET_GLOB:.*]] = cir.get_global @_ZL2a2 : !cir.ptr<![[STRUCT_A]]>

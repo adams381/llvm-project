@@ -28,6 +28,10 @@ union Union toUnionAssign() {
   // CIR-LABEL: toUnionAssign()
   // LLVM-LABEL: toUnionAssign()
   //
+  // The calling-convention lowering pass coerces the trivially-copyable
+  // single-eightbyte union return into `i32` (matching OGCG's ABI shape
+  // for unions sized <= 8 bytes).  CIR therefore returns `i32` and
+  // performs the load/return through the `i32` coerce slot.
   // CIR: %[[RET_ALLOCA:.*]] = cir.alloca !rec_Union, !cir.ptr<!rec_Union>, ["__retval"]
   // LLVM: %[[RET_ALLOCA:.*]] = alloca %union.Union
   union Union u;
@@ -37,8 +41,6 @@ union Union toUnionAssign() {
   // CIR: cir.store align(4) %[[INT42]], %[[UNION_TO_INT]] : !s32i, !cir.ptr<!s32i>
   // LLVM: store i32 42, ptr %[[RET_ALLOCA]]
   return u;
-  // CIR: %[[LOAD:.*]] = cir.load %[[RET_ALLOCA]] : !cir.ptr<!rec_Union>, !rec_Union
-  // CIR: cir.return %[[LOAD]]
-  // LLVM: %[[LOAD:.*]] = load %union.Union, ptr %[[RET_ALLOCA]]
-  // LLVM: ret %union.Union %[[LOAD]]
+  // CIR: cir.return {{.*}} : !s32i
+  // LLVM: ret i32 {{.*}}
 }

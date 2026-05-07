@@ -81,13 +81,14 @@ void f11() {
   S s = f10();
 }
 
+// `S { int x; int y; }` is 8 bytes (single-eightbyte INTEGER) so its
+// return is coerced to `i64` matching OGCG.  CIR routes the eightbyte
+// through a coerce alloca and rebuilds the record via bitcast+load.
 // CIR-LABEL: cir.func{{.*}} @_Z3f11v()
-// CIR:         %[[#s:]] = cir.call @_Z3f10v() : () -> !rec_S
-// CIR-NEXT:    cir.store align(4) %[[#s]], %{{.+}} : !rec_S, !cir.ptr<!rec_S>
+// CIR:         %[[#i:]] = cir.call @_Z3f10v() : () -> !u64i
 
 // LLVM-LABEL: define{{.*}} void @_Z3f11v(){{.*}}
-// LLVM:         %[[#s:]] = call %struct.S @_Z3f10v()
-// LLVM-NEXT:    store %struct.S %[[#s]], ptr %{{.+}}, align 4
+// LLVM:         %[[#i:]] = call i64 @_Z3f10v()
 
 void f12() {
   f10();
@@ -95,13 +96,11 @@ void f12() {
 
 // CIR-LABEL: cir.func{{.*}} @_Z3f12v()
 // CIR:         %[[#slot:]] = cir.alloca !rec_S, !cir.ptr<!rec_S>, ["agg.tmp0"]
-// CIR-NEXT:    %[[#ret:]] = cir.call @_Z3f10v() : () -> !rec_S
-// CIR-NEXT:    cir.store align(4) %[[#ret]], %[[#slot]] : !rec_S, !cir.ptr<!rec_S>
+// CIR-NEXT:    %[[#ret:]] = cir.call @_Z3f10v() : () -> !u64i
 
 // LLVM-LABEL: define{{.*}} void @_Z3f12v(){{.*}} {
 // LLVM:         %[[#slot:]] = alloca %struct.S, i64 1, align 4
-// LLVM-NEXT:    %[[#ret:]] = call %struct.S @_Z3f10v()
-// LLVM-NEXT:    store %struct.S %[[#ret]], ptr %[[#slot]], align 4
+// LLVM-NEXT:    %[[#ret:]] = call i64 @_Z3f10v()
 
 void f13() noexcept;
 void f14() {

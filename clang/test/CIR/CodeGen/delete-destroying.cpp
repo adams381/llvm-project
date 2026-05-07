@@ -27,9 +27,11 @@ void test_destroying_delete(S *s) {
   delete s;
 }
 
-// S::operator delete(S *, std::destroying_delete_t)
-// CIR: cir.func private @_ZN1SdlEPS_St19destroying_delete_t(!cir.ptr<!rec_S> {llvm.noundef}, !rec_std3A3Adestroying_delete_t)
-// LLVM: declare void @_ZN1SdlEPS_St19destroying_delete_t(ptr noundef, %"struct.std::destroying_delete_t")
+// S::operator delete(S *, std::destroying_delete_t).  The empty
+// destroying_delete_t tag is Ignored by x86_64 SysV (matches classic
+// codegen), so it does not appear in the declaration or the call.
+// CIR: cir.func private @_ZN1SdlEPS_St19destroying_delete_t(!cir.ptr<!rec_S> {llvm.noundef})
+// LLVM: declare void @_ZN1SdlEPS_St19destroying_delete_t(ptr noundef)
 
 // The destroying operator delete takes over the entire delete operation:
 // no destructor call and no delete-cleanup are emitted in the caller; the
@@ -44,8 +46,7 @@ void test_destroying_delete(S *s) {
 // CIR:   %[[NULL:.*]] = cir.const #cir.ptr<null> : !cir.ptr<!rec_S>
 // CIR:   %[[NOT_NULL:.*]] = cir.cmp ne %[[S]], %[[NULL]] : !cir.ptr<!rec_S>
 // CIR:   cir.if %[[NOT_NULL]] {
-// CIR:     %[[TAG:.*]] = cir.load{{.*}} %[[TAG_ADDR]]
-// CIR:     cir.call @_ZN1SdlEPS_St19destroying_delete_t(%[[S]], %[[TAG]]){{.*}} : (!cir.ptr<!rec_S> {{.*}}, !rec_std3A3Adestroying_delete_t) -> ()
+// CIR:     cir.call @_ZN1SdlEPS_St19destroying_delete_t(%[[S]]){{.*}} : (!cir.ptr<!rec_S> {{.*}}) -> ()
 // CIR-NOT: cir.call @_ZN1SD{{[12]}}Ev
 // CIR:   }
 // CIR:   cir.return
@@ -58,8 +59,7 @@ void test_destroying_delete(S *s) {
 // LLVM:   %[[NOT_NULL:.*]] = icmp ne ptr %[[S]], null
 // LLVM:   br i1 %[[NOT_NULL]], label %[[NOTNULL:.*]], label %[[END:.*]]
 // LLVM: [[NOTNULL]]:
-// LLVM:   %[[TAG:.*]] = load %"struct.std::destroying_delete_t", ptr %[[TAG_ADDR]]
-// LLVM:   call void @_ZN1SdlEPS_St19destroying_delete_t(ptr noundef %[[S]], %"struct.std::destroying_delete_t" %[[TAG]])
+// LLVM:   call void @_ZN1SdlEPS_St19destroying_delete_t(ptr noundef %[[S]])
 // LLVM-NOT: call void @_ZN1SD{{[12]}}Ev
 // LLVM: [[END]]:
 // LLVM:   ret void

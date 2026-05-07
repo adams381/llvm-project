@@ -64,7 +64,7 @@ void hostfunc(void) { kernelfunc<<<1, 1>>>(1, 1, 1); }
 // CIR-SAME: #cir.int<1> : !s32i,
 // CIR-SAME: #cir.global_view<@__cuda_fatbin_str> : !cir.ptr<!void>,
 // CIR-SAME: #cir.ptr<null> : !cir.ptr<!void>
-// CIR-SAME: }> : !rec_anon_struct {section = ".nvFatBinSegment"}
+// CIR-SAME: }> : !rec_anon_struct{{[0-9]*}} {section = ".nvFatBinSegment"}
 
 // Check the GPU binary handle global.
 // CIR: cir.global "private" internal @__cuda_gpubin_handle = #cir.ptr<null> : !cir.ptr<!cir.ptr<!void>>

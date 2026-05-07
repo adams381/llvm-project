@@ -20,7 +20,10 @@ void while_cond_cleanup(int n) {
 
 // CIR-LABEL: cir.func {{.*}} @_Z18while_cond_cleanupi
 // CIR:   cir.while {
-// CIR:     cir.call @_Z5makeSv()
+// `makeS()` returns non-trivially-copyable `S` (has dtor), so the
+// CallConvLowering pass rewrites the return into an `sret` argument, and
+// the call becomes `cir.call @_Z5makeSv(<sret-arg>) -> ()`.
+// CIR:     cir.call @_Z5makeSv(
 // CIR:     cir.cleanup.scope {
 // CIR:       cir.call @_ZN1ScvbEv(
 // CIR:     } cleanup all {
@@ -31,7 +34,9 @@ void while_cond_cleanup(int n) {
 
 // LLVM-LABEL: define dso_local void @_Z18while_cond_cleanupi(i32 %0) {{.*}} personality ptr @__gxx_personality_v0 {
 // LLVM:   %[[TMP:.*]] = alloca %struct.S
-// LLVM:   call %struct.S @_Z5makeSv()
+// LLVM:   %{{.*}} = alloca i8
+// LLVM:   %[[SRET:.*]] = alloca %struct.S
+// LLVM:   call void @_Z5makeSv(ptr %[[SRET]])
 // LLVM:   invoke i1 @_ZN1ScvbEv(ptr {{.*}} %[[TMP]])
 // LLVM:           to label %[[CONT:.*]] unwind label %[[UNWIND:.*]]
 // LLVM: [[CONT]]:
@@ -70,7 +75,7 @@ void do_while_cond_cleanup(int n) {
 // CIR:   cir.do {
 // CIR:     cir.yield
 // CIR:   } while {
-// CIR:     cir.call @_Z5makeSv()
+// CIR:     cir.call @_Z5makeSv(
 // CIR:     cir.cleanup.scope {
 // CIR:       cir.call @_ZN1ScvbEv(
 // CIR:     } cleanup all {
@@ -80,7 +85,9 @@ void do_while_cond_cleanup(int n) {
 
 // LLVM-LABEL: define dso_local void @_Z21do_while_cond_cleanupi(i32 %0) {{.*}} personality ptr @__gxx_personality_v0 {
 // LLVM:   %[[TMP:.*]] = alloca %struct.S
-// LLVM:   call %struct.S @_Z5makeSv()
+// LLVM:   %{{.*}} = alloca i8
+// LLVM:   %[[SRET:.*]] = alloca %struct.S
+// LLVM:   call void @_Z5makeSv(ptr %[[SRET]])
 // LLVM:   invoke i1 @_ZN1ScvbEv(ptr {{.*}} %[[TMP]])
 // LLVM:           to label %[[CONT:.*]] unwind label %[[UNWIND:.*]]
 // LLVM: [[CONT]]:
@@ -113,7 +120,7 @@ void for_cond_cleanup(int n) {
 
 // CIR-LABEL: cir.func {{.*}} @_Z16for_cond_cleanupi
 // CIR:   cir.for : cond {
-// CIR:     cir.call @_Z5makeSv()
+// CIR:     cir.call @_Z5makeSv(
 // CIR:     cir.cleanup.scope {
 // CIR:       cir.call @_ZN1ScvbEv(
 // CIR:     } cleanup all {
@@ -124,7 +131,9 @@ void for_cond_cleanup(int n) {
 
 // LLVM-LABEL: define dso_local void @_Z16for_cond_cleanupi(i32 %0) {{.*}} personality ptr @__gxx_personality_v0 {
 // LLVM:   %[[TMP:.*]] = alloca %struct.S
-// LLVM:   call %struct.S @_Z5makeSv()
+// LLVM:   %{{.*}} = alloca i8
+// LLVM:   %[[SRET:.*]] = alloca %struct.S
+// LLVM:   call void @_Z5makeSv(ptr %[[SRET]])
 // LLVM:   invoke i1 @_ZN1ScvbEv(ptr {{.*}} %[[TMP]])
 // LLVM:           to label %[[CONT:.*]] unwind label %[[UNWIND:.*]]
 // LLVM: [[CONT]]:
@@ -160,7 +169,7 @@ void for_step_cleanup(int n) {
 // CIR:   cir.for : cond {
 // CIR:   } body {
 // CIR:   } step {
-// CIR:     cir.call @_Z5makeSv()
+// CIR:     cir.call @_Z5makeSv(
 // CIR:     cir.cleanup.scope {
 // CIR:     } cleanup all {
 // CIR:       cir.call @_ZN1SD1Ev({{.*}}) nothrow
@@ -169,7 +178,8 @@ void for_step_cleanup(int n) {
 
 // LLVM-LABEL: define dso_local void @_Z16for_step_cleanupi(i32 %0) {{.*}} {
 // LLVM:   %[[TMP:.*]] = alloca %struct.S
-// LLVM:   call %struct.S @_Z5makeSv()
+// LLVM:   %[[SRET:.*]] = alloca %struct.S
+// LLVM:   call void @_Z5makeSv(ptr %[[SRET]])
 // LLVM:   call void @_ZN1SD1Ev(ptr {{.*}} %[[TMP]])
 // LLVM:   br label
 // LLVM:   ret void
@@ -215,7 +225,9 @@ void range_for_cond_cleanup() {
 
 // LLVM-LABEL: define dso_local void @_Z22range_for_cond_cleanupv() {{.*}} personality ptr @__gxx_personality_v0 {
 // LLVM:   %[[TMP:.*]] = alloca %struct.S
-// LLVM:   call %struct.S @_Zne4Iter11EndSentinel(
+// LLVM:   %{{.*}} = alloca i8
+// LLVM:   %[[SRET:.*]] = alloca %struct.S
+// LLVM:   call void @_Zne4Iter11EndSentinel(ptr %[[SRET]])
 // LLVM:   invoke i1 @_ZN1ScvbEv(ptr {{.*}} %[[TMP]])
 // LLVM:           to label %[[CONT:.*]] unwind label %[[UNWIND:.*]]
 // LLVM: [[CONT]]:

@@ -87,7 +87,9 @@ struct HasNonTrivialArray {
 
 // LLVM-LABEL: define {{.*}}@_ZN18HasNonTrivialArrayC1ERKS_(
 // LLVM: call void @_ZN18HasNonTrivialArrayC2ERKS_(
-// LLVM-LABEL: define dso_local %struct.HasNonTrivialArray @make_copy(
+// `HasNonTrivialArray` has a non-trivially-copyable array member; the
+// CallConvLowering pass returns by `sret` matching classic codegen.
+// LLVM-LABEL: define dso_local void @make_copy(ptr dead_on_unwind noalias writable sret(%struct.HasNonTrivialArray) align 4 %{{.*}},
 // LLVM: call void @_ZN18HasNonTrivialArrayC1ERKS_(
 
 // OGCG-LABEL: define {{.*}}@make_copy(

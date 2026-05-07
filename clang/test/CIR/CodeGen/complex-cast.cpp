@@ -392,11 +392,18 @@ void complex_user_defined_cast() {
 // CIR: %[[POINT_TO_COMPLEX:.*]] = cir.call @_ZZ25complex_user_defined_castvENK5PointcvCiEv(%[[P_ADDR]]) : (!cir.ptr<!rec_Point> {llvm.align = 4 : i64, llvm.dereferenceable = 8 : i64, llvm.nonnull, llvm.noundef}) -> (!cir.complex<!s32i> {llvm.noundef})
 // CIR: cir.store {{.*}} %[[POINT_TO_COMPLEX]], %[[C_ADDR]] : !cir.complex<!s32i>, !cir.ptr<!cir.complex<!s32i>>
 
+// On x86_64 SysV `int _Complex` (8 bytes) is returned as `i64`; the pass
+// rewrites the user-defined conversion to return `i64` and stages it via
+// a fresh i64 alloca that is reloaded as `{ i32, i32 }` to feed the
+// complex-typed local.
 // LLVM: %[[P_ADDR:.*]] = alloca %struct.Point
 // LLVM: %[[C_ADDR:.*]] = alloca { i32, i32 }
 // LLVM: call void @llvm.memcpy.p0.p0.i64(ptr %[[P_ADDR]], ptr @__const._Z25complex_user_defined_castv.p, i64 8, i1 false)
-// LLVM: %[[POINT_TO_COMPLEX:.*]] = call noundef { i32, i32 } @_ZZ25complex_user_defined_castvENK5PointcvCiEv(ptr noundef nonnull align 4 dereferenceable(8) %[[P_ADDR]])
-// LLVM: store { i32, i32 } %[[POINT_TO_COMPLEX]], ptr %[[C_ADDR]], align 4
+// LLVM: %[[POINT_TO_COMPLEX:.*]] = call noundef i64 @_ZZ25complex_user_defined_castvENK5PointcvCiEv(ptr noundef nonnull align 4 dereferenceable(8) %[[P_ADDR]])
+// LLVM: %[[I64_COERCE:.*]] = alloca i64, i64 1, align 8
+// LLVM: store i64 %[[POINT_TO_COMPLEX]], ptr %[[I64_COERCE]], align 8
+// LLVM: %[[COMPLEX_VAL:.*]] = load { i32, i32 }, ptr %[[I64_COERCE]], align 4
+// LLVM: store { i32, i32 } %[[COMPLEX_VAL]], ptr %[[C_ADDR]], align 4
 
 // OGCG: %[[P_ADDR:.*]] = alloca %struct.Point, align 4
 // OGCG: %[[C_ADDR:.*]] = alloca { i32, i32 }, align 4

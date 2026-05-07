@@ -53,36 +53,24 @@ float _Complex pack_indexing_complex() {
                        __builtin_complex(3.0f, 4.0f));
 }
 
+// The calling-convention lowering pass coerces complex<float> to
+// <2 x float> for x86_64 System V ABI (SSE register class), so the
+// CIR and LLVM outputs match OGCG.
 // CIR: cir.func {{.*}} @_Z21pack_indexing_complexv()
-// CIR:   %[[RET_VAL:.*]] = cir.alloca !cir.complex<!cir.float>, !cir.ptr<!cir.complex<!cir.float>>, ["__retval"]
-// CIR:   %[[COMPLEX_0:.*]] = cir.alloca !cir.complex<!cir.float>, !cir.ptr<!cir.complex<!cir.float>>, ["coerce"]
-// CIR:   %[[COMPLEX_1:.*]] = cir.alloca !cir.complex<!cir.float>, !cir.ptr<!cir.complex<!cir.float>>, ["coerce"]
-// CIR:   %[[CONST_COMPLEX_0:.*]] = cir.const #cir.const_complex<#cir.fp<1.000000e+00> : !cir.float, #cir.fp<2.000000e+00> : !cir.float> : !cir.complex<!cir.float>
-// CIR:   %[[CONST_COMPLEX_1:.*]] = cir.const #cir.const_complex<#cir.fp<3.000000e+00> : !cir.float, #cir.fp<4.000000e+00> : !cir.float> : !cir.complex<!cir.float>
-// CIR:   cir.store {{.*}} %[[CONST_COMPLEX_0]], %[[COMPLEX_0]] : !cir.complex<!cir.float>, !cir.ptr<!cir.complex<!cir.float>>
-// CIR:   %[[TMP_COMPLEX_0:.*]] = cir.load {{.*}} %[[COMPLEX_0]] : !cir.ptr<!cir.complex<!cir.float>>, !cir.complex<!cir.float>
-// CIR:   cir.store {{.*}} %[[CONST_COMPLEX_1]], %[[COMPLEX_1]] : !cir.complex<!cir.float>, !cir.ptr<!cir.complex<!cir.float>>
-// CIR:   %[[TMP_COMPLEX_1:.*]] = cir.load {{.*}} %[[COMPLEX_1]] : !cir.ptr<!cir.complex<!cir.float>>, !cir.complex<!cir.float>
-// CIR:   %[[RESULT:.*]] = cir.call @_Z13pack_indexingIJCfS0_EEDaDpT_(%[[TMP_COMPLEX_0]], %[[TMP_COMPLEX_1]]) : (!cir.complex<!cir.float> {llvm.noundef}, !cir.complex<!cir.float> {llvm.noundef}) -> (!cir.complex<!cir.float> {llvm.noundef})
-// CIR:   cir.store {{.*}} %[[RESULT]], %[[RET_VAL]] : !cir.complex<!cir.float>, !cir.ptr<!cir.complex<!cir.float>>
-// CIR:   %[[TMP_RET:.*]] = cir.load %[[RET_VAL]] : !cir.ptr<!cir.complex<!cir.float>>, !cir.complex<!cir.float>
-// CIR:   cir.return %[[TMP_RET]] : !cir.complex<!cir.float>
+// CIR:   {{.*}} = cir.alloca !cir.complex<!cir.float>, !cir.ptr<!cir.complex<!cir.float>>, ["__retval"]
+// CIR:   {{.*}} = cir.alloca !cir.complex<!cir.float>, !cir.ptr<!cir.complex<!cir.float>>, ["coerce"]
+// CIR:   {{.*}} = cir.alloca !cir.complex<!cir.float>, !cir.ptr<!cir.complex<!cir.float>>, ["coerce"]
+// CIR:   {{.*}} = cir.const #cir.const_complex<#cir.fp<1.000000e+00> : !cir.float, #cir.fp<2.000000e+00> : !cir.float> : !cir.complex<!cir.float>
+// CIR:   {{.*}} = cir.const #cir.const_complex<#cir.fp<3.000000e+00> : !cir.float, #cir.fp<4.000000e+00> : !cir.float> : !cir.complex<!cir.float>
+// CIR:   cir.call @_Z13pack_indexingIJCfS0_EEDaDpT_({{.*}}) : (!cir.vector<2 x !cir.float> {llvm.noundef}, !cir.vector<2 x !cir.float> {llvm.noundef}) -> (!cir.vector<2 x !cir.float> {llvm.noundef})
 
-// LLVM: define {{.*}} { float, float } @_Z21pack_indexing_complexv()
-// LLVM:   %[[RET_VAL:.*]] = alloca { float, float }, i64 1, align 4
-// LLVM:   %[[COMPLEX_0:.*]] = alloca { float, float }, i64 1, align 4
-// LLVM:   %[[COMPLEX_1:.*]] = alloca { float, float }, i64 1, align 4
-// LLVM:   store { float, float } { float 1.000000e+00, float 2.000000e+00 }, ptr %[[COMPLEX_0]], align 4
-// LLVM:   %[[TMP_COMPLEX_0:.*]] = load { float, float }, ptr %[[COMPLEX_0]], align 4
-// LLVM:   store { float, float } { float 3.000000e+00, float 4.000000e+00 }, ptr %[[COMPLEX_1]], align 4
-// LLVM:   %[[TMP_COMPLEX_1:.*]] = load { float, float }, ptr %[[COMPLEX_1]], align 4
-// LLVM:   %[[RESULT:.*]] = call noundef { float, float } @_Z13pack_indexingIJCfS0_EEDaDpT_({ float, float } {{.*}} %[[TMP_COMPLEX_0]], { float, float } {{.*}} %[[TMP_COMPLEX_1]])
-// LLVM:   store { float, float } %[[RESULT]], ptr %[[RET_VAL]], align 4
-// LLVM:   %[[TMP_RET:.*]] = load { float, float }, ptr %[[RET_VAL]], align 4
-// LLVM:   ret { float, float } %[[TMP_RET]]
-
-// TODO(CIR): the difference between the CIR LLVM and OGCG is because the lack of calling convention lowering,
-// Test will be updated when that is implemented
+// LLVM: define {{.*}} <2 x float> @_Z21pack_indexing_complexv()
+// LLVM:   {{.*}} = alloca { float, float }
+// LLVM:   {{.*}} = alloca { float, float }
+// LLVM:   {{.*}} = alloca { float, float }
+// LLVM:   store { float, float } { float 1.000000e+00, float 2.000000e+00 }, ptr {{.*}}
+// LLVM:   store { float, float } { float 3.000000e+00, float 4.000000e+00 }, ptr {{.*}}
+// LLVM:   {{.*}} = call noundef <2 x float> @_Z13pack_indexingIJCfS0_EEDaDpT_(<2 x float> noundef {{.*}}, <2 x float> noundef {{.*}})
 
 // OGCG: define {{.*}} <2 x float> @_Z21pack_indexing_complexv()
 // OGCG:   %[[RET_VAL:.*]] = alloca { float, float }, align 4

@@ -259,7 +259,11 @@ struct Struct {
 // CHECK-NEXT: }
 
   void MemFunc1(HasSideEffects ArgHSE, int ArgInt, HasSideEffects *ArgHSEPtr) {
-    // CHECK: cir.func {{.*}}MemFunc1{{.*}}(%{{.*}}: !cir.ptr<!rec_Struct>{{.*}}, %[[ARG_HSE:.*]]: !rec_HasSideEffects{{.*}}, %[[ARG_INT:.*]]: !s32i {{.*}}, %[[ARG_HSE_PTR:.*]]: !cir.ptr<!rec_HasSideEffects>{{.*}})
+    // The CallConvLowering pass passes `HasSideEffects` (non-trivially-
+    // destructible) by pointer (Indirect class), matching the Itanium
+    // caller-destruct convention used by classic Clang.
+    // CHECK: cir.func {{.*}}MemFunc1{{.*}}(%{{.*}}: !cir.ptr<!rec_Struct>{{.*}}, %[[ARG_HSE:.*]]: !cir.ptr<!rec_HasSideEffects>{{.*}}, %[[ARG_INT:.*]]: !s32i {{.*}}, %[[ARG_HSE_PTR:.*]]: !cir.ptr<!rec_HasSideEffects>{{.*}})
+    // CHECK-NEXT: %[[ARG_HSE_LOAD:.*]] = cir.load %[[ARG_HSE]] : !cir.ptr<!rec_HasSideEffects>, !rec_HasSideEffects
     // CHECK-NEXT: cir.alloca{{.*}}["this"
     // CHECK-NEXT: %[[ARG_HSE_ALLOCA:.*]] = cir.alloca !rec_HasSideEffects{{.*}}["ArgHSE"
     // CHECK-NEXT: %[[ARG_INT_ALLOCA:.*]] = cir.alloca !s32i{{.*}}["ArgInt
@@ -323,7 +327,9 @@ void use() {
 }
 
 void Struct::MemFunc2(HasSideEffects ArgHSE, int ArgInt, HasSideEffects *ArgHSEPtr) {
-    // CHECK: cir.func {{.*}}MemFunc2{{.*}}(%{{.*}}: !cir.ptr<!rec_Struct>{{.*}}, %[[ARG_HSE:.*]]: !rec_HasSideEffects{{.*}}, %[[ARG_INT:.*]]: !s32i {{.*}}, %[[ARG_HSE_PTR:.*]]: !cir.ptr<!rec_HasSideEffects>{{.*}})
+    // See note on MemFunc1: HasSideEffects passed by pointer (Indirect).
+    // CHECK: cir.func {{.*}}MemFunc2{{.*}}(%{{.*}}: !cir.ptr<!rec_Struct>{{.*}}, %[[ARG_HSE:.*]]: !cir.ptr<!rec_HasSideEffects>{{.*}}, %[[ARG_INT:.*]]: !s32i {{.*}}, %[[ARG_HSE_PTR:.*]]: !cir.ptr<!rec_HasSideEffects>{{.*}})
+    // CHECK-NEXT: %[[ARG_HSE_LOAD:.*]] = cir.load %[[ARG_HSE]] : !cir.ptr<!rec_HasSideEffects>, !rec_HasSideEffects
     // CHECK-NEXT: cir.alloca{{.*}}["this"
     // CHECK-NEXT: %[[ARG_HSE_ALLOCA:.*]] = cir.alloca !rec_HasSideEffects{{.*}}["ArgHSE"
     // CHECK-NEXT: %[[ARG_INT_ALLOCA:.*]] = cir.alloca !s32i{{.*}}["ArgInt
@@ -394,7 +400,9 @@ void Struct::MemFunc2(HasSideEffects ArgHSE, int ArgInt, HasSideEffects *ArgHSEP
 extern "C" void do_thing();
 
 extern "C" void NormalFunc(HasSideEffects ArgHSE, int ArgInt, HasSideEffects *ArgHSEPtr) {
-    // CHECK: cir.func {{.*}}NormalFunc(%[[ARG_HSE:.*]]: !rec_HasSideEffects{{.*}}, %[[ARG_INT:.*]]: !s32i {{.*}}, %[[ARG_HSE_PTR:.*]]: !cir.ptr<!rec_HasSideEffects>{{.*}})
+    // See note on MemFunc1: HasSideEffects passed by pointer (Indirect).
+    // CHECK: cir.func {{.*}}NormalFunc(%[[ARG_HSE:.*]]: !cir.ptr<!rec_HasSideEffects>{{.*}}, %[[ARG_INT:.*]]: !s32i {{.*}}, %[[ARG_HSE_PTR:.*]]: !cir.ptr<!rec_HasSideEffects>{{.*}})
+    // CHECK-NEXT: %[[ARG_HSE_LOAD:.*]] = cir.load %[[ARG_HSE]] : !cir.ptr<!rec_HasSideEffects>, !rec_HasSideEffects
     // CHECK-NEXT: %[[ARG_HSE_ALLOCA:.*]] = cir.alloca !rec_HasSideEffects{{.*}}["ArgHSE"
     // CHECK-NEXT: %[[ARG_INT_ALLOCA:.*]] = cir.alloca !s32i{{.*}}["ArgInt
     // CHECK-NEXT: %[[ARG_HSE_PTR_ALLOCA:.*]] = cir.alloca !cir.ptr<!rec_HasSideEffects>{{.*}}["ArgHSEPtr"
