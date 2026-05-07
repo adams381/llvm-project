@@ -45,6 +45,10 @@ void take_bitint_32(_BitInt(32) x) {}
 // LLVM: define {{.*}} void @take_bitint_32(i32 {{.*}})
 // OGCG: define {{.*}} void @take_bitint_32(i32 {{.*}})
 
+// _BitInt(128) is INTEGER class on x86_64 SysV: a 16-byte value passed in
+// two registers (RDI/RSI for an arg, RAX/RDX for a return).  CIR matches
+// classic Clang's `i128` ABI signature; only _BitInt(>128) needs to go via
+// memory as `byval`.
 void take_bitint_128(signed _BitInt(128) x) {}
 // CIR: cir.func {{.*}} @take_bitint_128(%arg0: !s128i_bitint
 // LLVM: define {{.*}} void @take_bitint_128(i128 {{.*}})
@@ -55,14 +59,20 @@ void take_unsigned_bitint(unsigned _BitInt(64) x) {}
 // LLVM: define {{.*}} void @take_unsigned_bitint(i64 {{.*}})
 // OGCG: define {{.*}} void @take_unsigned_bitint(i64 {{.*}})
 
+// _BitInt(>128) cannot fit in two integer-class registers, so it is passed
+// indirect via a `byval` pointer.  The byval *type* CIR uses preserves the
+// original bitwidth (`i254`); classic codegen uses the storage-padded type
+// (`i256`).  These are observationally equivalent at the binary ABI level
+// because the in-memory size and alignment match (both 32 bytes, align 8);
+// the byval type is only a hint to LLVM about the memory layout.
 void take_bitint_254(signed _BitInt(254) x) {}
-// CIR: cir.func {{.*}} @take_bitint_254(%arg0: !cir.int<s, 254, bitint>
-// LLVM: define {{.*}} void @take_bitint_254(i254 {{.*}})
+// CIR: cir.func {{.*}} @take_bitint_254(%arg0: !cir.ptr<!cir.int<s, 254, bitint>>
+// LLVM: define {{.*}} void @take_bitint_254(ptr noundef byval(i254) align 8 {{.*}})
 // OGCG: define {{.*}} void @take_bitint_254(ptr noundef byval(i256) align 8 {{.*}})
 
 void take_bitint_257(signed _BitInt(257) x) {}
-// CIR: cir.func {{.*}} @take_bitint_257(%arg0: !cir.int<s, 257, bitint>
-// LLVM: define {{.*}} void @take_bitint_257(i257 {{.*}})
+// CIR: cir.func {{.*}} @take_bitint_257(%arg0: !cir.ptr<!cir.int<s, 257, bitint>>
+// LLVM: define {{.*}} void @take_bitint_257(ptr noundef byval(i257) align 8 {{.*}})
 // OGCG: define {{.*}} void @take_bitint_257(ptr noundef byval([40 x i8]) align 8 {{.*}})
 
 // Regular __int128 should NOT have the bitint flag.

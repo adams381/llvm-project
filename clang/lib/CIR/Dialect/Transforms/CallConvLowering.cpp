@@ -459,14 +459,18 @@ classifyWithABILibrary(FunctionOpInterface funcOp, ABITypeMapper &typeMapper,
             [](llvm::abi::ABIFunctionInfo *p) { p->operator delete(p); });
   abiInfo.computeInfo(*abiFI);
 
-  // Helper: detect _BitInt(N>64) which has special ABI treatment
-  // on x86_64 -- always passed/returned indirect regardless of
-  // register availability.  Alignment is capped at 8 bytes.
+  // Helper: detect _BitInt(N>128) which has special ABI treatment on x86_64
+  // -- passed/returned indirect because the value does not fit in the two
+  // integer-class registers (RDI/RSI for args, RAX/RDX for returns).
+  // _BitInt(128) and below are passed in registers like a 16-byte INTEGER
+  // class value, matching classic Clang's `i128 noundef %x` signature for
+  // `void take(_BitInt(128))`.  Indirect alignment is capped at 8 bytes
+  // since _BitInt's ABI alignment is 8.
   auto isBitIntIndirect = [](Type ty) -> bool {
     if (!ty)
       return false;
     auto intTy = dyn_cast<cir::IntType>(ty);
-    return intTy && intTy.getIsBitInt() && intTy.getWidth() > 64;
+    return intTy && intTy.getIsBitInt() && intTy.getWidth() > 128;
   };
 
   // Convert return classification.
