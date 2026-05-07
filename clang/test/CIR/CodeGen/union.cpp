@@ -27,19 +27,24 @@ void shouldGenerateUnionAccess(union U u) {
   u.d = 0.1;
   u.d;
 }
+// The calling-convention lowering pass coerces the trivially-copyable
+// 8-byte `union U` parameter into a single `i64` eightbyte (matching
+// OGCG).  CIR then bitcasts the eightbyte slot back to a `!rec_U*` and
+// reloads the union into a local alloca for the field accesses below.
 // CIR: cir.func {{.*}}shouldGenerateUnionAccess
-// CIR:   %[[#BASE:]] = cir.get_member %0[0] {name = "b"} : !cir.ptr<!rec_U> -> !cir.ptr<!cir.bool>
+// CIR:   %[[U:.+]] = cir.alloca !rec_U, !cir.ptr<!rec_U>, ["u", init]
+// CIR:   %[[#BASE:]] = cir.get_member %[[U]][0] {name = "b"} : !cir.ptr<!rec_U> -> !cir.ptr<!cir.bool>
 // CIR:   cir.store{{.*}} %{{.+}}, %[[#BASE]] : !cir.bool, !cir.ptr<!cir.bool>
-// CIR:   cir.get_member %0[0] {name = "b"} : !cir.ptr<!rec_U> -> !cir.ptr<!cir.bool>
-// CIR:   %[[#BASE:]] = cir.get_member %0[2] {name = "i"} : !cir.ptr<!rec_U> -> !cir.ptr<!s32i>
+// CIR:   cir.get_member %[[U]][0] {name = "b"} : !cir.ptr<!rec_U> -> !cir.ptr<!cir.bool>
+// CIR:   %[[#BASE:]] = cir.get_member %[[U]][2] {name = "i"} : !cir.ptr<!rec_U> -> !cir.ptr<!s32i>
 // CIR:   cir.store{{.*}} %{{.+}}, %[[#BASE]] : !s32i, !cir.ptr<!s32i>
-// CIR:   %[[#BASE:]] = cir.get_member %0[2] {name = "i"} : !cir.ptr<!rec_U> -> !cir.ptr<!s32i>
-// CIR:   %[[#BASE:]] = cir.get_member %0[3] {name = "f"} : !cir.ptr<!rec_U> -> !cir.ptr<!cir.float>
+// CIR:   %[[#BASE:]] = cir.get_member %[[U]][2] {name = "i"} : !cir.ptr<!rec_U> -> !cir.ptr<!s32i>
+// CIR:   %[[#BASE:]] = cir.get_member %[[U]][3] {name = "f"} : !cir.ptr<!rec_U> -> !cir.ptr<!cir.float>
 // CIR:   cir.store{{.*}} %{{.+}}, %[[#BASE]] : !cir.float, !cir.ptr<!cir.float>
-// CIR:   %[[#BASE:]] = cir.get_member %0[3] {name = "f"} : !cir.ptr<!rec_U> -> !cir.ptr<!cir.float>
-// CIR:   %[[#BASE:]] = cir.get_member %0[4] {name = "d"} : !cir.ptr<!rec_U> -> !cir.ptr<!cir.double>
+// CIR:   %[[#BASE:]] = cir.get_member %[[U]][3] {name = "f"} : !cir.ptr<!rec_U> -> !cir.ptr<!cir.float>
+// CIR:   %[[#BASE:]] = cir.get_member %[[U]][4] {name = "d"} : !cir.ptr<!rec_U> -> !cir.ptr<!cir.double>
 // CIR:   cir.store{{.*}} %{{.+}}, %[[#BASE]] : !cir.double, !cir.ptr<!cir.double>
-// CIR:   %[[#BASE:]] = cir.get_member %0[4] {name = "d"} : !cir.ptr<!rec_U> -> !cir.ptr<!cir.double>
+// CIR:   %[[#BASE:]] = cir.get_member %[[U]][4] {name = "d"} : !cir.ptr<!rec_U> -> !cir.ptr<!cir.double>
 
 // LLVM: define {{.*}}shouldGenerateUnionAccess
 // LLVM:   %[[BASE:.*]] = alloca %union.U

@@ -171,9 +171,14 @@ static ArgClassification convertABIArgInfo(const llvm::abi::ABIArgInfo &info,
     // When the coerced type matches the original (no-op coercion)
     // but the ABI says the arg should be flattened into separate
     // registers, re-enable coercion so the flattening code fires.
+    // Unions are excluded: classic Clang coerces unions to a single
+    // integer eightbyte (e.g. `i64 %u.coerce`), it does NOT flatten
+    // them into one arg per field.  fixupUnionCoercion below
+    // separately widens the union's coerced IntType to the union's
+    // sizeof.
     if (!coerced && info.getCanBeFlattened() && origTy) {
       if (auto recTy = dyn_cast<cir::RecordType>(origTy))
-        if (recTy.getMembers().size() > 1)
+        if (recTy.getMembers().size() > 1 && !recTy.isUnion())
           coerced = origTy;
     }
     auto ac = ArgClassification::getDirect(coerced);
