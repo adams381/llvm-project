@@ -22,7 +22,8 @@ namespace cir {
 mlir::LogicalResult
 runCIRToCIRPasses(mlir::ModuleOp theModule, mlir::MLIRContext &mlirContext,
                   clang::ASTContext &astContext, bool enableVerifier,
-                  bool enableCIRSimplify, bool passByValueIsNoAlias) {
+                  bool enableIdiomRecognizer, bool enableCIRSimplify,
+                  bool passByValueIsNoAlias) {
 
   llvm::TimeTraceScope scope("CIR To CIR Passes");
 
@@ -31,6 +32,9 @@ runCIRToCIRPasses(mlir::ModuleOp theModule, mlir::MLIRContext &mlirContext,
 
   if (enableCIRSimplify)
     pm.addPass(mlir::createCIRSimplifyPass());
+
+  if (enableIdiomRecognizer)
+    pm.addPass(mlir::createIdiomRecognizerPass(&astContext));
 
   pm.addPass(mlir::createTargetLoweringPass());
   pm.addPass(mlir::createCXXABILoweringPass());

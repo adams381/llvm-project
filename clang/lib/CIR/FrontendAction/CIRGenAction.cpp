@@ -122,6 +122,7 @@ public:
       // Setup and run CIR pipeline.
       if (runCIRToCIRPasses(MlirModule, MlirCtx, C,
                             !FEOptions.ClangIRDisableCIRVerifier,
+                            FEOptions.ClangIREnableIdiomRecognizer,
                             CGO.OptimizationLevel > 0, CGO.PassByValueIsNoAlias)
               .failed()) {
         CI.getDiagnostics().Report(diag::err_cir_to_cir_transform_failed);
