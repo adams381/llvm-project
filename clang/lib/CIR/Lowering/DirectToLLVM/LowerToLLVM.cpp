@@ -1714,41 +1714,39 @@ static void lowerCallAttributes(cir::CIRCallOpInterface op,
     if (attr.getName() == "arg_attrs") {
       auto argAttrs = mlir::cast<mlir::ArrayAttr>(attr.getValue());
       SmallVector<mlir::Attribute> filtered;
-      unsigned idx = 0;
-      for (mlir::Attribute dictAttr : argAttrs) {
-        auto dict = mlir::cast<mlir::DictionaryAttr>(dictAttr);
+      // For each arg dict: drop ptr-only attrs from a non-pointer
+      // operand (the pass may have coerced a record to an int), and
+      // translate any `llvm.sret` / `llvm.byval` TypeAttr from CIR
+      // types to the equivalent LLVM dialect types -- the LLVM
+      // verifier requires byval/sret types to be LLVM IR types
+      // (`%struct.X`), not CIR types (`!rec_X`).
+      for (unsigned idx = 0, e = argAttrs.size(); idx < e; ++idx) {
+        auto dict = mlir::cast<mlir::DictionaryAttr>(argAttrs[idx]);
         bool isPtr = idx < op->getNumOperands() &&
                      mlir::isa<cir::PointerType>(op->getOperand(idx).getType());
-        if (!isPtr && !dict.empty()) {
-          SmallVector<mlir::NamedAttribute> entries;
-          for (mlir::NamedAttribute entry : dict) {
-            if (entry.getName() == "llvm.nonnull" ||
-                entry.getName() == "llvm.dereferenceable" ||
-                entry.getName() == "llvm.dereferenceable_or_null" ||
-                entry.getName() == "llvm.align" ||
-                entry.getName() == "llvm.sret" ||
-                entry.getName() == "llvm.byval")
+        SmallVector<mlir::NamedAttribute> entries;
+        for (mlir::NamedAttribute entry : dict) {
+          mlir::StringAttr name = entry.getName();
+          if (!isPtr && (name == "llvm.nonnull" ||
+                         name == "llvm.dereferenceable" ||
+                         name == "llvm.dereferenceable_or_null" ||
+                         name == "llvm.align" || name == "llvm.sret" ||
+                         name == "llvm.byval"))
+            continue;
+          if ((name == "llvm.sret" || name == "llvm.byval") &&
+              mlir::isa<mlir::TypeAttr>(entry.getValue())) {
+            mlir::Type cirTy =
+                mlir::cast<mlir::TypeAttr>(entry.getValue()).getValue();
+            mlir::Type llvmTy = converter->convertType(cirTy);
+            if (llvmTy && llvmTy != cirTy) {
+              entries.emplace_back(name, mlir::TypeAttr::get(llvmTy));
               continue;
-            if ((entry.getName() == "llvm.sret" ||
-                 entry.getName() == "llvm.byval") &&
-                mlir::isa<mlir::TypeAttr>(entry.getValue())) {
-              mlir::Type cirTy =
-                  mlir::cast<mlir::TypeAttr>(entry.getValue()).getValue();
-              mlir::Type llvmTy = converter->convertType(cirTy);
-              if (llvmTy && llvmTy != cirTy) {
-                entries.push_back(mlir::NamedAttribute(
-                    entry.getName(), mlir::TypeAttr::get(llvmTy)));
-                continue;
-              }
             }
-            entries.push_back(entry);
           }
-          filtered.push_back(
-              mlir::DictionaryAttr::get(op->getContext(), entries));
-        } else {
-          filtered.push_back(dictAttr);
+          entries.push_back(entry);
         }
-        ++idx;
+        filtered.push_back(
+            mlir::DictionaryAttr::get(op->getContext(), entries));
       }
       result.push_back(mlir::NamedAttribute(
           attr.getName(), mlir::ArrayAttr::get(op->getContext(), filtered)));

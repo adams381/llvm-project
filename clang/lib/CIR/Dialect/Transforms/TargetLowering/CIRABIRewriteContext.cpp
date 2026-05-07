@@ -692,49 +692,98 @@ LogicalResult CIRABIRewriteContext::rewriteFunctionDefinition(
   return success();
 }
 
-/// Set ABI attributes (noundef, signext/zeroext) directly on a call
-/// operation based on the ABI classification.  Used for indirect calls
-/// where there is no callee declaration to copy attributes from.
+/// Append a NamedAttribute to a per-arg attr list, skipping if an
+/// attr with the same name already exists.
+static void pushUniqueAttr(SmallVector<NamedAttribute> &dst,
+                           NamedAttribute attr) {
+  for (NamedAttribute &existing : dst)
+    if (existing.getName() == attr.getName())
+      return;
+  dst.push_back(attr);
+}
+
+/// Seed per-arg attr entries from the call's existing arg_attrs so
+/// new attrs can be merged without losing CIRGen-emitted ones such
+/// as `llvm.nonnull` / `llvm.dereferenceable` on reference args.
+static SmallVector<SmallVector<NamedAttribute>>
+seedArgEntries(cir::CallOp call, unsigned numSlots) {
+  SmallVector<SmallVector<NamedAttribute>> entries(numSlots);
+  if (auto existing = call->getAttrOfType<ArrayAttr>("arg_attrs"))
+    for (unsigned i = 0, e = existing.size(); i < e && i < numSlots; ++i)
+      if (auto dict = mlir::dyn_cast<DictionaryAttr>(existing[i]))
+        entries[i].append(dict.begin(), dict.end());
+  return entries;
+}
+
+/// Build the attr dict for the sret slot (slot 0 of an sret-returning
+/// call).  Matches OGCG's `dead_on_unwind writable sret(T) align A`.
+static SmallVector<NamedAttribute>
+buildSretSlotAttrs(MLIRContext *ctx, OpBuilder &rewriter, Type retTy,
+                   uint64_t align) {
+  SmallVector<NamedAttribute> attrs;
+  attrs.push_back(rewriter.getNamedAttr("llvm.dead_on_unwind",
+                                        rewriter.getUnitAttr()));
+  attrs.push_back(
+      rewriter.getNamedAttr("llvm.writable", rewriter.getUnitAttr()));
+  attrs.push_back(rewriter.getNamedAttr("llvm.sret", TypeAttr::get(retTy)));
+  attrs.push_back(
+      rewriter.getNamedAttr("llvm.align", rewriter.getI64IntegerAttr(align)));
+  return attrs;
+}
+
+/// Set ABI attributes (noundef, signext/zeroext, llvm.byval,
+/// llvm.align) on a call site based on the ABI classification.  Used
+/// for indirect calls (the callee is opaque, so the call site is the
+/// only attr source).  Direct calls get a narrower set via
+/// setCallSiteByValAttrs -- CIRGen already emits noundef / nonnull /
+/// signext / etc. for them.  Existing arg_attrs entries are merged
+/// with the new attrs.
+///
+/// This runs BEFORE rewriteCallSite has rewritten the call's
+/// operands, so it targets the CURRENT shape (numArgs slots, no
+/// sret slot).  When the return is by sret, the sret slot's attrs
+/// are added later, post-rewrite, by applySretSlotAttrs.
 static void setCallSiteABIAttrs(cir::CallOp call,
-                                const FunctionClassification &fc, bool hasSRet,
+                                const FunctionClassification &fc,
                                 OpBuilder &rewriter) {
   MLIRContext *ctx = call->getContext();
   auto noundefAttr =
       rewriter.getNamedAttr("llvm.noundef", rewriter.getUnitAttr());
-
-  unsigned sretOff = hasSRet ? 1 : 0;
   unsigned numArgs = call.getArgOperands().size();
-  SmallVector<Attribute> argAttrDicts(numArgs + sretOff,
-                                      DictionaryAttr::get(ctx));
-
-  if (hasSRet)
-    argAttrDicts[0] = DictionaryAttr::get(ctx, {noundefAttr});
+  SmallVector<SmallVector<NamedAttribute>> entries =
+      seedArgEntries(call, numArgs);
+  Operation::operand_range callOperands = call.getArgOperands();
 
   for (auto [idx, argClass] : llvm::enumerate(fc.ArgInfos)) {
-    unsigned newIdx = idx + sretOff;
-    if (newIdx >= argAttrDicts.size())
+    if (idx >= entries.size())
       break;
 
-    SmallVector<NamedAttribute> attrs;
-    if (argClass.Kind == ArgKind::Indirect && argClass.ByVal)
-      attrs.push_back(noundefAttr);
-    else if (argClass.Kind == ArgKind::Extend ||
-             argClass.Kind == ArgKind::Direct)
-      attrs.push_back(noundefAttr);
+    if (argClass.Kind == ArgKind::Indirect && argClass.ByVal) {
+      pushUniqueAttr(entries[idx], noundefAttr);
+      Type origTy = callOperands[idx].getType();
+      pushUniqueAttr(entries[idx], rewriter.getNamedAttr(
+                                       "llvm.byval", TypeAttr::get(origTy)));
+      uint64_t align = argClass.IndirectAlign.value();
+      pushUniqueAttr(entries[idx],
+                     rewriter.getNamedAttr("llvm.align",
+                                           rewriter.getI64IntegerAttr(align)));
+    } else if (argClass.Kind == ArgKind::Extend ||
+               argClass.Kind == ArgKind::Direct) {
+      pushUniqueAttr(entries[idx], noundefAttr);
+    }
 
     if (argClass.Kind == ArgKind::Extend) {
       StringRef extName = argClass.SignExtend ? "llvm.signext" : "llvm.zeroext";
-      attrs.push_back(rewriter.getNamedAttr(extName, rewriter.getUnitAttr()));
+      pushUniqueAttr(entries[idx],
+                     rewriter.getNamedAttr(extName, rewriter.getUnitAttr()));
     }
-
-    if (!attrs.empty())
-      argAttrDicts[newIdx] = DictionaryAttr::get(ctx, attrs);
   }
 
-  if (argAttrDicts.size() == call.getArgOperands().size())
-    call->setAttr("arg_attrs", ArrayAttr::get(ctx, argAttrDicts));
-  else
-    call->removeAttr("arg_attrs");
+  SmallVector<Attribute> argAttrDicts;
+  argAttrDicts.reserve(entries.size());
+  for (SmallVector<NamedAttribute> &e : entries)
+    argAttrDicts.push_back(DictionaryAttr::get(ctx, e));
+  call->setAttr("arg_attrs", ArrayAttr::get(ctx, argAttrDicts));
 
   if (fc.ReturnInfo.Kind == ArgKind::Extend) {
     SmallVector<NamedAttribute> retAttrs;
@@ -763,17 +812,89 @@ static void setCallSiteABIAttrs(cir::CallOp call,
   }
 }
 
+/// For direct calls, add the `llvm.byval` triple
+/// (`noundef byval(T) align A`) to ABI-classified byval arg slots.
+/// CIRGen already emits noundef / nonnull / signext / etc. for direct
+/// calls, so we don't duplicate those.  Existing arg_attrs are merged.
+///
+/// Like setCallSiteABIAttrs, this runs pre-operand-rewrite and targets
+/// the CURRENT call shape (numArgs slots, no sret slot).
+static void setCallSiteByValAttrs(cir::CallOp call,
+                                  const FunctionClassification &fc,
+                                  OpBuilder &rewriter) {
+  MLIRContext *ctx = call->getContext();
+  auto noundefAttr =
+      rewriter.getNamedAttr("llvm.noundef", rewriter.getUnitAttr());
+  unsigned numArgs = call.getArgOperands().size();
+  SmallVector<SmallVector<NamedAttribute>> entries =
+      seedArgEntries(call, numArgs);
+  Operation::operand_range callOperands = call.getArgOperands();
+  bool changed = false;
+
+  for (auto [idx, argClass] : llvm::enumerate(fc.ArgInfos)) {
+    if (idx >= entries.size())
+      break;
+    if (argClass.Kind != ArgKind::Indirect || !argClass.ByVal)
+      continue;
+    Type origTy = callOperands[idx].getType();
+    uint64_t align = argClass.IndirectAlign.value();
+    pushUniqueAttr(entries[idx], noundefAttr);
+    pushUniqueAttr(entries[idx], rewriter.getNamedAttr(
+                                     "llvm.byval", TypeAttr::get(origTy)));
+    pushUniqueAttr(entries[idx],
+                   rewriter.getNamedAttr("llvm.align",
+                                         rewriter.getI64IntegerAttr(align)));
+    changed = true;
+  }
+
+  if (!changed)
+    return;
+
+  SmallVector<Attribute> argAttrDicts;
+  argAttrDicts.reserve(entries.size());
+  for (SmallVector<NamedAttribute> &e : entries)
+    argAttrDicts.push_back(DictionaryAttr::get(ctx, e));
+  call->setAttr("arg_attrs", ArrayAttr::get(ctx, argAttrDicts));
+}
+
+/// Prepend the sret slot's attrs at position 0 of newCall's arg_attrs.
+/// Called AFTER the call has been rewritten with the sret pointer at
+/// operand 0 -- size now matches.  oldArgAttrs (from the pre-rewrite
+/// call, sized numArgs) is shifted to slots 1..numArgs.
+static void applySretSlotAttrs(cir::CallOp newCall, ArrayAttr oldArgAttrs,
+                               Type retTy, uint64_t align,
+                               OpBuilder &rewriter) {
+  MLIRContext *ctx = newCall->getContext();
+  SmallVector<NamedAttribute> sretAttrs =
+      buildSretSlotAttrs(ctx, rewriter, retTy, align);
+
+  SmallVector<Attribute> newArgAttrs;
+  newArgAttrs.reserve(newCall.getArgOperands().size());
+  newArgAttrs.push_back(DictionaryAttr::get(ctx, sretAttrs));
+  if (oldArgAttrs)
+    for (Attribute a : oldArgAttrs)
+      newArgAttrs.push_back(a);
+  while (newArgAttrs.size() < newCall.getArgOperands().size())
+    newArgAttrs.push_back(DictionaryAttr::get(ctx));
+  newCall->setAttr("arg_attrs", ArrayAttr::get(ctx, newArgAttrs));
+}
+
 LogicalResult CIRABIRewriteContext::rewriteCallSite(
     Operation *callOp, const FunctionClassification &fc, OpBuilder &rewriter) {
   auto call = cast<cir::CallOp>(callOp);
   bool hasSRet = fc.ReturnInfo.Kind == ArgKind::Indirect;
 
-  // For indirect calls, set ABI attributes (noundef, signext/zeroext)
-  // directly on the call.  For direct calls, LowerToLLVM copies these
-  // from the callee declaration.  We do this before arg processing so
-  // that if no coercion is needed the attrs are still applied.
+  // Indirect calls need the full ABI attr set on the call site (the
+  // callee declaration is opaque, so this is the only attr source).
+  // Direct calls inherit most attrs via CIRGen's per-call arg_attrs;
+  // byval is the exception because CIRGen doesn't know about the
+  // pass's ABI byval coercion, so add it explicitly on the call site.
+  // sret slot attrs are deferred to applySretSlotAttrs (after the
+  // post-rewrite call is created with the sret pointer prepended).
   if (call.isIndirect())
-    setCallSiteABIAttrs(call, fc, hasSRet, rewriter);
+    setCallSiteABIAttrs(call, fc, rewriter);
+  else
+    setCallSiteByValAttrs(call, fc, rewriter);
 
   // Coerce arguments at the call site (e.g., extend i8 to i32, or
   // bitcast a struct to its coerced integer type).
@@ -916,10 +1037,13 @@ LogicalResult CIRABIRewriteContext::rewriteCallSite(
 
     rewriter.setInsertionPoint(call);
 
-    auto alloca =
-        cir::AllocaOp::create(rewriter, call.getLoc(), ptrTy, origRetTy,
-                              /*name=*/rewriter.getStringAttr("sret"),
-                              /*alignment=*/rewriter.getI64IntegerAttr(8));
+    // ABI-classified alignment for the sret slot; matches OGCG's
+    // alloca alignment and the call-site `align(N)` attribute.
+    uint64_t sretAlign = fc.ReturnInfo.IndirectAlign.value();
+    auto alloca = cir::AllocaOp::create(
+        rewriter, call.getLoc(), ptrTy, origRetTy,
+        /*name=*/rewriter.getStringAttr("sret"),
+        /*alignment=*/rewriter.getI64IntegerAttr(sretAlign));
 
     SmallVector<Value> sretArgs;
     sretArgs.push_back(alloca);
@@ -929,10 +1053,14 @@ LogicalResult CIRABIRewriteContext::rewriteCallSite(
     prependIndirectCallee(sretArgs, voidTy);
     auto newCall = cir::CallOp::create(rewriter, call.getLoc(),
                                        call.getCalleeAttr(), voidTy, sretArgs);
-    // Preserve call attributes (noreturn, side_effect, etc.).
+    // Preserve call attributes (noreturn, side_effect, etc.).  Capture
+    // the pre-rewrite arg_attrs so applySretSlotAttrs can shift it
+    // and prepend the sret slot.
+    auto oldArgAttrs = call->getAttrOfType<ArrayAttr>("arg_attrs");
     for (NamedAttribute attr : call->getAttrs())
       if (!newCall->hasAttr(attr.getName()))
         newCall->setAttr(attr.getName(), attr.getValue());
+    applySretSlotAttrs(newCall, oldArgAttrs, origRetTy, sretAlign, rewriter);
 
     rewriter.setInsertionPointAfter(newCall);
     auto load = cir::LoadOp::create(rewriter, call.getLoc(), origRetTy, alloca,

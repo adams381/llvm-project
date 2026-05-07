@@ -348,7 +348,7 @@ int test_temp_in_condition(G &obj) {
 // returned value is then loaded out of the sret slot and stored into
 // `ref.tmp0` (the slot the original AST was tracking).
 // CIR:     %[[SRET:.*]] = cir.alloca !rec_G, !cir.ptr<!rec_G>, ["sret"]
-// CIR:     cir.call @_ZNK1G4copyEv(%[[SRET]], %[[LOAD_OBJ]]) : (!cir.ptr<!rec_G> {{.*}}, !cir.ptr<!rec_G>) -> ()
+// CIR:     cir.call @_ZNK1G4copyEv(%[[SRET]], %[[LOAD_OBJ]]) : (!cir.ptr<!rec_G> {{{.*}}llvm.sret = !rec_G{{.*}}}, !cir.ptr<!rec_G> {{.*}}) -> ()
 // CIR:     cir.store{{.*}} %{{.*}}, %[[REF_TMP0]]
 // CIR:     cir.cleanup.scope {
 // CIR:       %[[ONE:.*]] = cir.const #cir.int<1> : !s32i
@@ -383,18 +383,19 @@ int test_temp_in_condition(G &obj) {
 // LLVM:   %[[REF_TMP0:.*]] = alloca %struct.G
 // LLVM:   %[[REF_TMP1:.*]] = alloca %struct.G
 // LLVM:   %[[TMP_RESULT:.*]] = alloca i8
-// The CallConvLowering pass adds an `align 8` sret slot for the rewritten
-// `void @_ZNK1G4copyEv(ptr sret, ptr)`; the result is loaded out and
-// copied into ref.tmp0 (matching what classic Clang would have done with
-// a return-value-elided direct return).
-// LLVM:   %[[SRET:.*]] = alloca %struct.G, i64 1, align 8
+// The CallConvLowering pass adds an sret slot (G's ABI alignment is
+// 1) for the rewritten `void @_ZNK1G4copyEv(ptr sret, ptr)`; the
+// result is loaded out and copied into ref.tmp0 (matching what
+// classic Clang would have done with a return-value-elided direct
+// return).
+// LLVM:   %[[SRET:.*]] = alloca %struct.G, i64 1, align 1
 // LLVM:   %[[OBJ:.*]] = alloca ptr
 // LLVM:   %[[RET_ADDR:.*]] = alloca i32
 // LLVM:   store ptr %[[ARG0]], ptr %[[OBJ]]
 // LLVM:   br label %[[SCOPE_BEGIN:.*]]
 // LLVM: [[SCOPE_BEGIN]]:
 // LLVM:   %[[LOAD_OBJ:.*]] = load ptr, ptr %[[OBJ]]
-// LLVM:   call void @_ZNK1G4copyEv(ptr {{.*}} %[[SRET]], ptr %[[LOAD_OBJ]])
+// LLVM:   call void @_ZNK1G4copyEv(ptr {{.*}}sret(%struct.G){{.*}} %[[SRET]], ptr {{.*}} %[[LOAD_OBJ]])
 // LLVM:   %[[COPY:.*]] = load %struct.G, ptr %[[SRET]]
 // LLVM:   store %struct.G %[[COPY]], ptr %[[REF_TMP0]]
 // LLVM:   br label %[[CLEAN_SCOPE_ONE:.*]]

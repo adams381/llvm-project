@@ -36,7 +36,7 @@ void while_cond_cleanup(int n) {
 // LLVM:   %[[TMP:.*]] = alloca %struct.S
 // LLVM:   %{{.*}} = alloca i8
 // LLVM:   %[[SRET:.*]] = alloca %struct.S
-// LLVM:   call void @_Z5makeSv(ptr %[[SRET]])
+// LLVM:   call void @_Z5makeSv(ptr {{.*}}sret(%struct.S){{.*}} %[[SRET]])
 // LLVM:   invoke i1 @_ZN1ScvbEv(ptr {{.*}} %[[TMP]])
 // LLVM:           to label %[[CONT:.*]] unwind label %[[UNWIND:.*]]
 // LLVM: [[CONT]]:
@@ -87,7 +87,7 @@ void do_while_cond_cleanup(int n) {
 // LLVM:   %[[TMP:.*]] = alloca %struct.S
 // LLVM:   %{{.*}} = alloca i8
 // LLVM:   %[[SRET:.*]] = alloca %struct.S
-// LLVM:   call void @_Z5makeSv(ptr %[[SRET]])
+// LLVM:   call void @_Z5makeSv(ptr {{.*}}sret(%struct.S){{.*}} %[[SRET]])
 // LLVM:   invoke i1 @_ZN1ScvbEv(ptr {{.*}} %[[TMP]])
 // LLVM:           to label %[[CONT:.*]] unwind label %[[UNWIND:.*]]
 // LLVM: [[CONT]]:
@@ -133,7 +133,7 @@ void for_cond_cleanup(int n) {
 // LLVM:   %[[TMP:.*]] = alloca %struct.S
 // LLVM:   %{{.*}} = alloca i8
 // LLVM:   %[[SRET:.*]] = alloca %struct.S
-// LLVM:   call void @_Z5makeSv(ptr %[[SRET]])
+// LLVM:   call void @_Z5makeSv(ptr {{.*}}sret(%struct.S){{.*}} %[[SRET]])
 // LLVM:   invoke i1 @_ZN1ScvbEv(ptr {{.*}} %[[TMP]])
 // LLVM:           to label %[[CONT:.*]] unwind label %[[UNWIND:.*]]
 // LLVM: [[CONT]]:
@@ -179,7 +179,7 @@ void for_step_cleanup(int n) {
 // LLVM-LABEL: define dso_local void @_Z16for_step_cleanupi(i32 %0) {{.*}} {
 // LLVM:   %[[TMP:.*]] = alloca %struct.S
 // LLVM:   %[[SRET:.*]] = alloca %struct.S
-// LLVM:   call void @_Z5makeSv(ptr %[[SRET]])
+// LLVM:   call void @_Z5makeSv(ptr {{.*}}sret(%struct.S){{.*}} %[[SRET]])
 // LLVM:   call void @_ZN1SD1Ev(ptr {{.*}} %[[TMP]])
 // LLVM:   br label
 // LLVM:   ret void
@@ -227,7 +227,7 @@ void range_for_cond_cleanup() {
 // LLVM:   %[[TMP:.*]] = alloca %struct.S
 // LLVM:   %{{.*}} = alloca i8
 // LLVM:   %[[SRET:.*]] = alloca %struct.S
-// LLVM:   call void @_Zne4Iter11EndSentinel(ptr %[[SRET]])
+// LLVM:   call void @_Zne4Iter11EndSentinel(ptr {{.*}}sret(%struct.S){{.*}} %[[SRET]])
 // LLVM:   invoke i1 @_ZN1ScvbEv(ptr {{.*}} %[[TMP]])
 // LLVM:           to label %[[CONT:.*]] unwind label %[[UNWIND:.*]]
 // LLVM: [[CONT]]:

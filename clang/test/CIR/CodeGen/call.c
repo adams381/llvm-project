@@ -95,13 +95,13 @@ void f8(void) {
 
 // `Big` return goes via sret (matches classic Clang's
 // `sret(%struct.Big)`).  The pass rewrites the call to take an sret
-// argument; the result is stored directly into the destination by the
-// callee, so no return-value handling is needed in the caller.
+// argument and decorates it with `dead_on_unwind writable sret(T)
+// align A`, matching OGCG.
 // CIR-LABEL: cir.func{{.*}} @f8(){{.*}} {
-// CIR:         cir.call @f6(%{{.+}}) : (!cir.ptr<!rec_Big>) -> ()
+// CIR:         cir.call @f6(%{{.+}}) : (!cir.ptr<!rec_Big> {{{.*}}llvm.sret = !rec_Big{{.*}}}) -> ()
 
 // LLVM-LABEL: define{{.*}} void @f8(){{.*}} {
-// LLVM:        call void @f6(ptr %{{.+}})
+// LLVM:        call void @f6(ptr dead_on_unwind writable sret(%struct.Big) align 4 %{{.+}})
 
 // OGCG-LABEL: define{{.*}} void @f8() #0 {
 // OGCG:         %[[B:.+]] = alloca %struct.Big, align 4

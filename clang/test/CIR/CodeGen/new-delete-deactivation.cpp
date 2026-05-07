@@ -34,7 +34,7 @@ A *deact_simple() { return new A(makeB()); }
 // `sret` argument (matching classic Clang's `void @_Z5makeBv(ptr sret(...))`).
 // The result is loaded out of the sret alloca and copied into the
 // `ref.tmp0` alloca that the test tracked as `%[[TMP]]`.
-// CIR:     cir.call @_Z5makeBv({{.*}}) : (!cir.ptr<!rec_B>) -> ()
+// CIR:     cir.call @_Z5makeBv({{.*}}) : (!cir.ptr<!rec_B> {{{.*}}llvm.sret = !rec_B{{.*}}}) -> ()
 // CIR:     cir.store{{.*}} %{{.*}}, %[[TMP]] : !rec_B, !cir.ptr<!rec_B>
 // CIR:     cir.cleanup.scope {
 // CIR:       %[[CONV:.*]] = cir.call @_ZN1BcviEv(%[[TMP]])
@@ -52,23 +52,25 @@ A *deact_simple() { return new A(makeB()); }
 // CIR:   }
 
 // LLVM-LABEL: define dso_local ptr @_Z12deact_simplev() {{.*}} personality ptr @__gxx_personality_v0 {
-// The CallConvLowering pass adds an `align 8` sret slot for the rewritten
-// `void @_Z5makeBv(ptr sret)`; the original `ref.tmp0` (align 4) is what
-// the dtor cleanup walks.  Classic Clang only allocates the latter.
-// LLVM-DAG:   %[[SRET:.*]] = alloca %struct.B, i64 1, align 8
-// LLVM-DAG:   %[[TMP:.*]] = alloca %struct.B, i64 1, align 4
-// LLVM-DAG:   %[[ACTIVE:.*]] = alloca i8
+// The CallConvLowering pass adds a fresh sret slot (align 4, matching
+// B's ABI alignment) for the rewritten `void @_Z5makeBv(ptr sret)`;
+// the original `ref.tmp0` (also align 4) is what the dtor cleanup
+// walks.  Classic Clang only allocates the latter, so CIR has one
+// extra alloca for the sret pointer.  Capture the SRET and TMP slots
+// from their first uses (invoke + destructor) rather than from the
+// alloca lines, since both have the same shape now.
+// LLVM:   %[[ACTIVE:.*]] = alloca i8
 // LLVM:   %[[PTR:.*]] = call nonnull ptr @_Znwm(i64 1) #[[ATTR_BUILTIN_NEW:.*]]
 // LLVM:   store i8 1, ptr %[[ACTIVE]]
 // LLVM:   store ptr {{.*}}, ptr {{.*}}
-// LLVM:   invoke void @_Z5makeBv(ptr %[[SRET]])
+// LLVM:   invoke void @_Z5makeBv(ptr {{.*}}sret(%struct.B){{.*}} %[[SRET:.*]])
 // LLVM:           to label %[[INVOKE_CONT:.*]] unwind label %[[UNWIND_OUTER:.*]]
 // LLVM: [[INVOKE_CONT]]:
 // LLVM:   invoke void @_ZN1AC1Ei(ptr {{.*}} %[[PTR]], i32 {{.*}})
 // LLVM:           to label %[[INVOKE_CONT2:.*]] unwind label %[[UNWIND_INNER:.*]]
 // LLVM: [[INVOKE_CONT2]]:
 // LLVM:   store i8 0, ptr %[[ACTIVE]]
-// LLVM:   call void @_ZN1BD1Ev(ptr {{.*}} %[[TMP]]) #[[ATTR_NOUNWIND:.*]]
+// LLVM:   call void @_ZN1BD1Ev(ptr {{.*}} %[[TMP:.*]]) #[[ATTR_NOUNWIND:.*]]
 // LLVM: [[UNWIND_INNER]]:
 // LLVM:   %[[EXN_INNER:.*]] = landingpad { ptr, i32 }
 // LLVM:          cleanup
@@ -246,17 +248,16 @@ A *deact_while_cond(int n) {
 // CIR:   } do {
 
 // LLVM-LABEL: define dso_local ptr @_Z16deact_while_condi(i32 %0) {{.*}} personality ptr @__gxx_personality_v0 {
-// See deact_simple: pin allocas by alignment to match the sret-vs-ref.tmp0
-// roles regardless of their relative emission order in the function.
-// LLVM-DAG:   %[[SRET:.*]] = alloca %struct.B, i64 1, align 8
-// LLVM-DAG:   %[[TMP:.*]] = alloca %struct.B, i64 1, align 4
-// LLVM-DAG:   %[[ACTIVE:.*]] = alloca i8
+// See deact_simple: both the sret slot and ref.tmp0 are align 4
+// (matching B's ABI alignment); CIR allocates one extra (the sret
+// slot) compared to OGCG.  Capture both from their first uses.
+// LLVM:   %[[ACTIVE:.*]] = alloca i8
 // LLVM:   br label %[[WHILE_COND:.*]]
 // LLVM: [[WHILE_COND]]:
 // LLVM:   %[[PTR:.*]] = call nonnull ptr @_Znwm(i64 1) #[[ATTR_BUILTIN_NEW]]
 // LLVM:   store i8 1, ptr %[[ACTIVE]]
 // LLVM:   store ptr {{.*}}, ptr {{.*}}
-// LLVM:   invoke void @_Z5makeBv(ptr %[[SRET]])
+// LLVM:   invoke void @_Z5makeBv(ptr {{.*}}sret(%struct.B){{.*}} %[[SRET:.*]])
 // LLVM:           to label %[[INVOKE_CONT:.*]] unwind label %[[UNWIND_OUTER:.*]]
 // LLVM: [[INVOKE_CONT]]:
 // LLVM:   invoke void @_ZN1AC1Ei(ptr {{.*}} %[[PTR]], i32 {{.*}})
@@ -265,7 +266,7 @@ A *deact_while_cond(int n) {
 // LLVM:   store i8 0, ptr %[[ACTIVE]]
 // LLVM:   br label %[[NORMAL_CLEANUP:.*]]
 // LLVM: [[NORMAL_CLEANUP]]:
-// LLVM:   call void @_ZN1BD1Ev(ptr {{.*}} %[[TMP]]) #[[ATTR_NOUNWIND]]
+// LLVM:   call void @_ZN1BD1Ev(ptr {{.*}} %[[TMP:.*]]) #[[ATTR_NOUNWIND]]
 // LLVM: [[UNWIND_INNER]]:
 // LLVM:   landingpad { ptr, i32 }
 // LLVM:          cleanup
