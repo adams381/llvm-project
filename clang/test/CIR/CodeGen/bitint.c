@@ -59,6 +59,21 @@ void take_unsigned_bitint(unsigned _BitInt(64) x) {}
 // LLVM: define {{.*}} void @take_unsigned_bitint(i64 {{.*}})
 // OGCG: define {{.*}} void @take_unsigned_bitint(i64 {{.*}})
 
+// Non-power-of-2 _BitInt(N) with 64 < N < 128 spans two eightbytes
+// and is INTEGER class on x86_64 SysV: classic Clang coerces it to a
+// pair of i64s for both args and returns.  The LLVM ABI library
+// treats `_BitInt(N)` as an opaque integer of width N, so CIR adds
+// an explicit `_BitInt`-aware override in CallConvLowering to match.
+signed _BitInt(127) ret_bitint_127(void) { return 0; }
+// CIR: cir.func {{.*}} @ret_bitint_127()
+// LLVM: define {{.*}} { i64, i64 } @ret_bitint_127()
+// OGCG: define {{.*}} { i64, i64 } @ret_bitint_127()
+
+void take_bitint_127(signed _BitInt(127) x) {}
+// CIR: cir.func {{.*}} @take_bitint_127
+// LLVM: define {{.*}} void @take_bitint_127(i64 {{.*}}, i64 {{.*}})
+// OGCG: define {{.*}} void @take_bitint_127(i64 {{.*}}, i64 {{.*}})
+
 // _BitInt(>128) cannot fit in two integer-class registers, so it is passed
 // indirect via a `byval` pointer.  The byval *type* CIR uses preserves the
 // original bitwidth (`i254`); classic codegen uses the storage-padded type

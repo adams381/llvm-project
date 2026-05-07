@@ -134,6 +134,30 @@ static ArgClassification convertABIArgInfo(const llvm::abi::ABIArgInfo &info,
         return ArgClassification::getIgnore();
     }
 
+  // The LLVM ABI library treats `_BitInt(N)` as an opaque integer of
+  // width N and does not split BitInts that span two eightbytes into a
+  // `{i64, i64}` struct on x86_64.  Classic Clang's X86_64ABIInfo
+  // special-cases BitIntType: a non-power-of-2 `_BitInt(N)` with
+  // 64 < N < 128 is Direct with a `{i64, i64}` coerce.  An exact
+  // `_BitInt(128)` is kept as a single `i128` value (passed in two
+  // GP registers via the LLVM backend's lowering).  Wider BitInts
+  // (> 128 bits) are already handled as Indirect by the
+  // `isBitIntIndirect` override at the caller.
+  if (origTy)
+    if (auto intTy = dyn_cast<cir::IntType>(origTy))
+      if (intTy.getIsBitInt() && intTy.getWidth() > 64 &&
+          intTy.getWidth() < 128 &&
+          info.getKind() == llvm::abi::ABIArgInfo::Direct) {
+        auto u64 = cir::IntType::get(ctx, 64, /*isSigned=*/false);
+        auto coerced =
+            cir::RecordType::get(ctx, {u64, u64},
+                                 /*packed=*/false,
+                                 /*padded=*/false, cir::RecordType::Struct);
+        auto ac = ArgClassification::getDirect(coerced);
+        ac.CanFlatten = true;
+        return ac;
+      }
+
   switch (info.getKind()) {
   case llvm::abi::ABIArgInfo::Direct: {
     mlir::Type coerced = abiTypeToCIR(info.getCoerceToType(), ctx);
