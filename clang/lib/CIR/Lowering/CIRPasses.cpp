@@ -39,18 +39,24 @@ runCIRToCIRPasses(mlir::ModuleOp theModule, mlir::MLIRContext &mlirContext,
   pm.addPass(mlir::createTargetLoweringPass());
   pm.addPass(mlir::createCXXABILoweringPass());
 
-  unsigned avxLevel = 0;
+  // The calling-convention lowering pass currently uses the x86_64
+  // System V ABI classifier from the LLVM ABI library.  Running it on
+  // other targets (SPIR, NVPTX, etc.) would apply the wrong ABI rules
+  // (e.g. coercing vectors to integers, or splitting structs that
+  // those ABIs pass by value).  Gate on x86_64 until the pass supports
+  // additional targets.
   if (astContext.getTargetInfo().getTriple().getArch() ==
       llvm::Triple::x86_64) {
+    unsigned avxLevel = 0;
     llvm::StringRef abi = astContext.getTargetInfo().getABI();
     if (abi == "avx512")
       avxLevel = 2;
     else if (abi == "avx")
       avxLevel = 1;
-  }
 
-  pm.addPass(mlir::createCallConvLoweringPass(/*recordCoercionEnabled=*/false,
-                                              passByValueIsNoAlias, avxLevel));
+    pm.addPass(mlir::createCallConvLoweringPass(
+        /*recordCoercionEnabled=*/false, passByValueIsNoAlias, avxLevel));
+  }
 
   pm.addPass(mlir::createLoweringPreparePass(&astContext));
 
