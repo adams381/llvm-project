@@ -744,8 +744,17 @@ cir::ComplexType::getABIAlignment(const mlir::DataLayout &dataLayout,
 }
 
 FuncType FuncType::clone(TypeRange inputs, TypeRange results) const {
-  assert(results.size() == 1 && "expected exactly one result type");
-  return get(llvm::to_vector(inputs), results[0], isVarArg());
+  // CIR's FuncType has a single return type slot.  A void function is
+  // represented either with `cir::VoidType` as the slot or, in the
+  // FunctionOpInterface view (`getResultTypes`), as an empty type
+  // range.  MLIR's `cloneTypeWith` calls back into us with that
+  // empty range, so accept both `0` and `1` results and synthesize a
+  // `cir::VoidType` for the void case.
+  assert(results.size() <= 1 && "expected at most one result type");
+  Type retTy = results.empty()
+                   ? mlir::cast<Type>(cir::VoidType::get(getContext()))
+                   : results[0];
+  return get(llvm::to_vector(inputs), retTy, isVarArg());
 }
 
 // Custom parser that parses function parameters of form `(<type>*, ...)`.
