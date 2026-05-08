@@ -13,6 +13,7 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "CallConvCascade.h"
 #include "PassDetail.h"
 #include "TargetLowering/CIRABIRewriteContext.h"
 
@@ -653,6 +654,14 @@ struct CallConvLoweringPass
     // and declarations).
     llvm::DenseMap<StringRef, FunctionClassification> classificationMap;
 
+    // Capture per-function FuncType rewrites for the optional cascade
+    // (gated on the `enableCascade` pass option).  Each entry maps the
+    // original `cir::FuncType` (as seen on entry to Phase 1) to the
+    // ABI-rewritten signature (as seen on exit from
+    // rewriteFunctionDefinition).  See clang/docs/CIR/ABILowering.rst,
+    // "Function-Pointer Type Cascade".
+    cir::callconv::FuncTypeMap funcTypeRewrites;
+
     module.walk([&](FunctionOpInterface funcOp) {
       if (funcOp->hasAttr("coroutine"))
         return;
@@ -676,10 +685,31 @@ struct CallConvLoweringPass
         classificationMap[nameAttr.getValue()] = fc;
       }
 
+      // Capture the original FuncType before the rewrite mutates it in place.
+      auto oldFuncTy =
+          dyn_cast<cir::FuncType>(funcOp.getFunctionType());
+
       OpBuilder builder(funcOp);
       if (failed(rewriteCtx.rewriteFunctionDefinition(funcOp, fc, builder)))
         return signalPassFailure();
+
+      auto newFuncTy =
+          dyn_cast<cir::FuncType>(funcOp.getFunctionType());
+      if (enableCascade && oldFuncTy && newFuncTy && oldFuncTy != newFuncTy)
+        funcTypeRewrites.try_emplace(oldFuncTy, newFuncTy);
     });
+
+    // Optional Phase 1.5 (Phase A scaffolding): function-pointer type
+    // cascade.  When the `enable-cascade` option is true, propagate every
+    // FuncType rewrite captured above through every CIR composite type
+    // that embeds it (record fields, arrays, pointer-to-func types,
+    // global-initializer attributes).  When false (the Phase A default),
+    // this is a no-op and behavior is bit-for-bit identical to the
+    // pre-cascade pipeline.
+    if (enableCascade) {
+      if (failed(cir::callconv::applyCallConvCascade(module, funcTypeRewrites)))
+        return signalPassFailure();
+    }
 
     // Phase 2: Update cir.get_global ops whose result type embeds a
     // function type that was rewritten in Phase 1.

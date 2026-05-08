@@ -1,0 +1,37 @@
+// Verify that the function-pointer type cascade infrastructure exercises
+// without crashing or invalid IR, both with and without the
+// `enable-cascade` option.  Phase A scaffolding: behavior is unchanged
+// (the cascade is gated on the option and short-circuits when no
+// FuncType rewrite is captured).  See clang/docs/CIR/ABILowering.rst,
+// "Function-Pointer Type Cascade".
+//
+// RUN: cir-opt %s -cir-call-conv-lowering -o %t.off
+// RUN: FileCheck --input-file=%t.off %s
+//
+// RUN: cir-opt %s -cir-call-conv-lowering=enable-cascade=true -o %t.on
+// RUN: FileCheck --input-file=%t.on %s
+//
+// The output should be identical with and without the option in Phase A,
+// because the cascade short-circuits when no functions are reclassified
+// AND because the captured-rewrites code path runs under the same flag
+// gate.  The same CHECK lines apply to both.
+
+!s32i = !cir.int<s, 32>
+!u8i = !cir.int<u, 8>
+
+module attributes {cir.triple = "x86_64-unknown-linux-gnu"} {
+
+  // A simple void-returning function with a scalar argument.  No ABI
+  // rewriting changes its signature, so the cascade has nothing to do
+  // even when the option is on.
+  cir.func @void_id(%arg0: !s32i) {
+    cir.return
+  }
+  // CHECK-LABEL: cir.func @void_id(%arg0: !s32i)
+
+  // A function returning a scalar.  Same: no ABI rewrite needed.
+  cir.func @ret_i32(%arg0: !s32i) -> !s32i {
+    cir.return %arg0 : !s32i
+  }
+  // CHECK-LABEL: cir.func @ret_i32(%arg0: !s32i) -> !s32i
+}

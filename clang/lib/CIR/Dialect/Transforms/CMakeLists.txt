@@ -1,6 +1,7 @@
 add_subdirectory(TargetLowering)
 
 add_clang_library(MLIRCIRTransforms
+  CallConvCascade.cpp
   CallConvLowering.cpp
   CIRCanonicalize.cpp
   CIRSimplify.cpp
