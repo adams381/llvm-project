@@ -531,6 +531,69 @@ options or configuration.  The dependency direction is: the MLIR ABI pass
 depends on ``llvm/lib/ABI``; there is no reverse dependency from the ABI library
 to MLIR dialects.
 
+Function-Pointer Type Cascade
+-----------------------------
+
+When the pass rewrites a function's signature -- for example flattening a
+struct argument into ``(i64, i64)`` per the System V x86_64 ABI -- the new
+signature must propagate to every dialect type that embeds the original
+``FuncType``.  Otherwise indirect call sites whose function pointer is loaded
+from a record field, an array element, or a global initializer observe a stale
+signature, and the dialect verifier rejects them.
+
+The cascade is implemented as an ``mlir::TypeConverter`` subclass driven by
+``mlir::applyPartialConversion``, modelled on the in-tree precedent at
+``clang/lib/CIR/Dialect/Transforms/CXXABILowering.cpp``.  The converter
+registers type-only ``addConversion`` callbacks for each dialect composite
+type that can contain a function pointer (``FuncType``, ``PointerType``,
+``RecordType``, ``ArrayType``, and so on for FIR equivalents); each callback
+recurses into element types and only rebuilds the composite when at least one
+element changes.  A generic ``MatchAnyOpTypeTag`` pattern clones each
+operation with converted result types and rewrites the contents of attributes
+that embed types (``ConstRecordAttr``, ``GlobalViewAttr``, vtable attributes,
+and ``TypedAttr`` subclasses); function bodies are converted via
+``ConversionPatternRewriter::convertRegionTypes``.  Self-referential records
+(a struct holding a function pointer to a function taking a pointer to that
+struct) terminate via a recursive-stack of in-progress records and an
+incomplete-then-``complete()`` placeholder.
+
+Uniform rewriting is the cascade's correctness invariant: every function
+classified as needing an ABI rewrite is rewritten, regardless of whether its
+address is taken or where its pointers are stored, and the cascade then
+propagates the new signature through every storage class.  Because the
+``addConversion`` callbacks are type-only -- the same input type always maps
+to the same output -- the converter's caching is valid across the whole
+module walk.
+
+After the pass, the following invariants hold:
+
+1. Every value of composite type containing a function-pointer type agrees
+   with its def-use chain.
+2. Every direct call's signature matches the callee's declared signature.
+3. Every indirect call's signature matches the callee pointer's pointee
+   type.
+
+The pass ``--verify-callconv-invariant`` (gated on
+``LLVM_ENABLE_ASSERTIONS``) walks the module and asserts the three clauses;
+running it on the post-pass IR is the recommended way to catch regressions
+when the cascade is extended.
+
+Implementor notes for new dialect composite types:
+
+- A composite type that can transitively contain a ``FuncType`` must register
+  an ``addConversion`` callback with ``CirAbiTypeConverter`` (or the
+  equivalent FIR-side converter).  The callback recurses into each element
+  type via ``convertType`` and rebuilds the composite only when an element
+  changed; identity fast-paths are preserved when nothing changed.
+- An attribute that embeds a type and is permitted to appear in operand
+  positions (e.g.  a new constant initializer attribute) must be handled in
+  the attribute-rewrite helper alongside ``ConstRecordAttr`` and
+  ``GlobalViewAttr``.
+- A new dialect adopting this cascade reuses the same ABI library and the
+  generic conversion driver; it implements its own ``ABIRewriteContext`` and
+  registers its own composite-type conversions, but the recursive walk and
+  the verifier hook are shared infrastructure.
+
 Open Questions
 ==============
 
