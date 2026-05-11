@@ -444,8 +444,7 @@ mapCIRType(mlir::Type type, ABITypeMapper &typeMapper, const DataLayout &dl,
     // recordCoercionEnabled override handles cir-opt tests where
     // text-parsed records lack a RecordABIInfo entry.
     bool isAnonymous = !recTy.getName();
-    bool canPass =
-        recABI.canPassInRegs || recordCoercionEnabled || isAnonymous;
+    bool canPass = recABI.canPassInRegs || recordCoercionEnabled || isAnonymous;
     llvm::abi::RecordFlags unionFlags = llvm::abi::RecordFlags::None;
     if (canPass)
       unionFlags = unionFlags | llvm::abi::RecordFlags::CanPassInRegisters;
@@ -632,23 +631,30 @@ struct CallConvLoweringPass
         /*Has64BitPointers=*/true, llvm::abi::ABICompatInfo());
     const llvm::abi::ABIInfo &abiInfo = targetCGI->getABIInfo();
 
-    // Collect functions whose address is taken (referenced by
-    // cir.get_global or cir.const_record global_view).  These
-    // cannot have their return type changed to void because
-    // function pointer variables would have stale types.
+    // Legacy address-taken collection.  Only consulted when the
+    // `enable-cascade` option is false, in which case the pass uses the
+    // pre-cascade non-uniform rewriting path: functions whose address
+    // is taken via cir.get_global or a cir.const_record global_view
+    // are excluded from return-type rewriting so that function-pointer
+    // variables don't end up with stale types.  When the cascade is
+    // enabled (the default), uniform rewriting + the cascade make this
+    // workaround unnecessary; the set stays empty and the override
+    // below is a no-op.  Phase D will remove this entirely.
     llvm::DenseSet<StringRef> addressTakenFns;
-    module.walk([&](cir::GetGlobalOp getOp) {
-      auto ptrTy = dyn_cast<cir::PointerType>(getOp.getType());
-      if (ptrTy && isa<cir::FuncType>(ptrTy.getPointee()))
-        addressTakenFns.insert(getOp.getName());
-    });
-    module.walk([&](cir::ConstantOp constOp) {
-      if (auto globalView =
-              dyn_cast_or_null<cir::GlobalViewAttr>(constOp.getValue()))
-        if (auto ref = globalView.getSymbol())
-          if (module.lookupSymbol<FunctionOpInterface>(ref))
-            addressTakenFns.insert(ref.getValue());
-    });
+    if (!enableCascade) {
+      module.walk([&](cir::GetGlobalOp getOp) {
+        auto ptrTy = dyn_cast<cir::PointerType>(getOp.getType());
+        if (ptrTy && isa<cir::FuncType>(ptrTy.getPointee()))
+          addressTakenFns.insert(getOp.getName());
+      });
+      module.walk([&](cir::ConstantOp constOp) {
+        if (auto globalView =
+                dyn_cast_or_null<cir::GlobalViewAttr>(constOp.getValue()))
+          if (auto ref = globalView.getSymbol())
+            if (module.lookupSymbol<FunctionOpInterface>(ref))
+              addressTakenFns.insert(ref.getValue());
+      });
+    }
 
     // Phase 1: Classify and rewrite all functions (both definitions
     // and declarations).
@@ -686,15 +692,13 @@ struct CallConvLoweringPass
       }
 
       // Capture the original FuncType before the rewrite mutates it in place.
-      auto oldFuncTy =
-          dyn_cast<cir::FuncType>(funcOp.getFunctionType());
+      auto oldFuncTy = dyn_cast<cir::FuncType>(funcOp.getFunctionType());
 
       OpBuilder builder(funcOp);
       if (failed(rewriteCtx.rewriteFunctionDefinition(funcOp, fc, builder)))
         return signalPassFailure();
 
-      auto newFuncTy =
-          dyn_cast<cir::FuncType>(funcOp.getFunctionType());
+      auto newFuncTy = dyn_cast<cir::FuncType>(funcOp.getFunctionType());
       if (enableCascade && oldFuncTy && newFuncTy && oldFuncTy != newFuncTy)
         funcTypeRewrites.try_emplace(oldFuncTy, newFuncTy);
     });
@@ -711,24 +715,31 @@ struct CallConvLoweringPass
         return signalPassFailure();
     }
 
-    // Phase 2: Update cir.get_global ops whose result type embeds a
-    // function type that was rewritten in Phase 1.
-    module.walk([&](cir::GetGlobalOp getOp) {
-      FlatSymbolRefAttr sym = getOp.getNameAttr();
-      auto funcOp = module.lookupSymbol<FunctionOpInterface>(sym);
-      if (!funcOp)
-        return;
-      auto ptrTy = dyn_cast<cir::PointerType>(getOp.getType());
-      if (!ptrTy)
-        return;
-      auto fnTy = dyn_cast<cir::FuncType>(ptrTy.getPointee());
-      if (!fnTy)
-        return;
-      auto currentFnTy = dyn_cast<cir::FuncType>(funcOp.getFunctionType());
-      if (!currentFnTy || fnTy == currentFnTy)
-        return;
-      getOp.getResult().setType(cir::PointerType::get(currentFnTy));
-    });
+    // Legacy Phase 2 (used only when the cascade is disabled): update
+    // cir.get_global ops whose result type embeds a function type that
+    // was rewritten in Phase 1.  When the cascade is enabled (the
+    // default), the cascade walks every composite type containing a
+    // rewritten cir::FuncType -- including the pointee of cir.get_global
+    // results -- so this targeted walk is redundant.  Phase D will
+    // remove it entirely.
+    if (!enableCascade) {
+      module.walk([&](cir::GetGlobalOp getOp) {
+        FlatSymbolRefAttr sym = getOp.getNameAttr();
+        auto funcOp = module.lookupSymbol<FunctionOpInterface>(sym);
+        if (!funcOp)
+          return;
+        auto ptrTy = dyn_cast<cir::PointerType>(getOp.getType());
+        if (!ptrTy)
+          return;
+        auto fnTy = dyn_cast<cir::FuncType>(ptrTy.getPointee());
+        if (!fnTy)
+          return;
+        auto currentFnTy = dyn_cast<cir::FuncType>(funcOp.getFunctionType());
+        if (!currentFnTy || fnTy == currentFnTy)
+          return;
+        getOp.getResult().setType(cir::PointerType::get(currentFnTy));
+      });
+    }
 
     // Phase 3: Rewrite call sites to match rewritten callees.
     module.walk([&](cir::CallOp callOp) {

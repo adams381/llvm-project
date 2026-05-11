@@ -1,12 +1,10 @@
-// XFAIL: *
+// Regression test for the function-pointer type cascade in
+// CallConvLowering.  CallConvLowering rewrites the callee's signature
+// (D -> i32 per SysV ABI for a 1-field record) and the cascade
+// propagates the rewrite uniformly to function pointer types stored
+// elsewhere (record fields, locals, globals, casts).
 //
-// FIXME: This test currently fails because CallConvLowering rewrites the
-// callee's signature (D -> i32 per SysV ABI for a 1-field record) but
-// does not propagate the rewrite to function pointer types stored
-// elsewhere (record fields, locals, globals, casts).  Remove the XFAIL
-// once the function-pointer cascade lands.
-//
-// Minimal reproducer for the failure observed in
+// Originally tracked a failure in
 // llvm-test-suite/MultiSource/Benchmarks/Prolangs-C++/city/intersection.cpp.
 //
 // RUN: %clang_cc1 -triple x86_64-unknown-linux-gnu -fclangir -emit-cir %s -o %t.cir

@@ -1,13 +1,11 @@
-// XFAIL: *
+// Regression test for the function-pointer type cascade in
+// CallConvLowering.  CallConvLowering flattens the callee's struct
+// argument (H -> (i64, ptr) per SysV ABI for a 16-byte record fitting
+// in two eightbytes) and the cascade propagates the rewrite uniformly
+// to function pointer types stored elsewhere (record fields, locals,
+// globals, casts).
 //
-// FIXME: This test currently fails because CallConvLowering flattens
-// the callee's struct argument (H -> (i64, ptr) per SysV ABI for a
-// 16-byte record fitting in two eightbytes) but does not propagate the
-// rewrite to function pointer types stored elsewhere (record fields,
-// locals, globals, casts).  Remove the XFAIL once the function-pointer
-// cascade lands.
-//
-// Minimal reproducer for the failure observed in
+// Originally tracked a failure in
 // llvm-test-suite/MultiSource/Applications/kimwitu++/k.cc.
 //
 // RUN: %clang_cc1 -triple x86_64-unknown-linux-gnu -fclangir -emit-cir %s -o %t.cir

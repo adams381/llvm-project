@@ -21,6 +21,8 @@
 
 #include "CallConvCascade.h"
 
+#include "mlir/Dialect/OpenACC/OpenACCOpsDialect.h.inc"
+#include "mlir/Dialect/OpenMP/OpenMPOpsDialect.h.inc"
 #include "mlir/IR/PatternMatch.h"
 #include "mlir/Transforms/DialectConversion.h"
 #include "clang/CIR/Dialect/IR/CIRAttrs.h"
@@ -48,8 +50,7 @@ bool isCallConvAttributeLegal(const TypeConverter &tc, Attribute attr) {
   return TypeSwitch<Attribute, bool>(attr)
       // Pure scalars / opaque references with no embedded type.
       .Case<DenseArrayAttr, FloatAttr, UnitAttr, StringAttr, IntegerAttr,
-            SymbolRefAttr, cir::AnnotationAttr>(
-          [](Attribute) { return true; })
+            SymbolRefAttr, cir::AnnotationAttr>([](Attribute) { return true; })
       // Attributes that just carry a single type.
       .Case<cir::ZeroAttr, cir::PoisonAttr, cir::UndefAttr, mlir::TypeAttr,
             cir::ConstPtrAttr, cir::CXXCtorAttr, cir::CXXDtorAttr,
@@ -115,6 +116,24 @@ bool isCallConvAttributeLegal(const TypeConverter &tc, Attribute attr) {
 }
 
 mlir::Attribute rewriteCallConvAttribute(const TypeConverter &tc,
+                                         MLIRContext *ctx, Attribute attr);
+
+// Some attributes carry an optional ArrayAttr child (e.g.
+// GlobalViewAttr::indices).  When the optional child is null,
+// rewriteCallConvAttribute also returns null, and `mlir::cast<ArrayAttr>` on
+// the null would assert.  This helper makes the null case explicit.
+static mlir::ArrayAttr rewriteOptionalArrayAttr(const TypeConverter &tc,
+                                                MLIRContext *ctx,
+                                                Attribute inner) {
+  if (!inner)
+    return nullptr;
+  mlir::Attribute rewritten = rewriteCallConvAttribute(tc, ctx, inner);
+  if (!rewritten)
+    return nullptr;
+  return mlir::cast<mlir::ArrayAttr>(rewritten);
+}
+
+mlir::Attribute rewriteCallConvAttribute(const TypeConverter &tc,
                                          MLIRContext *ctx, Attribute attr) {
   if (isCallConvAttributeLegal(tc, attr))
     return attr;
@@ -170,36 +189,31 @@ mlir::Attribute rewriteCallConvAttribute(const TypeConverter &tc,
       .Case<cir::GlobalViewAttr>([&tc, ctx](cir::GlobalViewAttr gva) {
         return cir::GlobalViewAttr::get(
             tc.convertType(gva.getType()), gva.getSymbol(),
-            mlir::cast<mlir::ArrayAttr>(
-                rewriteCallConvAttribute(tc, ctx, gva.getIndices())));
+            rewriteOptionalArrayAttr(tc, ctx, gva.getIndices()));
       })
       .Case<cir::VTableAttr>([&tc, ctx](cir::VTableAttr vta) {
         return cir::VTableAttr::get(
             tc.convertType(vta.getType()),
-            mlir::cast<mlir::ArrayAttr>(
-                rewriteCallConvAttribute(tc, ctx, vta.getData())));
+            rewriteOptionalArrayAttr(tc, ctx, vta.getData()));
       })
       .Case<cir::TypeInfoAttr>([&tc, ctx](cir::TypeInfoAttr tia) {
         return cir::TypeInfoAttr::get(
             tc.convertType(tia.getType()),
-            mlir::cast<mlir::ArrayAttr>(
-                rewriteCallConvAttribute(tc, ctx, tia.getData())));
+            rewriteOptionalArrayAttr(tc, ctx, tia.getData()));
       })
-      .Case<cir::DynamicCastInfoAttr>(
-          [&tc, ctx](cir::DynamicCastInfoAttr dcia) {
-            return cir::DynamicCastInfoAttr::get(
-                mlir::cast<cir::GlobalViewAttr>(
-                    rewriteCallConvAttribute(tc, ctx, dcia.getSrcRtti())),
-                mlir::cast<cir::GlobalViewAttr>(
-                    rewriteCallConvAttribute(tc, ctx, dcia.getDestRtti())),
-                dcia.getRuntimeFunc(), dcia.getBadCastFunc(),
-                dcia.getOffsetHint());
-          })
+      .Case<cir::DynamicCastInfoAttr>([&tc,
+                                       ctx](cir::DynamicCastInfoAttr dcia) {
+        return cir::DynamicCastInfoAttr::get(
+            mlir::cast<cir::GlobalViewAttr>(
+                rewriteCallConvAttribute(tc, ctx, dcia.getSrcRtti())),
+            mlir::cast<cir::GlobalViewAttr>(
+                rewriteCallConvAttribute(tc, ctx, dcia.getDestRtti())),
+            dcia.getRuntimeFunc(), dcia.getBadCastFunc(), dcia.getOffsetHint());
+      })
       .Case<cir::ConstRecordAttr>([&tc, ctx](cir::ConstRecordAttr cra) {
         return cir::ConstRecordAttr::get(
             ctx, tc.convertType(cra.getType()),
-            mlir::cast<mlir::ArrayAttr>(
-                rewriteCallConvAttribute(tc, ctx, cra.getMembers())));
+            rewriteOptionalArrayAttr(tc, ctx, cra.getMembers()));
       })
       .DefaultUnreachable("unrewritten illegal call-conv attribute kind");
 }
@@ -232,9 +246,9 @@ class CirCallConvTypeConverter : public TypeConverter {
         return *it->second;
     }
     std::unique_lock<decltype(callStackMutex)> lock(callStackMutex);
-    auto inserted = conversionCallStack.insert(std::make_pair(
-        llvm::get_threadid(),
-        std::make_unique<SmallVector<cir::RecordType>>()));
+    auto inserted = conversionCallStack.insert(
+        std::make_pair(llvm::get_threadid(),
+                       std::make_unique<SmallVector<cir::RecordType>>()));
     return *inserted.first->second;
   }
 
@@ -252,11 +266,25 @@ class CirCallConvTypeConverter : public TypeConverter {
     return loweredMembers;
   }
 
+  // Returns true iff `converted` differs element-wise from `original`.
+  static bool membersChanged(ArrayRef<Type> original,
+                             ArrayRef<Type> converted) {
+    if (original.size() != converted.size())
+      return true;
+    for (auto [a, b] : llvm::zip(original, converted))
+      if (a != b)
+        return true;
+    return false;
+  }
+
   cir::RecordType convertRecordType(cir::RecordType type) {
-    if (!type.getName())
-      return cir::RecordType::get(
-          type.getContext(), convertRecordMemberTypes(type), type.getPacked(),
-          type.getPadded(), type.getKind());
+    if (!type.getName()) {
+      SmallVector<Type> members = convertRecordMemberTypes(type);
+      if (!membersChanged(type.getMembers(), members))
+        return type;
+      return cir::RecordType::get(type.getContext(), members, type.getPacked(),
+                                  type.getPadded(), type.getKind());
+    }
 
     assert(!type.isIncomplete() || type.getMembers().empty());
     if (type.isIncomplete() || type.isABIConvertedRecord())
@@ -264,20 +292,39 @@ class CirCallConvTypeConverter : public TypeConverter {
 
     auto &recursiveStack = getCurrentThreadRecursiveStack();
 
-    auto convertedType = cir::RecordType::get(
-        type.getContext(), type.getABIConvertedName(), type.getKind());
-
-    if (convertedType.isComplete())
+    // If we're already converting this record on this thread, return the
+    // in-progress placeholder.  This is the only path that needs the
+    // __post_abi_ name — it breaks recursion in self-referential records.
+    if (llvm::is_contained(recursiveStack, type)) {
+      auto convertedType = cir::RecordType::get(
+          type.getContext(), type.getABIConvertedName(), type.getKind());
       return convertedType;
-
-    if (llvm::is_contained(recursiveStack, type))
-      return convertedType;
+    }
 
     recursiveStack.push_back(type);
     llvm::scope_exit popOnExit(
         [&recursiveStack]() { recursiveStack.pop_back(); });
 
     SmallVector<Type> convertedMembers = convertRecordMemberTypes(type);
+
+    // If nothing in our member list actually changed, return the original
+    // record unchanged.  Wholesale renaming every named record creates a
+    // sea of unrealized_conversion_casts that the cascade can't reliably
+    // eliminate when a value of that type flows through ops the cascade
+    // doesn't rewrite (e.g., builtin.unrealized_conversion_cast itself,
+    // or ops from dialects that aren't registered for partial conversion).
+    if (!membersChanged(type.getMembers(), convertedMembers))
+      return type;
+
+    // Otherwise, mint the __post_abi_X placeholder and complete it with the
+    // new member list.  restoreRecordTypeNames() will strip the prefix once
+    // the partial conversion finishes.
+    auto convertedType = cir::RecordType::get(
+        type.getContext(), type.getABIConvertedName(), type.getKind());
+
+    if (convertedType.isComplete())
+      return convertedType;
+
     convertedType.complete(convertedMembers, type.getPacked(),
                            type.getPadded());
     addConvertedRecordType(convertedType);
@@ -328,9 +375,8 @@ public:
       return cir::ArrayType::get(loweredElement, ty.getSize());
     });
 
-    addConversion([this](cir::RecordType ty) -> Type {
-      return convertRecordType(ty);
-    });
+    addConversion(
+        [this](cir::RecordType ty) -> Type { return convertRecordType(ty); });
   }
 
   // After applyPartialConversion succeeds, restore the original record type
@@ -381,10 +427,9 @@ public:
 
     SmallVector<mlir::NamedAttribute> attrs;
     for (const mlir::NamedAttribute &na : op->getAttrs())
-      attrs.push_back(
-          {na.getName(),
-           rewriteCallConvAttribute(*typeConverter, op->getContext(),
-                                    na.getValue())});
+      attrs.push_back({na.getName(), rewriteCallConvAttribute(*typeConverter,
+                                                              op->getContext(),
+                                                              na.getValue())});
     newState.addAttributes(attrs);
 
     SmallVector<Type> loweredResultTypes;
@@ -416,27 +461,44 @@ void populateCallConvCascadeTarget(mlir::ConversionTarget &target,
   target.addLegalOp<mlir::ModuleOp>();
 
   auto attrsLegal = [&typeConverter](mlir::Operation *op) {
-    return llvm::all_of(op->getAttrs(),
-                        [&typeConverter](const mlir::NamedAttribute &a) {
-                          return isCallConvAttributeLegal(typeConverter,
-                                                          a.getValue());
-                        });
+    return llvm::all_of(
+        op->getAttrs(), [&typeConverter](const mlir::NamedAttribute &a) {
+          return isCallConvAttributeLegal(typeConverter, a.getValue());
+        });
   };
 
-  target.addDynamicallyLegalDialect<cir::CIRDialect>(
-      [&typeConverter, attrsLegal](Operation *op) {
-        if (!typeConverter.isLegal(op))
-          return false;
-        return attrsLegal(op) &&
-               std::all_of(op->getRegions().begin(), op->getRegions().end(),
-                           [&typeConverter](mlir::Region &region) {
-                             return typeConverter.isLegal(&region);
-                           });
-      });
+  auto dialectLegality = [&typeConverter, attrsLegal](Operation *op) {
+    if (!typeConverter.isLegal(op))
+      return false;
+    return attrsLegal(op) &&
+           std::all_of(op->getRegions().begin(), op->getRegions().end(),
+                       [&typeConverter](mlir::Region &region) {
+                         return typeConverter.isLegal(&region);
+                       });
+  };
+
+  target.addDynamicallyLegalDialect<cir::CIRDialect>(dialectLegality);
+
+  // OpenACC and OpenMP ops can hold cir.ptr/cir.record operand types whose
+  // record content gets renamed by the cascade.  Without registering them
+  // here the partial conversion would leave dangling
+  // unrealized_conversion_casts when a CIR producer of a record-typed value
+  // is rewritten.  Mirror of CXXABILowering's handling.
+  target.addDynamicallyLegalDialect<mlir::acc::OpenACCDialect>(dialectLegality);
+  target.addDynamicallyLegalDialect<mlir::omp::OpenMPDialect>(dialectLegality);
 
   // cir::FuncOp's signature lives on the op itself, not in its operands.
+  // Coroutine functions are skipped by CallConvLowering's classification
+  // phase (they keep their Task-returning signature even when another
+  // non-coroutine function shares the same source FuncType and has its
+  // return rewritten to void).  The cascade must respect that exemption
+  // -- a coroutine's FuncOp must not be touched by the cascade even if
+  // its FuncType matches a rewrite entry produced by some non-coroutine
+  // peer.  This mirrors the per-function ABI policy on the FuncOp.
   target.addDynamicallyLegalOp<cir::FuncOp>(
       [&typeConverter, attrsLegal](cir::FuncOp op) {
+        if (op->hasAttr("coroutine"))
+          return true;
         bool attrs = attrsLegal(op);
         return attrs && typeConverter.isLegal(op.getFunctionType());
       });

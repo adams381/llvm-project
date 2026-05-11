@@ -650,20 +650,20 @@ folly::coro::Task<int> go4() {
 // CIR:   }, resume : {
 // CIR:   },)
 
-// Get the lambda invoker ptr via `lambda operator folly::coro::Task<int> (*)(int const&)()`
-// CIR: %[[INVOKER:.*]] = cir.call @_ZZ3go4vENK3$_0cvPFN5folly4coro4TaskIiEERKiEEv(%{{.*}}) nothrow : {{.*}} -> (!cir.ptr<!cir.func<(!cir.ptr<!s32i>) -> ![[IntTask]]>> {llvm.noundef})
-// CIR: cir.store{{.*}} %[[INVOKER]], %[[FN_ADDR:.*]] : !cir.ptr<!cir.func<(!cir.ptr<!s32i>) -> ![[IntTask]]>>, !cir.ptr<!cir.ptr<!cir.func<(!cir.ptr<!s32i>) -> ![[IntTask]]>>>
-// CIR: %[[FN:.*]] = cir.load{{.*}} %[[FN_ADDR]] : !cir.ptr<!cir.ptr<!cir.func<(!cir.ptr<!s32i>) -> ![[IntTask]]>>>, !cir.ptr<!cir.func<(!cir.ptr<!s32i>) -> ![[IntTask]]>>
+// Get the lambda invoker ptr via `lambda operator folly::coro::Task<int> (*)(int const&)()`.
+// The calling-convention lowering pass classifies the Task<int> return as
+// Ignore and rewrites the invoker's signature to `(ptr) -> ()`.  The
+// function-pointer type cascade propagates the rewrite uniformly: the
+// conversion operator's return type and every cir.store / cir.load /
+// cir.call site that flows the lambda invoker pointer all use the
+// rewritten `(ptr) -> ()` function-pointer type directly, so no bitcast
+// is needed at the call site.
+// CIR: %[[INVOKER:.*]] = cir.call @_ZZ3go4vENK3$_0cvPFN5folly4coro4TaskIiEERKiEEv(%{{.*}}) nothrow : {{.*}} -> (!cir.ptr<!cir.func<(!cir.ptr<!s32i>)>> {llvm.noundef})
+// CIR: cir.store{{.*}} %[[INVOKER]], %[[FN_ADDR:.*]] : !cir.ptr<!cir.func<(!cir.ptr<!s32i>)>>, !cir.ptr<!cir.ptr<!cir.func<(!cir.ptr<!s32i>)>>>
+// CIR: %[[FN:.*]] = cir.load{{.*}} %[[FN_ADDR]] : !cir.ptr<!cir.ptr<!cir.func<(!cir.ptr<!s32i>)>>>, !cir.ptr<!cir.func<(!cir.ptr<!s32i>)>>
 // CIR: %[[THREE:.*]] = cir.const #cir.int<3> : !s32i
 // CIR: cir.store{{.*}} %[[THREE]], %[[ARG:.*]] : !s32i, !cir.ptr<!s32i>
-
-// Call invoker, which calls operator() indirectly.  The
-// calling-convention lowering pass rewrites the indirect call's
-// function-pointer type to drop the Ignored Task<int> return, inserting
-// a bitcast from the original `(ptr) -> Task<int>` function pointer
-// to a `(ptr) -> void` function pointer, then issuing the call.
-// CIR: %[[FN_VOID:.*]] = cir.cast bitcast %[[FN]] : !cir.ptr<!cir.func<(!cir.ptr<!s32i>) -> ![[IntTask]]>> -> !cir.ptr<!cir.func<(!cir.ptr<!s32i>)>>
-// CIR: cir.call %[[FN_VOID]](%[[ARG]]) : (!cir.ptr<!cir.func<(!cir.ptr<!s32i>)>>, !cir.ptr<!s32i> {{.*}}) -> ()
+// CIR: cir.call %[[FN]](%[[ARG]]) : (!cir.ptr<!cir.func<(!cir.ptr<!s32i>)>>, !cir.ptr<!s32i> {{.*}}) -> ()
 
 // CIR:  cir.await(user, ready : {
 // CIR:    = cir.call @_ZN5folly4coro4TaskIiE11await_readyEv({{.*}})
