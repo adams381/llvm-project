@@ -125,9 +125,7 @@ static ArgClassification convertABIArgInfo(const llvm::abi::ABIArgInfo &info,
   // Empty trivially-copyable records are not passed or returned
   // per the x86_64 ABI.  Non-trivially-copyable empty records
   // (e.g. struct with only a destructor) must still be passed
-  // indirectly.  Address-taken functions are excluded from
-  // empty return rewriting in Phase 1 (see addressTakenFns)
-  // because function pointer variables would have stale types.
+  // indirectly.
   if (origTy)
     if (auto recTy = dyn_cast<cir::RecordType>(origTy)) {
       auto abi = cir::getRecordABIInfo(module, recTy);
@@ -631,39 +629,13 @@ struct CallConvLoweringPass
         /*Has64BitPointers=*/true, llvm::abi::ABICompatInfo());
     const llvm::abi::ABIInfo &abiInfo = targetCGI->getABIInfo();
 
-    // Legacy address-taken collection.  Only consulted when the
-    // `enable-cascade` option is false, in which case the pass uses the
-    // pre-cascade non-uniform rewriting path: functions whose address
-    // is taken via cir.get_global or a cir.const_record global_view
-    // are excluded from return-type rewriting so that function-pointer
-    // variables don't end up with stale types.  When the cascade is
-    // enabled (the default), uniform rewriting + the cascade make this
-    // workaround unnecessary; the set stays empty and the override
-    // below is a no-op.  Phase D will remove this entirely.
-    llvm::DenseSet<StringRef> addressTakenFns;
-    if (!enableCascade) {
-      module.walk([&](cir::GetGlobalOp getOp) {
-        auto ptrTy = dyn_cast<cir::PointerType>(getOp.getType());
-        if (ptrTy && isa<cir::FuncType>(ptrTy.getPointee()))
-          addressTakenFns.insert(getOp.getName());
-      });
-      module.walk([&](cir::ConstantOp constOp) {
-        if (auto globalView =
-                dyn_cast_or_null<cir::GlobalViewAttr>(constOp.getValue()))
-          if (auto ref = globalView.getSymbol())
-            if (module.lookupSymbol<FunctionOpInterface>(ref))
-              addressTakenFns.insert(ref.getValue());
-      });
-    }
-
     // Phase 1: Classify and rewrite all functions (both definitions
     // and declarations).
     llvm::DenseMap<StringRef, FunctionClassification> classificationMap;
 
-    // Capture per-function FuncType rewrites for the optional cascade
-    // (gated on the `enableCascade` pass option).  Each entry maps the
-    // original `cir::FuncType` (as seen on entry to Phase 1) to the
-    // ABI-rewritten signature (as seen on exit from
+    // Capture per-function FuncType rewrites for the cascade.  Each
+    // entry maps the original `cir::FuncType` (as seen on entry to
+    // Phase 1) to the ABI-rewritten signature (as seen on exit from
     // rewriteFunctionDefinition).  See clang/docs/CIR/ABILowering.rst,
     // "Function-Pointer Type Cascade".
     cir::callconv::FuncTypeMap funcTypeRewrites;
@@ -676,20 +648,8 @@ struct CallConvLoweringPass
           classifyWithABILibrary(funcOp, typeMapper, dataLayout, abiInfo,
                                  recordCoercionEnabled, module);
 
-      // Don't change the return type of address-taken functions
-      // — function pointer variables would have stale function
-      // types.  This applies to both Ignore (empty→void) and
-      // Direct coercion (record→integer) returns.
-      if (auto nameAttr = funcOp->getAttrOfType<StringAttr>("sym_name")) {
-        if (addressTakenFns.contains(nameAttr.getValue())) {
-          if (fc.ReturnInfo.Kind == ArgKind::Ignore)
-            fc.ReturnInfo = ArgClassification::getDirect(nullptr);
-          else if (fc.ReturnInfo.Kind == ArgKind::Direct &&
-                   fc.ReturnInfo.CoercedType)
-            fc.ReturnInfo = ArgClassification::getDirect(nullptr);
-        }
+      if (auto nameAttr = funcOp->getAttrOfType<StringAttr>("sym_name"))
         classificationMap[nameAttr.getValue()] = fc;
-      }
 
       // Capture the original FuncType before the rewrite mutates it in place.
       auto oldFuncTy = dyn_cast<cir::FuncType>(funcOp.getFunctionType());
@@ -699,35 +659,9 @@ struct CallConvLoweringPass
         return signalPassFailure();
 
       auto newFuncTy = dyn_cast<cir::FuncType>(funcOp.getFunctionType());
-      if (enableCascade && oldFuncTy && newFuncTy && oldFuncTy != newFuncTy)
+      if (oldFuncTy && newFuncTy && oldFuncTy != newFuncTy)
         funcTypeRewrites.try_emplace(oldFuncTy, newFuncTy);
     });
-
-    // Legacy Phase 2 (used only when the cascade is disabled): update
-    // cir.get_global ops whose result type embeds a function type that
-    // was rewritten in Phase 1.  When the cascade is enabled (the
-    // default), the cascade walks every composite type containing a
-    // rewritten cir::FuncType -- including the pointee of cir.get_global
-    // results -- so this targeted walk is redundant.  Phase D will
-    // remove it entirely.
-    if (!enableCascade) {
-      module.walk([&](cir::GetGlobalOp getOp) {
-        FlatSymbolRefAttr sym = getOp.getNameAttr();
-        auto funcOp = module.lookupSymbol<FunctionOpInterface>(sym);
-        if (!funcOp)
-          return;
-        auto ptrTy = dyn_cast<cir::PointerType>(getOp.getType());
-        if (!ptrTy)
-          return;
-        auto fnTy = dyn_cast<cir::FuncType>(ptrTy.getPointee());
-        if (!fnTy)
-          return;
-        auto currentFnTy = dyn_cast<cir::FuncType>(funcOp.getFunctionType());
-        if (!currentFnTy || fnTy == currentFnTy)
-          return;
-        getOp.getResult().setType(cir::PointerType::get(currentFnTy));
-      });
-    }
 
     // Phase 3: Rewrite call sites to match rewritten callees.
     //
@@ -815,18 +749,15 @@ struct CallConvLoweringPass
         return signalPassFailure();
     });
 
-    // Phase 3.5: function-pointer type cascade.  When the `enable-cascade`
-    // option is true (the default), propagate every FuncType rewrite
-    // captured in Phase 1 through every CIR composite type that embeds it
-    // (record fields, arrays, pointer-to-func types, global-initializer
-    // attributes).  This MUST run AFTER Phase 3 has rewritten call sites,
-    // because Phase 3's indirect-call classifier reads the function
-    // pointer's pointee FuncType -- which must still be the source type at
-    // that point.  See the long comment at the top of Phase 3.
-    if (enableCascade) {
-      if (failed(cir::callconv::applyCallConvCascade(module, funcTypeRewrites)))
-        return signalPassFailure();
-    }
+    // Phase 3.5: function-pointer type cascade.  Propagate every FuncType
+    // rewrite captured in Phase 1 through every CIR composite type that
+    // embeds it (record fields, arrays, pointer-to-func types, global-
+    // initializer attributes).  This MUST run AFTER Phase 3 has rewritten
+    // call sites, because Phase 3's indirect-call classifier reads the
+    // function pointer's pointee FuncType -- which must still be the source
+    // type at that point.  See the long comment at the top of Phase 3.
+    if (failed(cir::callconv::applyCallConvCascade(module, funcTypeRewrites)))
+      return signalPassFailure();
 
     // Phase 3.6: elide identity-typed `cir.cast bitcast` ops that fall out
     // of the Phase 3 + cascade interaction.  Phase 3's

@@ -167,17 +167,7 @@ def CallConvLowering : Pass<"cir-call-conv-lowering", "mlir::ModuleOp"> {
       "Add noalias to byval parameters.">,
     Option<"x86AvxAbiLevel", "x86-avx-abi-level", "unsigned",
       /*default=*/"0",
-      "X86 AVX ABI level: 0=None, 1=AVX, 2=AVX512.">,
-    Option<"enableCascade", "enable-cascade", "bool",
-      /*default=*/"true",
-      "Enable the function-pointer type cascade.  When true (the default), "
-      "after classification the pass propagates rewritten function types "
-      "through every CIR composite type that embeds them (record fields, "
-      "arrays, pointer types, global initializer attributes).  See "
-      "clang/docs/CIR/ABILowering.rst, 'Function-Pointer Type Cascade'.  "
-     "When false, the pass falls back to a legacy non-uniform rewriting "
-     "path (kept for rollback purposes; will be removed once the cascade "
-     "has had a bake-in period).">
+      "X86 AVX ABI level: 0=None, 1=AVX, 2=AVX512.">
   ];
 }
 
