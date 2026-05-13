@@ -565,6 +565,20 @@ propagates the new signature through every storage class.  Because the
 to the same output -- the converter's caching is valid across the whole
 module walk.
 
+Within ``CallConvLowering``'s pipeline the cascade runs **after** call-site
+rewriting, not before.  This ordering is load-bearing for indirect calls:
+the call-site classifier reads the function pointer's pointee
+``cir.func`` type to decide what coercion (struct flattening, eightbyte
+coerce, etc.) the call site needs to apply to its operands.  The
+classifier requires the **source** ``FuncType`` -- the ABI-rewritten one
+omits the parameter shape it would coerce against -- so call-site
+rewriting (Phase 3) runs first and inserts operand coercions, the
+cascade (Phase 3.5) then propagates the rewritten function-pointer types
+through every embedding composite, and a small Phase 3.6 cleanup elides
+the identity-typed ``cir.cast bitcast`` ops that the prepended
+indirect-callee bitcast becomes after the cascade rewrites the source
+operand's type to match the rewritten target.
+
 After the pass, the following invariants hold:
 
 1. Every value of composite type containing a function-pointer type agrees

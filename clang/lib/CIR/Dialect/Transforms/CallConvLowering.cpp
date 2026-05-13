@@ -703,18 +703,6 @@ struct CallConvLoweringPass
         funcTypeRewrites.try_emplace(oldFuncTy, newFuncTy);
     });
 
-    // Optional Phase 1.5 (Phase A scaffolding): function-pointer type
-    // cascade.  When the `enable-cascade` option is true, propagate every
-    // FuncType rewrite captured above through every CIR composite type
-    // that embeds it (record fields, arrays, pointer-to-func types,
-    // global-initializer attributes).  When false (the Phase A default),
-    // this is a no-op and behavior is bit-for-bit identical to the
-    // pre-cascade pipeline.
-    if (enableCascade) {
-      if (failed(cir::callconv::applyCallConvCascade(module, funcTypeRewrites)))
-        return signalPassFailure();
-    }
-
     // Legacy Phase 2 (used only when the cascade is disabled): update
     // cir.get_global ops whose result type embeds a function type that
     // was rewritten in Phase 1.  When the cascade is enabled (the
@@ -742,6 +730,21 @@ struct CallConvLoweringPass
     }
 
     // Phase 3: Rewrite call sites to match rewritten callees.
+    //
+    // CRITICAL: This MUST run BEFORE the cascade.  For indirect calls, we
+    // classify the function-pointer's pointee type to decide what coercion
+    // (struct flattening, eightbyte coerce, etc.) the call site needs to
+    // apply to its operands.  At this point in the pipeline the function
+    // pointer's pointee is still the SOURCE FuncType (e.g. `(D)->R`), so
+    // the classification correctly returns Direct+coerce and the call-site
+    // rewriting inserts the operand coercion (extract `i32` from `D`).  If
+    // we ran the cascade first, the function pointer would already be
+    // `(i32)->R` and the classifier would conclude no coercion is needed,
+    // leaving the call site passing a `D` operand to an `i32` parameter --
+    // a type-inconsistency the standard verifier doesn't catch (it
+    // short-circuits indirect calls) and that would silently produce wrong
+    // ABI lowering.  See clang/docs/CIR/ABILowering.rst,
+    // "Function-Pointer Type Cascade".
     module.walk([&](cir::CallOp callOp) {
       auto callee = callOp.getCalleeAttr();
 
@@ -810,6 +813,35 @@ struct CallConvLoweringPass
       OpBuilder builder(callOp);
       if (failed(rewriteCtx.rewriteCallSite(callOp, fc, builder)))
         return signalPassFailure();
+    });
+
+    // Phase 3.5: function-pointer type cascade.  When the `enable-cascade`
+    // option is true (the default), propagate every FuncType rewrite
+    // captured in Phase 1 through every CIR composite type that embeds it
+    // (record fields, arrays, pointer-to-func types, global-initializer
+    // attributes).  This MUST run AFTER Phase 3 has rewritten call sites,
+    // because Phase 3's indirect-call classifier reads the function
+    // pointer's pointee FuncType -- which must still be the source type at
+    // that point.  See the long comment at the top of Phase 3.
+    if (enableCascade) {
+      if (failed(cir::callconv::applyCallConvCascade(module, funcTypeRewrites)))
+        return signalPassFailure();
+    }
+
+    // Phase 3.6: elide identity-typed `cir.cast bitcast` ops that fall out
+    // of the Phase 3 + cascade interaction.  Phase 3's
+    // `prependIndirectCallee` inserts a bitcast from the source function-
+    // pointer type to the rewritten function-pointer type; the cascade then
+    // rewrites the source operand's type to match, leaving the bitcast with
+    // identical operand and result types.  Replace such bitcasts with their
+    // operand directly so downstream check lines stay tight.
+    module.walk([&](cir::CastOp castOp) {
+      if (castOp.getKind() != cir::CastKind::bitcast)
+        return;
+      if (castOp.getSrc().getType() != castOp.getResult().getType())
+        return;
+      castOp.getResult().replaceAllUsesWith(castOp.getSrc());
+      castOp.erase();
     });
 
     // Phase 4: Fix stale arg_attrs on all operations.

@@ -340,24 +340,48 @@ public:
     // Identity fallback for any type the cascade does not touch.
     addConversion([](Type ty) -> Type { return ty; });
 
-    // FuncType: look up in the rewrite map.  If present, return the rewritten
-    // signature.  Otherwise recurse into inputs and return type so a function
-    // pointer type that only embeds rewritten types in its inputs / return
-    // also gets rebuilt.
+    // FuncType: look up in the rewrite map.  When the rewrite map has a
+    // hit, the immediate FuncType return is the ABI-rewritten signature --
+    // BUT its inputs / return type may still reference SOURCE record types
+    // that have not yet been renamed when this rewrite happens.  As the
+    // cascade walks more ops, those records may get renamed
+    // (`__post_abi_*`) by other rewrites; the rewritten FuncType from the
+    // rewrite map then references stale records, and a follow-up
+    // `convertType` (e.g. from `isLegal`) returns a structurally different
+    // type, which makes the legalizer mark our just-rewritten op illegal
+    // again.  To stay consistent, recurse into the rewritten FuncType's
+    // inputs / return so any stateful record renames get applied
+    // transitively.  When no rewrite-map hit, recurse the same way so a
+    // function pointer type that only embeds rewritten types in its
+    // inputs / return also gets rebuilt.
+    //
+    // Termination invariant: any cycle through this lambda must include
+    // a `RecordType` step, because MLIR's structural type uniquing forbids
+    // constructing a `cir::FuncType` that directly references itself.
+    // `convertRecordType`'s per-thread `recursiveStack` plus the
+    // `__post_abi_*` placeholder break record self-reference, so any
+    // FuncType -> Record -> FuncType chain terminates (correctness for
+    // self-referential cycles is a separate concern -- see
+    // `callconv-cascade-fnptr-self-ref.cpp` which is currently XFAIL'd
+    // for that reason).  Do NOT introduce a Phase 1 rewrite whose
+    // rewrite-map value directly mentions its own key in its input or
+    // return list with no intervening RecordType: that would let this
+    // lambda re-enter without progress until stack overflow.
     addConversion([this](cir::FuncType ty) -> Type {
+      cir::FuncType effective = ty;
       auto it = this->rewrites.find(ty);
       if (it != this->rewrites.end())
-        return it->second;
+        effective = it->second;
 
       SmallVector<Type> loweredInputs;
-      loweredInputs.reserve(ty.getNumInputs());
-      if (failed(convertTypes(ty.getInputs(), loweredInputs)))
+      loweredInputs.reserve(effective.getNumInputs());
+      if (failed(convertTypes(effective.getInputs(), loweredInputs)))
         return {};
-      Type loweredReturn = convertType(ty.getReturnType());
+      Type loweredReturn = convertType(effective.getReturnType());
       if (!loweredReturn)
         return {};
       return cir::FuncType::get(loweredInputs, loweredReturn,
-                                /*isVarArg=*/ty.getVarArg());
+                                /*isVarArg=*/effective.getVarArg());
     });
 
     addConversion([this](cir::PointerType ty) -> Type {
