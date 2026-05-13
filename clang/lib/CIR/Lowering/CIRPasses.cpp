@@ -56,6 +56,15 @@ runCIRToCIRPasses(mlir::ModuleOp theModule, mlir::MLIRContext &mlirContext,
 
     pm.addPass(mlir::createCallConvLoweringPass(
         /*recordCoercionEnabled=*/false, passByValueIsNoAlias, avxLevel));
+
+    // Diagnostic pass: assert the call-site clauses of the function-pointer
+    // type cascade invariant on the post-CallConvLowering IR.  See
+    // clang/docs/CIR/ABILowering.rst, "Function-Pointer Type Cascade", and
+    // VerifyCallConvInvariant.cpp for the clause text and the rationale
+    // for why clause 1 is intentionally not enforced.  Only meaningful
+    // when the CallConvLowering pass actually ran (i.e. on the gated
+    // x86_64 path).
+    pm.addPass(mlir::createCIRVerifyCallConvInvariantPass());
   }
 
   pm.addPass(mlir::createLoweringPreparePass(&astContext));

@@ -589,7 +589,12 @@ After the pass, the following invariants hold:
 
 The pass ``--cir-verify-callconv-invariant`` walks the module and asserts
 the call-site clauses (2 and 3); running it on the post-pass IR is the
-recommended way to catch regressions when the cascade is extended.  Clause
+recommended way to catch regressions when the cascade is extended.  In
+the production CIR pipeline (``runCIRToCIRPasses`` in
+``clang/lib/CIR/Lowering/CIRPasses.cpp``) the verifier runs immediately
+after ``CallConvLowering``, inside the same x86_64 gate, and before
+``LoweringPrepare`` -- so a violation localizes blame to the cascade
+before later passes reshape the IR.  Clause
 1 is intentionally NOT enforced by the verifier because ``cir.global_view``
 explicitly allows the view's type to differ from the referenced symbol's
 declared type, which C-interop callback tables rely on (e.g. ``fclose``
