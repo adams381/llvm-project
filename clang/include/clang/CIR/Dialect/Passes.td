@@ -175,10 +175,50 @@ def CallConvLowering : Pass<"cir-call-conv-lowering", "mlir::ModuleOp"> {
       "through every CIR composite type that embeds them (record fields, "
       "arrays, pointer types, global initializer attributes).  See "
       "clang/docs/CIR/ABILowering.rst, 'Function-Pointer Type Cascade'.  "
-      "When false, the pass falls back to a legacy non-uniform rewriting "
-      "path (kept for rollback purposes; will be removed once the cascade "
-      "has had a bake-in period).">
+     "When false, the pass falls back to a legacy non-uniform rewriting "
+     "path (kept for rollback purposes; will be removed once the cascade "
+     "has had a bake-in period).">
   ];
+}
+
+def CIRVerifyCallConvInvariant
+    : Pass<"cir-verify-callconv-invariant", "mlir::ModuleOp"> {
+  let summary = "Verify post-CallConvLowering invariants on the CIR module";
+  let description = [{
+    Walks the module after `CallConvLowering` and asserts the call-site
+    clauses of the function-pointer type cascade invariant from
+    `clang/docs/CIR/ABILowering.rst`:
+
+      Clause 2 -- Every direct `cir.call` / `cir.try_call` site's signature
+      matches the callee's declared signature (operand and result types and
+      arity).  The standard MLIR verifier already enforces this via
+      `cir::CallOp::verifySymbolUses`; this clause re-checks it as defensive
+      duplication and to cover the calling-convention `MissingFeature` paths
+      that bypass some standard checks.
+
+      Clause 3 -- Every indirect `cir.call` / `cir.try_call` site agrees
+      with the pointee `cir.func` type of the indirect-callee value (operand
+      and result types and arity).  The standard verifier short-circuits
+      indirect calls (see `verifyCallCommInSymbolUses` in `CIRDialect.cpp`),
+      so this is the unique add-on coverage of the post-cascade indirect-
+      call invariant.  An exception is made for the C++ pointer-to-member-
+      function lowering shape, where CXXABILowering emits function pointers
+      with type `func<(!cir.ptr<!void>, !cir.ptr<RecordType>, ...args)>` but
+      the call passes only `(adjusted_this, ...args)` -- dropping the
+      typed-this slot, which `LowerToLLVM` later reconciles via a bitcast.
+
+    Clause 1 from the design doc (every `cir.global_view` agrees with its
+    referenced `cir.func` declaration) is intentionally NOT enforced here:
+    `cir.global_view` explicitly allows the view's type to differ from the
+    referenced symbol's declared type, which C-interop callback tables rely
+    on.  See the `checkGlobalView` comment in
+    `VerifyCallConvInvariant.cpp` for the rationale.
+
+    On a violation the pass calls `op->emitError` with a descriptive message
+    and `signalPassFailure`.
+  }];
+  let constructor = "mlir::createCIRVerifyCallConvInvariantPass()";
+  let dependentDialects = ["cir::CIRDialect"];
 }
 
 def CIREHABILowering : Pass<"cir-eh-abi-lowering", "mlir::ModuleOp"> {

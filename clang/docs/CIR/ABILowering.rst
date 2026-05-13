@@ -573,10 +573,23 @@ After the pass, the following invariants hold:
 3. Every indirect call's signature matches the callee pointer's pointee
    type.
 
-The pass ``--verify-callconv-invariant`` (gated on
-``LLVM_ENABLE_ASSERTIONS``) walks the module and asserts the three clauses;
-running it on the post-pass IR is the recommended way to catch regressions
-when the cascade is extended.
+The pass ``--cir-verify-callconv-invariant`` walks the module and asserts
+the call-site clauses (2 and 3); running it on the post-pass IR is the
+recommended way to catch regressions when the cascade is extended.  Clause
+1 is intentionally NOT enforced by the verifier because ``cir.global_view``
+explicitly allows the view's type to differ from the referenced symbol's
+declared type, which C-interop callback tables rely on (e.g. ``fclose``
+stored in an ``ov_callbacks`` slot retypes the ``FILE*`` parameter to
+``void*``).  Strict enforcement of clause 1 would false-positive on every
+such callback table.  Clause 3 carries an exception for the C++ pointer-to-
+member-function lowering shape, where ``CXXABILowering`` emits function
+pointers with type
+``func<(!cir.ptr<!void>, !cir.ptr<RecordType>, ...args)>`` but the call
+passes only ``(adjusted_this, ...args)`` -- dropping the typed-this slot,
+which ``LowerToLLVM`` later reconciles via a bitcast.  See the long
+comment on ``checkGlobalView`` in
+``clang/lib/CIR/Dialect/Transforms/VerifyCallConvInvariant.cpp`` for the
+clause 1 rationale.
 
 Implementor notes for new dialect composite types:
 

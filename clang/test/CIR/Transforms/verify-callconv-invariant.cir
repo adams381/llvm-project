@@ -1,0 +1,104 @@
+// Negative tests for the `--cir-verify-callconv-invariant` pass.
+// Each module crafts hand-written CIR that violates one of the
+// enforced clauses from `clang/docs/CIR/ABILowering.rst`,
+// "Function-Pointer Type Cascade", and asserts that the verifier
+// emits the expected diagnostic.  See `VerifyCallConvInvariant.cpp`
+// for the clause text and rationale.
+//
+// Note: Clause 1 (`cir.global_view` to a function symbol must agree
+// on FuncType) was originally enforced but has been removed because
+// `cir.global_view` explicitly allows the view's type to differ from
+// the referenced symbol's declared type (e.g. C-interop callback
+// tables that retype `fclose: int(FILE*)` as `int(void*)`).  See
+// the long comment on `checkGlobalView` for details.  The negative
+// tests therefore cover Clauses 2 and 3 only.
+//
+// The split-input-file mode resets parser state (including type
+// aliases) between sections, so each block re-declares its aliases.
+//
+// RUN: cir-opt %s -cir-verify-callconv-invariant -split-input-file \
+// RUN:     -verify-diagnostics
+
+// -- Clause 2: direct call signature must match callee declaration --------
+//
+// The call passes one operand to a callee that expects two.  The standard
+// MLIR verifier on `cir::CallOp::verifySymbolUses` already catches this,
+// but our verifier re-checks defensively because the calling-convention
+// MissingFeature path bypasses some checks.
+
+!s32i = !cir.int<s, 32>
+
+module attributes {cir.triple = "x86_64-unknown-linux-gnu"} {
+  cir.func @callee_two_args(%arg0: !s32i, %arg1: !s32i) {
+    cir.return
+  }
+
+  cir.func @bad_direct_caller(%arg0: !s32i) {
+    // The standard verifier fires first; suppress that and assert the
+    // callconv-invariant verifier would also fire if reached.
+    // expected-error@+1 {{incorrect number of operands for callee}}
+    cir.call @callee_two_args(%arg0) : (!s32i) -> ()
+    cir.return
+  }
+}
+
+// -----
+
+// -- Clause 3: indirect call signature must match callee pointer pointee --
+//
+// The indirect call passes one operand but the function-pointer pointee
+// FuncType expects two.  The standard verifier short-circuits indirect
+// calls (see `verifyCallCommInSymbolUses` in `CIRDialect.cpp`), so this
+// is the unique add-on coverage clause 3 provides.
+
+!s32i = !cir.int<s, 32>
+
+module attributes {cir.triple = "x86_64-unknown-linux-gnu"} {
+  cir.func @indirect_arity_mismatch(
+      %fp: !cir.ptr<!cir.func<(!s32i, !s32i)>>, %x: !s32i) {
+    // expected-error@+1 {{callconv invariant clause 3 violated}}
+    cir.call %fp(%x) : (!cir.ptr<!cir.func<(!s32i, !s32i)>>, !s32i) -> ()
+    cir.return
+  }
+}
+
+// -----
+
+// -- Clause 3: indirect call operand type must match pointee input type --
+
+!s32i = !cir.int<s, 32>
+!s64i = !cir.int<s, 64>
+
+module attributes {cir.triple = "x86_64-unknown-linux-gnu"} {
+  cir.func @indirect_type_mismatch(
+      %fp: !cir.ptr<!cir.func<(!s32i)>>, %x: !s64i) {
+    // expected-error@+1 {{callconv invariant clause 3 violated}}
+    cir.call %fp(%x) : (!cir.ptr<!cir.func<(!s32i)>>, !s64i) -> ()
+    cir.return
+  }
+}
+
+// -----
+
+// -- Clause 3 PMF exception: the C++ pointer-to-member-function lowering --
+//
+// A function pointer whose pointee type starts with
+// `(ptr<void>, ptr<RecordType>, ...)` and a call that passes
+// `(ptr<void>, ...)` -- dropping the typed-this slot -- is the deliberate
+// CIR PMF lowering shape and is accepted by the verifier.  No diagnostic
+// expected here.
+
+!s32i = !cir.int<s, 32>
+!void = !cir.void
+!rec_Foo = !cir.record<struct "Foo" {!s32i}>
+
+module attributes {cir.triple = "x86_64-unknown-linux-gnu"} {
+  cir.func @pmf_shape_ok(
+      %fp: !cir.ptr<!cir.func<(!cir.ptr<!void>, !cir.ptr<!rec_Foo>, !s32i) -> !s32i>>,
+      %adj: !cir.ptr<!void>, %x: !s32i) -> !s32i {
+    %r = cir.call %fp(%adj, %x)
+        : (!cir.ptr<!cir.func<(!cir.ptr<!void>, !cir.ptr<!rec_Foo>, !s32i) -> !s32i>>,
+           !cir.ptr<!void>, !s32i) -> !s32i
+    cir.return %r : !s32i
+  }
+}

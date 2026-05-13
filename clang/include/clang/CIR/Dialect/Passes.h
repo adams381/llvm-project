@@ -31,6 +31,7 @@ std::unique_ptr<Pass> createCallConvLoweringPass(bool recordCoercionEnabled,
 std::unique_ptr<Pass> createCallConvLoweringPass(bool recordCoercionEnabled,
                                                   bool passByValueIsNoAlias,
                                                   unsigned x86AvxAbiLevel);
+std::unique_ptr<Pass> createCIRVerifyCallConvInvariantPass();
 std::unique_ptr<Pass> createCIREHABILoweringPass();
 std::unique_ptr<Pass> createCXXABILoweringPass();
 std::unique_ptr<Pass> createTargetLoweringPass();
