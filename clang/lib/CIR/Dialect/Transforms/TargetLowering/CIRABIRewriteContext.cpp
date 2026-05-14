@@ -18,6 +18,20 @@ using namespace cir;
 using namespace mlir;
 using namespace mlir::abi;
 
+/// Compute the ABI alignment a coerce-alloca slot must have.  The slot is
+/// stored with `srcTy` and loaded as `dstTy`, so its alignment must satisfy
+/// both -- otherwise ABI-classified types whose natural alignment exceeds
+/// 8 (SSE vectors, structs containing them, `_Atomic` types, _Decimal128,
+/// etc.) hit a misaligned access at the store or load and crash on
+/// architectures that strictly enforce alignment.  `anchor` provides the
+/// context for `DataLayout::closest`, which walks up the IR to find the
+/// nearest DataLayoutOpInterface ancestor.
+static uint64_t coerceAllocaAlignment(Operation *anchor, Type srcTy,
+                                      Type dstTy) {
+  auto dl = mlir::DataLayout::closest(anchor);
+  return std::max(dl.getTypeABIAlignment(srcTy), dl.getTypeABIAlignment(dstTy));
+}
+
 /// Emit a value coercion between two types.  For scalar-to-scalar (e.g.
 /// integer sign extension), a direct cir.cast is sufficient.  When one of
 /// the types is a record (struct), LLVM IR's bitcast cannot reinterpret
@@ -42,10 +56,12 @@ static Value emitCoercion(OpBuilder &rewriter, Location loc, Type dstTy,
   auto srcPtrTy = cir::PointerType::get(srcTy);
   auto dstPtrTy = cir::PointerType::get(dstTy);
 
-  auto alloca =
-      cir::AllocaOp::create(rewriter, loc, srcPtrTy, srcTy,
-                            /*name=*/rewriter.getStringAttr("coerce"),
-                            /*alignment=*/rewriter.getI64IntegerAttr(8));
+  uint64_t allocaAlign = coerceAllocaAlignment(
+      rewriter.getInsertionBlock()->getParentOp(), srcTy, dstTy);
+  auto alloca = cir::AllocaOp::create(
+      rewriter, loc, srcPtrTy, srcTy,
+      /*name=*/rewriter.getStringAttr("coerce"),
+      /*alignment=*/rewriter.getI64IntegerAttr(allocaAlign));
 
   cir::StoreOp::create(rewriter, loc, src, alloca,
                        /*isVolatile=*/mlir::UnitAttr(),
@@ -172,10 +188,11 @@ static void insertArgAdaptation(FunctionOpInterface funcOp,
       auto dstPtrTy = cir::PointerType::get(oldArgTy);
       Location loc = funcOp.getLoc();
 
-      auto alloca =
-          cir::AllocaOp::create(rewriter, loc, srcPtrTy, newArgTy,
-                                /*name=*/rewriter.getStringAttr("coerce"),
-                                /*alignment=*/rewriter.getI64IntegerAttr(8));
+      uint64_t allocaAlign = coerceAllocaAlignment(funcOp, newArgTy, oldArgTy);
+      auto alloca = cir::AllocaOp::create(
+          rewriter, loc, srcPtrTy, newArgTy,
+          /*name=*/rewriter.getStringAttr("coerce"),
+          /*alignment=*/rewriter.getI64IntegerAttr(allocaAlign));
 
       auto store = cir::StoreOp::create(rewriter, loc, blockArg, alloca,
                                         /*isVolatile=*/mlir::UnitAttr(),
@@ -383,10 +400,11 @@ LogicalResult CIRABIRewriteContext::rewriteFunctionDefinition(
         rewriter.setInsertionPointToStart(&entry);
         Type coercedTy = argClass.CoercedType;
         auto coercedPtrTy = cir::PointerType::get(coercedTy);
+        uint64_t allocaAlign = coerceAllocaAlignment(funcOp, coercedTy, origTy);
         auto alloca = cir::AllocaOp::create(
             rewriter, funcOp.getLoc(), coercedPtrTy, coercedTy,
             /*name=*/rewriter.getStringAttr("coerce"),
-            /*alignment=*/rewriter.getI64IntegerAttr(8));
+            /*alignment=*/rewriter.getI64IntegerAttr(allocaAlign));
 
         for (unsigned f = 0; f < numFields; ++f) {
           BlockArgument scalarArg = entry.getArgument(origBlockIdx + 1 + f);
@@ -943,10 +961,12 @@ LogicalResult CIRABIRewriteContext::rewriteCallSite(
           rewriter.setInsertionPoint(call);
           Type origTy = arg.getType();
           auto origPtrTy = cir::PointerType::get(origTy);
+          uint64_t allocaAlign = coerceAllocaAlignment(
+              call.getOperation(), origTy, argClass.CoercedType);
           auto alloca = cir::AllocaOp::create(
               rewriter, call.getLoc(), origPtrTy, origTy,
               /*name=*/rewriter.getStringAttr("coerce"),
-              /*alignment=*/rewriter.getI64IntegerAttr(8));
+              /*alignment=*/rewriter.getI64IntegerAttr(allocaAlign));
           cir::StoreOp::create(rewriter, call.getLoc(), arg, alloca,
                                /*isVolatile=*/mlir::UnitAttr(),
                                /*alignment=*/mlir::IntegerAttr(),

@@ -585,7 +585,11 @@ uint64_t IntType::getABIAlignment(const mlir::DataLayout &dataLayout,
         std::min(llvm::PowerOf2Ceil(width), static_cast<uint64_t>(64));
     return std::max(alignBits / 8, static_cast<uint64_t>(1));
   }
-  return (uint64_t)(width / 8);
+  // For standard widths (8/16/32/64/128) `width / 8` is already a power
+  // of 2.  For non-standard widths (i40, i48, ...), `width / 8` is not a
+  // power of 2 -- align up to the next one, matching how LLVM falls back
+  // when the data-layout spec has no entry for that width.
+  return std::max(llvm::PowerOf2Ceil(width) / 8, static_cast<uint64_t>(1));
 }
 
 mlir::LogicalResult
@@ -937,7 +941,16 @@ llvm::TypeSize cir::VectorType::getTypeSizeInBits(
 uint64_t
 cir::VectorType::getABIAlignment(const ::mlir::DataLayout &dataLayout,
                                  ::mlir::DataLayoutEntryListRef params) const {
-  return llvm::NextPowerOf2(dataLayout.getTypeSizeInBits(*this));
+  // Match LLVM's `computeVectorAlignment`: the next power-of-two ABI
+  // alignment in bytes that is at least the vector's size in bytes.  The
+  // earlier `NextPowerOf2(getTypeSizeInBits(*this))` form had two bugs --
+  // it returned a value in bits instead of bytes, and `NextPowerOf2` is
+  // strictly greater (so a 128-bit vector reported alignment 256 instead
+  // of 16).  Both showed up as 16x-over-aligned coerce allocas on
+  // x86_64 SysV when a struct containing an SSE vector was returned by
+  // value.
+  uint64_t sizeBytes = dataLayout.getTypeSize(*this);
+  return llvm::PowerOf2Ceil(sizeBytes);
 }
 
 mlir::LogicalResult cir::VectorType::verify(
