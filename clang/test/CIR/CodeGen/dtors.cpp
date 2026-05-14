@@ -344,12 +344,12 @@ int test_temp_in_condition(G &obj) {
 // CIR:     %[[LOAD_OBJ:.*]] = cir.load{{.*}} %[[OBJ]] : !cir.ptr<!cir.ptr<!rec_G>>, !cir.ptr<!rec_G>
 // `G::copy()` returns a non-trivially-copyable `G` (G has a destructor),
 // so the CallConvLowering pass rewrites it to take an `sret` argument.
-// The pass synthesises a fresh `["sret"]` alloca for that argument; the
-// returned value is then loaded out of the sret slot and stored into
-// `ref.tmp0` (the slot the original AST was tracking).
-// CIR:     %[[SRET:.*]] = cir.alloca !rec_G, !cir.ptr<!rec_G>, ["sret"]
-// CIR:     cir.call @_ZNK1G4copyEv(%[[SRET]], %[[LOAD_OBJ]]) : (!cir.ptr<!rec_G> {{{.*}}llvm.sret = !rec_G{{.*}}}, !cir.ptr<!rec_G> {{.*}}) -> ()
-// CIR:     cir.store{{.*}} %{{.*}}, %[[REF_TMP0]]
+// CIRGen's `cir.store %callResult, %ref.tmp0` peephole lets the call-site
+// rewrite use `ref.tmp0` as the sret slot directly (no fresh `["sret"]`
+// temp), matching classic CodeGen's "construct directly into %ref.tmp0"
+// pattern.  The original CIRGen-emitted load + store-back-to-self is a
+// no-op self-copy and is folded away in later passes.
+// CIR:     cir.call @_ZNK1G4copyEv(%[[REF_TMP0]], %[[LOAD_OBJ]]) : (!cir.ptr<!rec_G> {{{.*}}llvm.sret = !rec_G{{.*}}}, !cir.ptr<!rec_G> {{.*}}) -> ()
 // CIR:     cir.cleanup.scope {
 // CIR:       %[[ONE:.*]] = cir.const #cir.int<1> : !s32i
 // CIR:       cir.call @_ZN1GC1Ei(%[[REF_TMP1]], %[[ONE]]) : (!cir.ptr<!rec_G> {{.*}}, !s32i {{.*}}) -> ()
@@ -383,21 +383,17 @@ int test_temp_in_condition(G &obj) {
 // LLVM:   %[[REF_TMP0:.*]] = alloca %struct.G
 // LLVM:   %[[REF_TMP1:.*]] = alloca %struct.G
 // LLVM:   %[[TMP_RESULT:.*]] = alloca i8
-// The CallConvLowering pass adds an sret slot (G's ABI alignment is
-// 1) for the rewritten `void @_ZNK1G4copyEv(ptr sret, ptr)`; the
-// result is loaded out and copied into ref.tmp0 (matching what
-// classic Clang would have done with a return-value-elided direct
-// return).
-// LLVM:   %[[SRET:.*]] = alloca %struct.G, i64 1, align 1
 // LLVM:   %[[OBJ:.*]] = alloca ptr
 // LLVM:   %[[RET_ADDR:.*]] = alloca i32
 // LLVM:   store ptr %[[ARG0]], ptr %[[OBJ]]
 // LLVM:   br label %[[SCOPE_BEGIN:.*]]
 // LLVM: [[SCOPE_BEGIN]]:
 // LLVM:   %[[LOAD_OBJ:.*]] = load ptr, ptr %[[OBJ]]
-// LLVM:   call void @_ZNK1G4copyEv(ptr {{.*}}sret(%struct.G){{.*}} %[[SRET]], ptr {{.*}} %[[LOAD_OBJ]])
-// LLVM:   %[[COPY:.*]] = load %struct.G, ptr %[[SRET]]
-// LLVM:   store %struct.G %[[COPY]], ptr %[[REF_TMP0]]
+// CallConvLowering uses ref.tmp0 as the sret slot directly (the call's
+// result is stored into ref.tmp0, so the call-site rewrite passes
+// %ref.tmp0 as the sret arg), matching classic Clang's
+// return-value-elided direct construction.
+// LLVM:   call void @_ZNK1G4copyEv(ptr {{.*}}sret(%struct.G){{.*}} %[[REF_TMP0]], ptr {{.*}} %[[LOAD_OBJ]])
 // LLVM:   br label %[[CLEAN_SCOPE_ONE:.*]]
 // LLVM: [[CLEAN_SCOPE_ONE]]:
 // LLVM:   call void @_ZN1GC1Ei(ptr {{.*}} %[[REF_TMP1]], i32 {{.*}} 1)

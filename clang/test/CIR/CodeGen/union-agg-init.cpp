@@ -12,9 +12,12 @@ typedef union vec3 {
 
 // In C++ mode, this doesn't do zero padding.
 extern "C" vec3 ret_vec3() {
+  // `vec3` is 24 bytes (3 doubles) -- SysV x86_64 returns it via sret.
+  // CallConvLowering replaces CIRGen's `__retval` alloca with the sret
+  // arg so construction targets the caller's slot directly.
   // CIR-LABEL: ret_vec3
-  // CIR: %[[RET_ALLOCA:.*]] = cir.alloca !rec_vec3, !cir.ptr<!rec_vec3>, ["__retval"]
-  // CIR: %[[GET_ANON:.*]] = cir.get_member %[[RET_ALLOCA]][0] {name = ""}
+  // CIR: %[[SRET_ARG:.*]]: !cir.ptr<!rec_vec3>{{.*}}llvm.sret = !rec_vec3
+  // CIR: %[[GET_ANON:.*]] = cir.get_member %[[SRET_ARG]][0] {name = ""}
   // CIR: %[[GET_X:.*]] = cir.get_member %[[GET_ANON]][0] {name = "x"}
   // CIR: %[[FIVE:.*]] = cir.const #cir.fp<5.{{.*}}> : !cir.double
   // CIR: cir.store{{.*}} %[[FIVE]], %[[GET_X]]
@@ -26,14 +29,15 @@ extern "C" vec3 ret_vec3() {
   // CIR: cir.store{{.*}} %[[ZERO]], %[[GET_Z]]
 
   // LLVM-LABEL: ret_vec3
-  // OGCG-SAME: ptr{{.*}}sret(%union.vec3){{.*}}%[[RET_ALLOCA:.*]])
-  // LLVMCIR: %[[RET_ALLOCA:.*]] = alloca %union.vec3
+  // LLVM-SAME: ptr{{.*}}sret(%union.vec3){{.*}}%[[RET_ALLOCA:.*]])
   // LLVM: %[[GET_X:.*]] = getelementptr {{.*}}, ptr %[[RET_ALLOCA]], i32 0, i32 0
   // LLVM: store double 5{{.*}}, ptr %[[GET_X]]
   // LLVM: %[[GET_Y:.*]] = getelementptr {{.*}}, ptr %[[RET_ALLOCA]], i32 0, i32 1
   // LLVM: store double 0{{.*}}, ptr %[[GET_Y]]
   // LLVM: %[[GET_Z:.*]] = getelementptr {{.*}}, ptr %[[RET_ALLOCA]], i32 0, i32 2
   // LLVM: store double 0{{.*}}, ptr %[[GET_Z]]
+  // LLVMCIR: ret void
+  // OGCG: ret void
   return (vec3) {{ .x = 5.0 }};
 }
 

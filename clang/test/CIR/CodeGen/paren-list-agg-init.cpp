@@ -168,21 +168,19 @@ A foo1() {
 
 // LLVM: define dso_local {{.*}}@{{.*foo2.*}}
 // LLVM: call void @llvm.memcpy.p0.p0.i64(ptr {{.*}}, ptr {{.*}}[[B1]], i64 24, i1 false)
-// CIR: cir.func {{.*}}@_Z4foo2v(%{{.*}}: !cir.ptr<![[STRUCT_B]]> {{{.*}}llvm.sret = ![[STRUCT_B]]{{.*}}}
-// CIR: %[[B_ALLOCA:.*]] = cir.alloca ![[STRUCT_B]], !cir.ptr<![[STRUCT_B]]>, ["__retval"] {alignment = 8 : i64}
+// CIR: cir.func {{.*}}@_Z4foo2v(%[[B_SRET_ARG:.*]]: !cir.ptr<![[STRUCT_B]]> {{{.*}}llvm.sret = ![[STRUCT_B]]{{.*}}}
 // CIR: %[[GET_GLOB:.*]] = cir.get_global @_ZL2b1 : !cir.ptr<![[STRUCT_B]]>
-// CIR: cir.copy %[[GET_GLOB]] to %[[B_ALLOCA]] : !cir.ptr<![[STRUCT_B]]>
+// CIR: cir.copy %[[GET_GLOB]] to %[[B_SRET_ARG]] : !cir.ptr<![[STRUCT_B]]>
 B foo2() {
   return b1;
 }
 
 // LLVM: define dso_local {{.*}}@{{.*foo3.*}}
 // LLVM: call void @llvm.memcpy.p0.p0.i64(ptr {{.*}}, ptr {{.*}}[[C1]], i64 48, i1 false)
-// CIR: cir.func {{.*}}@_Z4foo3v(%{{.*}}: !cir.ptr<![[STRUCT_C]]> {{{.*}}llvm.sret = ![[STRUCT_C]]{{.*}}}
-// CIR: %[[C_ALLOCA:.*]] = cir.alloca ![[STRUCT_C]], !cir.ptr<![[STRUCT_C]]>, ["__retval"] {alignment = 8 : i64}
+// CIR: cir.func {{.*}}@_Z4foo3v(%[[C_SRET_ARG:.*]]: !cir.ptr<![[STRUCT_C]]> {{{.*}}llvm.sret = ![[STRUCT_C]]{{.*}}}
 // CIR: %[[GET_GLOB:.*]] = cir.get_global @_ZL2c1
 // CIR: %[[GLOB_CAST:.*]] = cir.cast bitcast %[[GET_GLOB]] : !cir.ptr<!{{.*}}> -> !cir.ptr<![[STRUCT_C]]>
-// CIR: cir.copy %[[GLOB_CAST]] to %[[C_ALLOCA]] : !cir.ptr<![[STRUCT_C]]>
+// CIR: cir.copy %[[GLOB_CAST]] to %[[C_SRET_ARG]] : !cir.ptr<![[STRUCT_C]]>
 C foo3() {
   return c1;
 }
@@ -319,11 +317,10 @@ void foo7() {
 // LLVM: dso_local {{.*}}@{{.*foo8.*}}(
 // LLVM: call void @llvm.memcpy.p0.p0.i64(ptr {{.*}}, ptr {{.*}}[[D1]], i64 56, i1 false)
 // CIR-LABEL: cir.func no_inline dso_local @_Z4foo8v
-// CIR-SAME: (%{{.*}}: !cir.ptr<![[STRUCT_D]]> {{{.*}}llvm.sret = ![[STRUCT_D]]{{.*}}}
-// CIR: %[[RET_ALLOCA:.*]] = cir.alloca ![[STRUCT_D]], !cir.ptr<![[STRUCT_D]]>, ["__retval"] {alignment = 8 : i64}
+// CIR-SAME: (%[[D_SRET_ARG:.*]]: !cir.ptr<![[STRUCT_D]]> {{{.*}}llvm.sret = ![[STRUCT_D]]{{.*}}}
 // CIR: %[[GET_GLOB:.*]] = cir.get_global @_ZL2d1 :
 // CIR: %[[GLOB_CAST:.*]] = cir.cast bitcast %[[GET_GLOB]] : !cir.ptr<!{{.*}}> -> !cir.ptr<![[STRUCT_D]]>
-// CIR: cir.copy %[[GLOB_CAST]] to %[[RET_ALLOCA]] : !cir.ptr<![[STRUCT_D]]>
+// CIR: cir.copy %[[GLOB_CAST]] to %[[D_SRET_ARG]] : !cir.ptr<![[STRUCT_D]]>
 D foo8() {
   return d1;
 }

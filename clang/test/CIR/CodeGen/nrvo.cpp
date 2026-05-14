@@ -72,11 +72,13 @@ NonTrivial test_nrvo() {
 
 // TODO(cir): Handle normal cleanup properly.
 
-// The CallConvLowering pass rewrites the non-trivially-copyable return into
-// an `sret` argument, matching the x86_64 SysV ABI used by classic codegen.
+// CallConvLowering rewrites the non-trivially-copyable return into an `sret`
+// argument, matching the x86_64 SysV ABI used by classic codegen.  CIRGen's
+// `__retval` alloca is redirected to the sret arg, so construction (and
+// NRVO-failure cleanup destruction) target the caller's slot directly --
+// no intermediate alloca, no load+store at return.
 
 // CIR: cir.func {{.*}} @_Z9test_nrvov(%[[SRET_ARG:.*]]: !cir.ptr<!rec_NonTrivial> {llvm.align = 1 : i64, llvm.dead_on_unwind, llvm.noalias, llvm.sret = !rec_NonTrivial, llvm.writable}
-// CIR:   %[[RESULT:.*]] = cir.alloca !rec_NonTrivial, !cir.ptr<!rec_NonTrivial>, ["__retval"]
 // CIR:   %[[NRVO_FLAG:.*]] = cir.alloca !cir.bool, !cir.ptr<!cir.bool>, ["nrvo"]
 // CIR:   %[[FALSE:.*]] = cir.const #false
 // CIR:   cir.store{{.*}} %[[FALSE]], %[[NRVO_FLAG]]
@@ -84,14 +86,12 @@ NonTrivial test_nrvo() {
 // CIR:     cir.call @_Z10maybeThrowv() : () -> ()
 // CIR:     %[[TRUE:.*]] = cir.const #true
 // CIR:     cir.store{{.*}} %[[TRUE]], %[[NRVO_FLAG]]
-// CIR:     %[[RET:.*]] = cir.load %[[RESULT]]
-// CIR:     cir.store %[[RET]], %[[SRET_ARG]]
 // CIR:     cir.return
 // CIR:   } cleanup  normal {
 // CIR:     %[[NRVO_FLAG_VAL:.*]] = cir.load{{.*}} %[[NRVO_FLAG]]
 // CIR:     %[[NOT_NRVO_VAL:.*]] = cir.not %[[NRVO_FLAG_VAL]]
 // CIR:     cir.if %[[NOT_NRVO_VAL]] {
-// CIR:       cir.call @_ZN10NonTrivialD1Ev(%[[RESULT]])
+// CIR:       cir.call @_ZN10NonTrivialD1Ev(%[[SRET_ARG]])
 // CIR:     }
 // CIR:     cir.yield
 // CIR:   }
@@ -101,19 +101,16 @@ NonTrivial test_nrvo() {
 // CIR:   cir.trap
 
 // LLVM: define {{.*}} void @_Z9test_nrvov(ptr dead_on_unwind noalias writable sret(%struct.NonTrivial) align 1 %[[SRET:.*]])
-// LLVM:   %[[RESULT:.*]] = alloca %struct.NonTrivial
 // LLVM:   %[[NRVO_FLAG:.*]] = alloca i8
 // LLVM:   store i8 0, ptr %[[NRVO_FLAG]]
 // LLVM:   call void @_Z10maybeThrowv()
 // LLVM:   store i8 1, ptr %[[NRVO_FLAG]]
-// LLVM:   %[[RET:.*]] = load %struct.NonTrivial, ptr %[[RESULT]]
-// LLVM:   store %struct.NonTrivial %[[RET]], ptr %[[SRET]]
 // LLVM:   %[[NRVO_VAL:.*]] = load i8, ptr %[[NRVO_FLAG]]
 // LLVM:   %[[NRVO_VAL_TRUNC:.*]] = trunc i8 %[[NRVO_VAL]] to i1
 // LLVM:   %[[NOT_NRVO_VAL:.*]] = xor i1 %[[NRVO_VAL_TRUNC]], true
 // LLVM:   br i1 %[[NOT_NRVO_VAL]], label %[[NRVO_UNUSED:.*]], label %[[NRVO_USED:.*]]
 // LLVM: [[NRVO_UNUSED]]:
-// LLVM:   call void @_ZN10NonTrivialD1Ev(ptr {{.*}} %[[RESULT]])
+// LLVM:   call void @_ZN10NonTrivialD1Ev(ptr {{.*}} %[[SRET]])
 // LLVM:   br label %[[NRVO_USED]]
 // LLVM: [[NRVO_USED]]:
 // LLVM:   ret void

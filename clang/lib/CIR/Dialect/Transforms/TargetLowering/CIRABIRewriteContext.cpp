@@ -102,8 +102,24 @@ static void insertReturnCoercion(FunctionOpInterface funcOp, Type origRetTy,
   }
 }
 
-/// Rewrite each cir.return to store the return value through the sret
-/// pointer (first block argument) and return void.
+/// Rewrite each cir.return so the return value flows through the sret
+/// pointer (first block argument) and the function returns void.
+///
+/// CIRGen emits a local `__retval` alloca and emits `cir.return %loaded`
+/// where `%loaded = cir.load __retval`.  The naive lowering -- store the
+/// loaded SSA value through the sret pointer -- byte-copies the record,
+/// which is wrong for non-trivially-copyable types: e.g. libstdc++'s SSO
+/// `std::string` has a `_M_p` pointer that aliases the source's internal
+/// `_M_local_buf`, so a byte-copy leaves the destination pointing at the
+/// source's (now-dying) stack storage and the destination's destructor
+/// later `free()`s a stack pointer.
+///
+/// Instead, route construction directly into the sret slot: find the
+/// `__retval` alloca, replace its uses with the sret pointer, and drop
+/// the trailing `cir.load __retval` so the rewritten return is `cir.return`
+/// with no operand.  The CIRGen-emitted constructor / store-into-`__retval`
+/// then targets the sret slot uniformly, matching classic CodeGen's
+/// "construct directly into `%agg.result`" pattern.
 static void insertSRetStores(FunctionOpInterface funcOp, Type origRetTy,
                              OpBuilder &rewriter) {
   Value sretPtr = funcOp.getArguments()[0];
@@ -117,6 +133,30 @@ static void insertSRetStores(FunctionOpInterface funcOp, Type origRetTy,
 
     Value retVal = retOp.getInput()[0];
     rewriter.setInsertionPoint(retOp);
+
+    // The canonical CIRGen shape is `%v = cir.load %retval` followed by
+    // `cir.return %v`.  Trace back through the load to find the
+    // `__retval` alloca and rewire it to the sret arg.
+    cir::AllocaOp retAlloca = nullptr;
+    cir::LoadOp retLoad = retVal.getDefiningOp<cir::LoadOp>();
+    if (retLoad)
+      retAlloca = retLoad.getAddr().getDefiningOp<cir::AllocaOp>();
+
+    if (retAlloca) {
+      retAlloca.getResult().replaceAllUsesWith(sretPtr);
+      retAlloca->erase();
+      cir::ReturnOp::create(rewriter, retOp.getLoc());
+      retOp->erase();
+      if (retLoad.use_empty())
+        retLoad->erase();
+      continue;
+    }
+
+    // Fall back to the byte-copy path when the return-value shape does
+    // not match the canonical CIRGen pattern -- e.g. when the return
+    // value is an SSA value not backed by a `__retval` alloca.  This is
+    // unsafe for non-trivially-copyable record types, but those should
+    // always come through the alloca path above.
     cir::StoreOp::create(rewriter, retOp.getLoc(), retVal, sretPtr,
                          /*isVolatile=*/mlir::UnitAttr(),
                          /*alignment=*/mlir::IntegerAttr(),
@@ -1060,13 +1100,44 @@ LogicalResult CIRABIRewriteContext::rewriteCallSite(
     // ABI-classified alignment for the sret slot; matches OGCG's
     // alloca alignment and the call-site `align(N)` attribute.
     uint64_t sretAlign = fc.ReturnInfo.IndirectAlign.value();
-    auto alloca = cir::AllocaOp::create(
-        rewriter, call.getLoc(), ptrTy, origRetTy,
-        /*name=*/rewriter.getStringAttr("sret"),
-        /*alignment=*/rewriter.getI64IntegerAttr(sretAlign));
+
+    // CIRGen emits `cir.store %callResult, %dest` when the call site is a
+    // value-returning expression whose result is bound to a local (e.g.
+    // `std::string s = make()`).  The naive lowering -- allocate a fresh
+    // temp sret slot, call into it, then `cir.load` + that store to
+    // copy the value into %dest -- byte-copies the record, which is
+    // wrong for non-trivially-copyable types (the libstdc++ SSO
+    // `_M_p` pointer survives byte-copy but ends up pointing at the
+    // dying temp's local buffer, so the destination's destructor
+    // later `free()`s a stack pointer).  When the call's result has a
+    // single use that is a `cir.store` into a pointer of the matching
+    // type, use that pointer as the sret slot directly -- construction
+    // then flows into %dest, matching classic CodeGen's "pass %s as
+    // sret" pattern.  The CIRGen-emitted `cir.load %dest; cir.store %v,
+    // %dest` pair stays in place; with %dest as the sret slot it
+    // becomes a harmless self-load / self-store (the SSO `_M_p` still
+    // points at %dest's own `_M_local_buf` at the same address) and
+    // is folded away in later passes / LLVM DCE.
+    Value sretSlot = nullptr;
+    if (call.getResult().hasOneUse()) {
+      Operation *user = *call.getResult().getUsers().begin();
+      if (auto store = dyn_cast<cir::StoreOp>(user)) {
+        if (store.getValue() == call.getResult() &&
+            store.getAddr().getType() == ptrTy)
+          sretSlot = store.getAddr();
+      }
+    }
+
+    if (!sretSlot) {
+      auto alloca = cir::AllocaOp::create(
+          rewriter, call.getLoc(), ptrTy, origRetTy,
+          /*name=*/rewriter.getStringAttr("sret"),
+          /*alignment=*/rewriter.getI64IntegerAttr(sretAlign));
+      sretSlot = alloca;
+    }
 
     SmallVector<Value> sretArgs;
-    sretArgs.push_back(alloca);
+    sretArgs.push_back(sretSlot);
     sretArgs.append(newArgs.begin(), newArgs.end());
 
     auto voidTy = cir::VoidType::get(call.getContext());
@@ -1083,12 +1154,13 @@ LogicalResult CIRABIRewriteContext::rewriteCallSite(
     applySretSlotAttrs(newCall, oldArgAttrs, origRetTy, sretAlign, rewriter);
 
     rewriter.setInsertionPointAfter(newCall);
-    auto load = cir::LoadOp::create(rewriter, call.getLoc(), origRetTy, alloca,
-                                    /*isDeref=*/mlir::UnitAttr(),
-                                    /*isVolatile=*/mlir::UnitAttr(),
-                                    /*alignment=*/mlir::IntegerAttr(),
-                                    /*sync_scope=*/cir::SyncScopeKindAttr(),
-                                    /*mem_order=*/cir::MemOrderAttr());
+    auto load =
+        cir::LoadOp::create(rewriter, call.getLoc(), origRetTy, sretSlot,
+                            /*isDeref=*/mlir::UnitAttr(),
+                            /*isVolatile=*/mlir::UnitAttr(),
+                            /*alignment=*/mlir::IntegerAttr(),
+                            /*sync_scope=*/cir::SyncScopeKindAttr(),
+                            /*mem_order=*/cir::MemOrderAttr());
 
     call.getResult().replaceAllUsesWith(load);
     call->erase();
