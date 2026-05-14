@@ -552,10 +552,21 @@ element changes.  A generic ``MatchAnyOpTypeTag`` pattern clones each
 operation with converted result types and rewrites the contents of attributes
 that embed types (``ConstRecordAttr``, ``GlobalViewAttr``, vtable attributes,
 and ``TypedAttr`` subclasses); function bodies are converted via
-``ConversionPatternRewriter::convertRegionTypes``.  Self-referential records
-(a struct holding a function pointer to a function taking a pointer to that
-struct) terminate via a recursive-stack of in-progress records and an
-incomplete-then-``complete()`` placeholder.
+``ConversionPatternRewriter::convertRegionTypes``.
+
+Self-referential records (a struct holding a function pointer to a function
+taking a pointer to that struct) terminate via a recursive-stack of
+in-progress records and an incomplete-then-``complete()`` placeholder.  A
+module-level rename-closure analysis runs first to compute the set of named
+records that transitively embed a rewritten ``FuncType``; the per-record
+rename decision in ``convertRecordType`` is then a deterministic set lookup,
+so two recursion paths through the same record always reach the same verdict
+even when the cycle is deeper than one level.  Records outside the closure
+are returned unchanged, which keeps unrelated record types (coroutine
+``Task`` records, lambda closures, source-location records, and so on) free
+of ``__post_abi_*`` artifacts that would otherwise leave dangling
+``unrealized_conversion_cast`` operations on values flowing through ops the
+cascade does not rewrite.
 
 Uniform rewriting is the cascade's correctness invariant: every function
 classified as needing an ABI rewrite is rewritten, regardless of whether its

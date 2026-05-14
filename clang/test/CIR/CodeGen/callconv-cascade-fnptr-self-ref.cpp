@@ -1,10 +1,9 @@
-// XFAIL: *
-// (cascade's conditional-rename strategy produces inconsistent rename
-// verdicts on cycle paths > 1 level deep; the rename-closure analysis
-// approach is the planned fix path)
-
 // RUN: %clang_cc1 -triple x86_64-unknown-linux-gnu -fclangir -emit-cir %s -o %t.cir
 // RUN: FileCheck --check-prefix=CIR --input-file=%t.cir %s
+// RUN: %clang_cc1 -triple x86_64-unknown-linux-gnu -fclangir -emit-llvm %s -o %t-cir.ll
+// RUN: FileCheck --check-prefix=LLVM --input-file=%t-cir.ll %s
+// RUN: %clang_cc1 -triple x86_64-unknown-linux-gnu -emit-llvm %s -o %t.ll
+// RUN: FileCheck --check-prefix=OGCG --input-file=%t.ll %s
 
 struct D { int x; };
 
@@ -21,4 +20,14 @@ int caller(Node *n, int x) {
   return n->next_fn(d, n->next);
 }
 
-// CIR-LABEL: cir.func {{.*}}@_Z6worker1DPS_
+// CIR-DAG: !rec_Node = !cir.record<struct "Node" {!cir.ptr<!cir.func<(!s32i, !cir.ptr<!cir.record<struct "Node">>) -> !s32i>>, !cir.ptr<!cir.record<struct "Node">>}>
+
+// CIR-LABEL: cir.func {{.*}}@_Z6worker1DP4Node(%arg0: !s32i
+// CIR:        %arg1: !cir.ptr<!rec_Node>
+// LLVM:      define {{.*}} i32 @_Z6worker1DP4Node(i32 {{.*}}, ptr {{.*}})
+// OGCG:      define {{.*}} i32 @_Z6worker1DP4Node(i32 {{.*}}, ptr {{.*}})
+
+// CIR-LABEL: cir.func {{.*}}@_Z6callerP4Nodei
+// CIR:         cir.call %{{.+}}(%{{.+}}, %{{.+}}) : (!cir.ptr<!cir.func<(!s32i, !cir.ptr<!rec_Node>) -> !s32i>>, !s32i {{.*}}, !cir.ptr<!rec_Node> {{.*}}) -> (!s32i {{.*}})
+// LLVM:      define {{.*}} i32 @_Z6callerP4Nodei(
+// OGCG:      define {{.*}} i32 @_Z6callerP4Nodei(

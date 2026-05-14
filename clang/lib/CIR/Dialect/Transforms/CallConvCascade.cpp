@@ -218,6 +218,186 @@ mlir::Attribute rewriteCallConvAttribute(const TypeConverter &tc,
       .DefaultUnreachable("unrewritten illegal call-conv attribute kind");
 }
 
+// -- Rename-closure analysis -----------------------------------------------
+//
+// Determines, up front, the set of named cir::RecordType values that
+// transitively embed a cir::FuncType in the rewrite map.  Those records --
+// and only those -- are renamed (`__post_abi_X`) by the type converter
+// during the cascade walk.  The decision is therefore a deterministic set
+// lookup: every recursion path through `convertRecordType` for the same
+// source record reaches the same verdict, regardless of which path arrived
+// first.
+//
+// History: an earlier "conditional rename" approach (only rename when the
+// converted member list happened to differ) failed on cycles deeper than
+// one level, because two recursion paths through the same record reach the
+// rename decision with different cycle-break stack snapshots and produce
+// inconsistent verdicts.  An earlier "wholesale rename" approach (always
+// rename every named record) regressed five CIR tests with unresolved
+// `unrealized_conversion_cast` artifacts where a record-typed value flowed
+// through ops the cascade does not rewrite.  The closure pre-pass below
+// keeps the deterministic property of the wholesale approach while
+// limiting renames to records that actually need conversion.
+
+llvm::DenseSet<cir::RecordType>
+computeRenameClosure(mlir::ModuleOp module,
+                     const cir::callconv::FuncTypeMap &rewrites) {
+  llvm::DenseSet<cir::RecordType> mustRename;
+  if (rewrites.empty())
+    return mustRename;
+
+  llvm::DenseSet<cir::RecordType> visiting;
+
+  // True iff `t` transitively embeds a cir::FuncType present in `rewrites`,
+  // following PointerType, ArrayType, FuncType (inputs and return), and
+  // RecordType (members).  Cycles through named records terminate via the
+  // `visiting` set; positive verdicts are cached in `mustRename`.
+  std::function<bool(mlir::Type)> reaches = [&](mlir::Type t) -> bool {
+    if (!t)
+      return false;
+    if (auto ft = mlir::dyn_cast<cir::FuncType>(t)) {
+      if (rewrites.contains(ft))
+        return true;
+      for (mlir::Type in : ft.getInputs())
+        if (reaches(in))
+          return true;
+      return reaches(ft.getReturnType());
+    }
+    if (auto pt = mlir::dyn_cast<cir::PointerType>(t))
+      return reaches(pt.getPointee());
+    if (auto at = mlir::dyn_cast<cir::ArrayType>(t))
+      return reaches(at.getElementType());
+    if (auto rt = mlir::dyn_cast<cir::RecordType>(t)) {
+      if (!rt.getName()) {
+        // Anonymous records do not get the placeholder dance; they are
+        // rebuilt structurally.  Still descend so a named record that
+        // embeds one indirectly gets a correct closure verdict.
+        for (mlir::Type m : rt.getMembers())
+          if (reaches(m))
+            return true;
+        return false;
+      }
+      if (visiting.contains(rt))
+        return false;
+      if (mustRename.contains(rt))
+        return true;
+      visiting.insert(rt);
+      bool res = false;
+      for (mlir::Type m : rt.getMembers()) {
+        if (reaches(m)) {
+          res = true;
+          break;
+        }
+      }
+      visiting.erase(rt);
+      if (res)
+        mustRename.insert(rt);
+      return res;
+    }
+    return false;
+  };
+
+  // Seed the analysis from every type that appears anywhere in the module:
+  // op operand / result types, region block-argument types, FuncOp
+  // signatures, GlobalOp symbol types, and attribute-embedded types.  The
+  // attribute walk mirrors the kinds in `isCallConvAttributeLegal` /
+  // `rewriteCallConvAttribute` above so the seed set is closed under "any
+  // type the cascade can later query".  Without it, a record appearing
+  // only via an attribute (e.g. a vtable entry's function-pointer type
+  // when the surrounding global has an opaque-pointer-array symtype)
+  // would not be in `mustRename`, and the cascade would silently leave it
+  // unrenamed when convertType reached it through `rewriteCallConvAttribute`.
+  llvm::DenseSet<mlir::Type> seen;
+  std::function<void(mlir::Type)> seed = [&](mlir::Type t) {
+    if (!t || !seen.insert(t).second)
+      return;
+    if (auto rt = mlir::dyn_cast<cir::RecordType>(t)) {
+      if (rt.getName())
+        (void)reaches(rt);
+      for (mlir::Type m : rt.getMembers())
+        seed(m);
+    } else if (auto pt = mlir::dyn_cast<cir::PointerType>(t)) {
+      seed(pt.getPointee());
+    } else if (auto at = mlir::dyn_cast<cir::ArrayType>(t)) {
+      seed(at.getElementType());
+    } else if (auto ft = mlir::dyn_cast<cir::FuncType>(t)) {
+      for (mlir::Type i : ft.getInputs())
+        seed(i);
+      seed(ft.getReturnType());
+    }
+  };
+
+  std::function<void(mlir::Attribute)> seedAttr = [&](mlir::Attribute a) {
+    if (!a)
+      return;
+    TypeSwitch<mlir::Attribute, void>(a)
+        .Case<cir::ZeroAttr>([&](cir::ZeroAttr za) { seed(za.getType()); })
+        .Case<cir::PoisonAttr>([&](cir::PoisonAttr pa) { seed(pa.getType()); })
+        .Case<cir::UndefAttr>([&](cir::UndefAttr uda) { seed(uda.getType()); })
+        .Case<mlir::TypeAttr>([&](mlir::TypeAttr ta) { seed(ta.getValue()); })
+        .Case<cir::ConstPtrAttr>(
+            [&](cir::ConstPtrAttr cpa) { seed(cpa.getType()); })
+        .Case<cir::CXXCtorAttr>(
+            [&](cir::CXXCtorAttr ca) { seed(ca.getType()); })
+        .Case<cir::CXXDtorAttr>(
+            [&](cir::CXXDtorAttr da) { seed(da.getType()); })
+        .Case<cir::CXXAssignAttr>(
+            [&](cir::CXXAssignAttr aa) { seed(aa.getType()); })
+        .Case<mlir::ArrayAttr>([&](mlir::ArrayAttr arr) {
+          for (mlir::Attribute e : arr.getValue())
+            seedAttr(e);
+        })
+        .Case<mlir::DictionaryAttr>([&](mlir::DictionaryAttr d) {
+          for (mlir::NamedAttribute na : d.getValue())
+            seedAttr(na.getValue());
+        })
+        .Case<cir::ConstArrayAttr>([&](cir::ConstArrayAttr arr) {
+          seed(arr.getType());
+          seedAttr(arr.getElts());
+        })
+        .Case<cir::GlobalViewAttr>([&](cir::GlobalViewAttr gva) {
+          seed(gva.getType());
+          seedAttr(gva.getIndices());
+        })
+        .Case<cir::VTableAttr>([&](cir::VTableAttr vta) {
+          seed(vta.getType());
+          seedAttr(vta.getData());
+        })
+        .Case<cir::TypeInfoAttr>([&](cir::TypeInfoAttr tia) {
+          seed(tia.getType());
+          seedAttr(tia.getData());
+        })
+        .Case<cir::DynamicCastInfoAttr>([&](cir::DynamicCastInfoAttr dcia) {
+          seedAttr(dcia.getSrcRtti());
+          seedAttr(dcia.getDestRtti());
+        })
+        .Case<cir::ConstRecordAttr>([&](cir::ConstRecordAttr cra) {
+          seed(cra.getType());
+          seedAttr(cra.getMembers());
+        })
+        .Default([](mlir::Attribute) {});
+  };
+
+  module.walk([&](mlir::Operation *op) {
+    for (mlir::Value v : op->getOperands())
+      seed(v.getType());
+    for (mlir::Type t : op->getResultTypes())
+      seed(t);
+    for (mlir::Region &r : op->getRegions())
+      for (mlir::Block &b : r.getBlocks())
+        for (mlir::BlockArgument a : b.getArguments())
+          seed(a.getType());
+    if (auto fn = mlir::dyn_cast<cir::FuncOp>(op))
+      seed(fn.getFunctionType());
+    if (auto gv = mlir::dyn_cast<cir::GlobalOp>(op))
+      seed(gv.getSymType());
+    for (mlir::NamedAttribute na : op->getAttrs())
+      seedAttr(na.getValue());
+  });
+
+  return mustRename;
+}
+
 // -- Type converter ---------------------------------------------------------
 //
 // Carries the FuncType -> FuncType rewrite map and a per-thread record stack
@@ -225,6 +405,7 @@ mlir::Attribute rewriteCallConvAttribute(const TypeConverter &tc,
 
 class CirCallConvTypeConverter : public TypeConverter {
   const cir::callconv::FuncTypeMap &rewrites;
+  llvm::DenseSet<cir::RecordType> renameClosure;
 
   // Per-thread stack of cir::RecordType currently being converted.  Used to
   // break cycles in self-referential records.
@@ -290,40 +471,41 @@ class CirCallConvTypeConverter : public TypeConverter {
     if (type.isIncomplete() || type.isABIConvertedRecord())
       return type;
 
+    // Records outside the rename closure do not transitively embed a
+    // rewritten FuncType, so none of their members would change.  Return
+    // the original unchanged -- this is what keeps unrelated records
+    // (e.g. coroutine Task structs, lambda closures) free of
+    // __post_abi_* artifacts that would otherwise leave dangling
+    // unrealized_conversion_casts on values flowing through ops the
+    // cascade doesn't rewrite.
+    if (!renameClosure.contains(type))
+      return type;
+
     auto &recursiveStack = getCurrentThreadRecursiveStack();
 
     // If we're already converting this record on this thread, return the
-    // in-progress placeholder.  This is the only path that needs the
-    // __post_abi_ name — it breaks recursion in self-referential records.
+    // in-progress placeholder.  This breaks recursion in self-referential
+    // records: the outer call will complete() this same placeholder once
+    // its member list is built.
     if (llvm::is_contained(recursiveStack, type)) {
       auto convertedType = cir::RecordType::get(
           type.getContext(), type.getABIConvertedName(), type.getKind());
       return convertedType;
     }
 
+    // Mint the placeholder up front so any recursion through this record
+    // (via its members) sees the same renamed instance.  If a sibling
+    // traversal already minted and completed it, reuse that result.
+    auto convertedType = cir::RecordType::get(
+        type.getContext(), type.getABIConvertedName(), type.getKind());
+    if (convertedType.isComplete())
+      return convertedType;
+
     recursiveStack.push_back(type);
     llvm::scope_exit popOnExit(
         [&recursiveStack]() { recursiveStack.pop_back(); });
 
     SmallVector<Type> convertedMembers = convertRecordMemberTypes(type);
-
-    // If nothing in our member list actually changed, return the original
-    // record unchanged.  Wholesale renaming every named record creates a
-    // sea of unrealized_conversion_casts that the cascade can't reliably
-    // eliminate when a value of that type flows through ops the cascade
-    // doesn't rewrite (e.g., builtin.unrealized_conversion_cast itself,
-    // or ops from dialects that aren't registered for partial conversion).
-    if (!membersChanged(type.getMembers(), convertedMembers))
-      return type;
-
-    // Otherwise, mint the __post_abi_X placeholder and complete it with the
-    // new member list.  restoreRecordTypeNames() will strip the prefix once
-    // the partial conversion finishes.
-    auto convertedType = cir::RecordType::get(
-        type.getContext(), type.getABIConvertedName(), type.getKind());
-
-    if (convertedType.isComplete())
-      return convertedType;
 
     convertedType.complete(convertedMembers, type.getPacked(),
                            type.getPadded());
@@ -335,8 +517,10 @@ class CirCallConvTypeConverter : public TypeConverter {
 
 public:
   CirCallConvTypeConverter(MLIRContext &ctx,
-                           const cir::callconv::FuncTypeMap &rewrites)
-      : rewrites(rewrites), mlirContext(&ctx) {
+                           const cir::callconv::FuncTypeMap &rewrites,
+                           llvm::DenseSet<cir::RecordType> renameClosure)
+      : rewrites(rewrites), renameClosure(std::move(renameClosure)),
+        mlirContext(&ctx) {
     // Identity fallback for any type the cascade does not touch.
     addConversion([](Type ty) -> Type { return ty; });
 
@@ -360,13 +544,15 @@ public:
     // constructing a `cir::FuncType` that directly references itself.
     // `convertRecordType`'s per-thread `recursiveStack` plus the
     // `__post_abi_*` placeholder break record self-reference, so any
-    // FuncType -> Record -> FuncType chain terminates (correctness for
-    // self-referential cycles is a separate concern -- see
-    // `callconv-cascade-fnptr-self-ref.cpp` which is currently XFAIL'd
-    // for that reason).  Do NOT introduce a Phase 1 rewrite whose
-    // rewrite-map value directly mentions its own key in its input or
-    // return list with no intervening RecordType: that would let this
-    // lambda re-enter without progress until stack overflow.
+    // FuncType -> Record -> FuncType chain terminates -- the
+    // rename-closure analysis above keeps the rename verdict
+    // deterministic even on cycles longer than one level (see
+    // `callconv-cascade-fnptr-self-ref.cpp` and
+    // `callconv-cascade-fnptr-multi-cycle.cpp`).  Do NOT introduce a
+    // Phase 1 rewrite whose rewrite-map value directly mentions its own
+    // key in its input or return list with no intervening RecordType:
+    // that would let this lambda re-enter without progress until stack
+    // overflow.
     addConversion([this](cir::FuncType ty) -> Type {
       cir::FuncType effective = ty;
       auto it = this->rewrites.find(ty);
@@ -578,7 +764,8 @@ mlir::LogicalResult applyCallConvCascade(mlir::ModuleOp module,
     return mlir::success();
 
   MLIRContext *ctx = module.getContext();
-  CirCallConvTypeConverter typeConverter(*ctx, rewrites);
+  CirCallConvTypeConverter typeConverter(
+      *ctx, rewrites, computeRenameClosure(module, rewrites));
 
   RewritePatternSet patterns(ctx);
   patterns.add<CirCallConvCascadePattern>(ctx, typeConverter);
