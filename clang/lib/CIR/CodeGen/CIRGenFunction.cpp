@@ -467,6 +467,12 @@ void CIRGenFunction::emitFunctionProlog(const FunctionArgList &args,
   assert(builder.getInsertionBlock() && "Should be valid");
 }
 
+// Forward declaration: defined later in this file, used here in
+// startFunction to translate language-level FP exception modes into the
+// LLVM IR enum the builder consumes.
+static llvm::fp::ExceptionBehavior
+toConstrainedExceptMd(LangOptions::FPExceptionModeKind kind);
+
 void CIRGenFunction::startFunction(GlobalDecl gd, QualType returnType,
                                    cir::FuncOp fn, cir::FuncType funcType,
                                    FunctionArgList args, SourceLocation loc,
@@ -482,6 +488,29 @@ void CIRGenFunction::startFunction(GlobalDecl gd, QualType returnType,
   curCodeDecl = d;
   const auto *fd = dyn_cast_or_null<FunctionDecl>(d);
   curFuncDecl = (d ? d->getNonClosureContext() : nullptr);
+
+  // Set up the default floating-point environment for this function before
+  // any FP-related code runs.  When the function uses FP intrinsics
+  // (`#pragma STDC FENV_ACCESS ON`, `__builtin_set_flt_rounds`, etc.) or
+  // carries `__attribute__((strictfp))`, enable FP-constrained mode on the
+  // builder so that CIRGenFPOptionsRAII sees a constrained function when a
+  // statement-scope `#pragma` changes rounding/exception behavior away from
+  // the defaults.  Mirrors classic CodeGen's `StartFunction` initialization
+  // of the same flags.
+  llvm::RoundingMode rm = getLangOpts().getDefaultRoundingMode();
+  llvm::fp::ExceptionBehavior fpExceptionBehavior =
+      toConstrainedExceptMd(getLangOpts().getDefaultExceptionMode());
+  builder.setDefaultConstrainedRounding(rm);
+  builder.setDefaultConstrainedExcept(fpExceptionBehavior);
+  if ((fd && (fd->UsesFPIntrin() || fd->hasAttr<StrictFPAttr>())) ||
+      (!fd && (fpExceptionBehavior != llvm::fp::ebIgnore ||
+               rm != llvm::RoundingMode::NearestTiesToEven))) {
+    builder.setIsFPConstrained(true);
+    // The StrictFP function attribute on `curFn` is tracked by
+    // `fastMathFuncAttributes`; classic CodeGen adds it here, CIR will once
+    // that feature lands.
+    assert(!cir::MissingFeatures::fastMathFuncAttributes());
+  }
 
   prologueCleanupDepth = ehStack.stable_begin();
 
