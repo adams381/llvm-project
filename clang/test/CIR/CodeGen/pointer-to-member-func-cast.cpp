@@ -32,7 +32,8 @@ bool memfunc_to_bool(void (Foo::*func)(int)) {
 // CIR-BEFORE:   %{{.*}} = cir.cast member_ptr_to_bool %{{.*}} : !cir.method<!cir.func<(!cir.ptr<!rec_Foo>, !s32i)> in !rec_Foo> -> !cir.bool
 
 // CIR-AFTER:     cir.func {{.*}} @_Z15memfunc_to_boolM3FooFviE
-// CIR-AFTER:       %[[FUNC:.*]] = cir.load{{.*}} %{{.*}} : !cir.ptr<!rec_anon_struct>, !rec_anon_struct
+// CIR-AFTER:       %[[FUNC_ADDR:.*]] = cir.alloca !rec_anon_struct, !cir.ptr<!rec_anon_struct>, ["func"
+// CIR-AFTER:       %[[FUNC:.*]] = cir.load{{.*}} %[[FUNC_ADDR]] : !cir.ptr<!rec_anon_struct>, !rec_anon_struct
 // CIR-AFTER:       %[[NULL_VAL:.*]] = cir.const #cir.int<0> : !s64i
 // CIR-AFTER:       %[[FUNC_PTR:.*]] = cir.extract_member %[[FUNC]][0] : !rec_anon_struct -> !s64i
 // CIR-AFTER:       %[[BOOL_VAL:.*]] = cir.cmp ne %[[FUNC_PTR]], %[[NULL_VAL]] : !s64i
@@ -47,7 +48,9 @@ bool memfunc_to_bool(void (Foo::*func)(int)) {
 // CIR-AFTER-X86-NOT: cir.or
 
 // LLVM:     define {{.*}} i1 @_Z15memfunc_to_boolM3FooFviE
-// LLVM:       %[[FUNC:.*]] = load { i64, i64 }, ptr %{{.*}}
+// LLVM-X86:   %[[COERCE_TMP:.*]] = alloca { i64, i64 }
+// LLVM:       %[[FUNC_ADDR:.*]] = alloca { i64, i64 }
+// LLVM:       %[[FUNC:.*]] = load { i64, i64 }, ptr %[[FUNC_ADDR]]
 // LLVM:       %[[FUNC_PTR:.*]] = extractvalue { i64, i64 } %[[FUNC]], 0
 // LLVM:       %[[BOOL_VAL:.*]] = icmp ne i64 %[[FUNC_PTR]], 0
 // LLVM-ARM:   %[[ADJ:.*]] = extractvalue { i64, i64 } %[[FUNC]], 1
@@ -87,14 +90,17 @@ auto memfunc_reinterpret(void (Foo::*func)(int)) -> void (Bar::*)() {
 // CIR-BEFORE:   %{{.*}} = cir.cast bitcast %{{.*}} : !cir.method<!cir.func<(!cir.ptr<!rec_Foo>, !s32i)> in !rec_Foo> -> !cir.method<!cir.func<(!cir.ptr<!rec_Bar>)> in !rec_Bar>
 
 // CIR-AFTER: cir.func {{.*}} @_Z19memfunc_reinterpretM3FooFviE
-// CIR-AFTER:   %[[FUNC:.*]] = cir.load{{.*}} %{{.*}} : !cir.ptr<!rec_anon_struct>, !rec_anon_struct
+// CIR-AFTER:   %[[FUNC_ADDR:.*]] = cir.alloca !rec_anon_struct, !cir.ptr<!rec_anon_struct>, ["func"
+// CIR-AFTER:   %[[FUNC:.*]] = cir.load{{.*}} %[[FUNC_ADDR]] : !cir.ptr<!rec_anon_struct>, !rec_anon_struct
 // CIR-AFTER:   cir.store %[[FUNC]], %[[RET_ADDR:.*]] : !rec_anon_struct, !cir.ptr<!rec_anon_struct>
 // CIR-AFTER:   %[[RET:.*]] = cir.load{{.*}} %[[RET_ADDR]] : !cir.ptr<!rec_anon_struct>, !rec_anon_struct
 // CIR-AFTER:   cir.return %[[RET]] : !rec_anon_struct
 
 // LLVM: define {{.*}} { i64, i64 } @_Z19memfunc_reinterpretM3FooFviE
-// LLVM:   %[[FUNC:.*]] = load { i64, i64 }, ptr %{{.*}}
-// LLVM:   store { i64, i64 } %[[FUNC]], ptr %[[RET_ADDR:.*]]
+// LLVM-X86: %[[COERCE_TMP:.*]] = alloca { i64, i64 }
+// LLVM:   %[[FUNC_ADDR:.*]] = alloca { i64, i64 }
+// LLVM:   %[[FUNC:.*]] = load { i64, i64 }, ptr %[[FUNC_ADDR]]
+// LLVM:   store { i64, i64 } %[[FUNC]], ptr %[[RET_ADDR:[^,]+]]
 // LLVM:   %[[RET:.*]] = load { i64, i64 }, ptr %[[RET_ADDR]]
 // LLVM:   ret { i64, i64 } %[[RET]]
 
@@ -144,6 +150,7 @@ DerivedMemFunc base_to_derived_zero_offset(Base1MemFunc ptr) {
 // CIR-AFTER:   cir.return %[[RET_VAL]] : !rec_anon_struct
 
 // LLVM: define {{.*}} { i64, i64 } @_Z27base_to_derived_zero_offsetM5Base1FviE
+// LLVM-X86: %[[COERCE_TMP:.*]] = alloca { i64, i64 }
 // LLVM:   %[[ARG_ADDR:.*]] = alloca { i64, i64 }
 // LLVM:   %[[RET_ADDR:.*]] = alloca { i64, i64 }
 // LLVM:   store { i64, i64 } %{{.*}}, ptr %[[ARG_ADDR]]
@@ -169,7 +176,8 @@ DerivedMemFunc base_to_derived(Base2MemFunc ptr) {
 // CIR-BEFORE:   %{{.*}} = cir.derived_method %[[PTR]][16] : !cir.method<!cir.func<(!cir.ptr<!rec_Base2>, !s32i)> in !rec_Base2> -> !cir.method<!cir.func<(!cir.ptr<!rec_Derived>, !s32i)> in !rec_Derived>
 
 // CIR-AFTER:     cir.func {{.*}} @_Z15base_to_derivedM5Base2FviE
-// CIR-AFTER:       %[[PTR:.*]] = cir.load{{.*}} %{{.*}} : !cir.ptr<!rec_anon_struct>, !rec_anon_struct
+// CIR-AFTER:       %[[PTR_ADDR:.*]] = cir.alloca !rec_anon_struct, !cir.ptr<!rec_anon_struct>, ["ptr"
+// CIR-AFTER:       %[[PTR:.*]] = cir.load{{.*}} %[[PTR_ADDR]] : !cir.ptr<!rec_anon_struct>, !rec_anon_struct
 // CIR-AFTER:       %[[OFFSET:.*]] = cir.extract_member %[[PTR]][1] : !rec_anon_struct -> !s64i
 // CIR-AFTER-X86:   %[[OFFSET_ADJ:.*]] = cir.const #cir.int<16> : !s64i
 // CIR-AFTER-ARM:   %[[OFFSET_ADJ:.*]] = cir.const #cir.int<32> : !s64i
@@ -177,7 +185,9 @@ DerivedMemFunc base_to_derived(Base2MemFunc ptr) {
 // CIR-AFTER:       %{{.*}} = cir.insert_member %[[PTR]][1], %[[BINOP_KIND]] : !rec_anon_struct, !s64i
 
 // LLVM:     define {{.*}} { i64, i64 } @_Z15base_to_derivedM5Base2FviE
-// LLVM:       %[[ARG:.*]] = load { i64, i64 }, ptr %{{.*}}
+// LLVM-X86:   %[[COERCE_TMP:.*]] = alloca { i64, i64 }
+// LLVM:       %[[ARG_ADDR:.*]] = alloca { i64, i64 }
+// LLVM:       %[[ARG:.*]] = load { i64, i64 }, ptr %[[ARG_ADDR]]
 // LLVM:       %[[ADJ:.*]] = extractvalue { i64, i64 } %[[ARG]], 1
 // LLVM-X86:   %[[ADJ_ADJ:.*]] = add nsw i64 %[[ADJ]], 16
 // LLVM-ARM:   %[[ADJ_ADJ:.*]] = add nsw i64 %[[ADJ]], 32
@@ -211,6 +221,7 @@ Base1MemFunc derived_to_base_zero_offset(DerivedMemFunc ptr) {
 // CIR-AFTER:   cir.return %[[RET_VAL]] : !rec_anon_struct
 
 // LLVM: define {{.*}} { i64, i64 } @_Z27derived_to_base_zero_offsetM7DerivedFviE
+// LLVM-X86: %[[COERCE_TMP:.*]] = alloca { i64, i64 }
 // LLVM:   %[[ARG_ADDR:.*]] = alloca { i64, i64 }
 // LLVM:   %[[RET_ADDR:.*]] = alloca { i64, i64 }
 // LLVM:   store { i64, i64 } %{{.*}}, ptr %[[ARG_ADDR]]
@@ -240,7 +251,8 @@ Base2MemFunc derived_to_base(DerivedMemFunc ptr) {
 // CIR-BEFORE:   %{{.*}} = cir.base_method %[[PTR]][16] : !cir.method<!cir.func<(!cir.ptr<!rec_Derived>, !s32i)> in !rec_Derived> -> !cir.method<!cir.func<(!cir.ptr<!rec_Base2>, !s32i)> in !rec_Base2>
 
 // CIR-AFTER:     cir.func {{.*}} @_Z15derived_to_baseM7DerivedFviE
-// CIR-AFTER:       %[[PTR:.*]] = cir.load{{.*}} %{{.*}} : !cir.ptr<!rec_anon_struct>, !rec_anon_struct
+// CIR-AFTER:       %[[PTR_ADDR:.*]] = cir.alloca !rec_anon_struct, !cir.ptr<!rec_anon_struct>, ["ptr"
+// CIR-AFTER:       %[[PTR:.*]] = cir.load{{.*}} %[[PTR_ADDR]] : !cir.ptr<!rec_anon_struct>, !rec_anon_struct
 // CIR-AFTER:       %[[OFFSET:.*]] = cir.extract_member %[[PTR]][1] : !rec_anon_struct -> !s64i
 // CIR-AFTER-X86:   %[[OFFSET_ADJ:.*]] = cir.const #cir.int<16> : !s64i
 // CIR-AFTER-ARM:   %[[OFFSET_ADJ:.*]] = cir.const #cir.int<32> : !s64i
@@ -248,7 +260,9 @@ Base2MemFunc derived_to_base(DerivedMemFunc ptr) {
 // CIR-AFTER:       %{{.*}} = cir.insert_member %[[PTR]][1], %[[BINOP_KIND]] : !rec_anon_struct, !s64i
 
 // LLVM:     define {{.*}} { i64, i64 } @_Z15derived_to_baseM7DerivedFviE
-// LLVM:       %[[ARG:.*]] = load { i64, i64 }, ptr %{{.*}}
+// LLVM-X86:   %[[COERCE_TMP:.*]] = alloca { i64, i64 }
+// LLVM:       %[[ARG_ADDR:.*]] = alloca { i64, i64 }
+// LLVM:       %[[ARG:.*]] = load { i64, i64 }, ptr %[[ARG_ADDR]]
 // LLVM:       %[[ADJ:.*]] = extractvalue { i64, i64 } %[[ARG]], 1
 // LLVM-X86:   %[[ADJ_ADJ:.*]] = sub nsw i64 %[[ADJ]], 16
 // LLVM-ARM:   %[[ADJ_ADJ:.*]] = sub nsw i64 %[[ADJ]], 32

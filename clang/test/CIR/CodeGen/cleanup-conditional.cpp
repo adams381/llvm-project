@@ -820,8 +820,9 @@ _Complex float test_complex_cond_cleanup(bool b, _Complex float x) {
 // CIR:       cir.call @_ZN5CplxDC1Ev(%[[TMP]])
 // CIR:       %[[SET_TRUE:.*]] = cir.const #true
 // CIR:       cir.store %[[SET_TRUE]], %[[ACTIVE]] : !cir.bool, !cir.ptr<!cir.bool>
-// CIR:       %[[CALL:.*]] = cir.call @_ZN5CplxD3getEv(%[[TMP]])
-// CIR:       cir.yield %[[CALL]] : !cir.complex<!cir.float>
+// CIR:       cir.call @_ZN5CplxD3getEv(%[[TMP]])
+// CIR:       %[[CALL_LOAD:.*]] = cir.load {{.*}} : !cir.ptr<!cir.complex<!cir.float>>, !cir.complex<!cir.float>
+// CIR:       cir.yield %[[CALL_LOAD]] : !cir.complex<!cir.float>
 // CIR:     }, false {
 // CIR:       %[[XV:.*]] = cir.load {{.*}} : !cir.ptr<!cir.complex<!cir.float>>, !cir.complex<!cir.float>
 // CIR:       cir.yield %[[XV]] : !cir.complex<!cir.float>
@@ -835,14 +836,15 @@ _Complex float test_complex_cond_cleanup(bool b, _Complex float x) {
 // CIR:     cir.yield
 // CIR:   }
 
-// LLVM-LABEL: define dso_local {{.*}} { float, float } @_Z25test_complex_cond_cleanupbCf(
+// LLVM-LABEL: define dso_local {{.*}} <2 x float> @_Z25test_complex_cond_cleanupbCf(
 // LLVM:         %[[TMP:.*]] = alloca %struct.CplxD
 // LLVM:         %[[ACTIVE:.*]] = alloca i8
 // LLVM:         br i1 %{{.*}}, label %[[TRUE_BR:.*]], label %[[FALSE_BR:.*]]
 // LLVM:       [[TRUE_BR]]:
 // LLVM:         call void @_ZN5CplxDC1Ev(ptr {{.*}} %[[TMP]])
 // LLVM:         store i8 1, ptr %[[ACTIVE]]
-// LLVM:         %[[CALL:.*]] = call {{.*}} { float, float } @_ZN5CplxD3getEv(ptr {{.*}} %[[TMP]])
+// LLVM:         call {{.*}} <2 x float> @_ZN5CplxD3getEv(ptr {{.*}} %[[TMP]])
+// LLVM:         %[[CALL:.*]] = load { float, float }, ptr %{{.*}}
 // LLVM:         br label %[[MERGE:.*]]
 // LLVM:       [[FALSE_BR]]:
 // LLVM:         %[[XV:.*]] = load { float, float }, ptr %{{.*}}

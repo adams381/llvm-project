@@ -73,7 +73,7 @@
 // HIP-NEW: cir.alloca !cir.ptr<!rec_hipStream>, {{.*}} ["stream"]
 // HIP-NEW: cir.call @__hipPopCallConfiguration({{.*}}) : (!cir.ptr<!rec_dim3>, !cir.ptr<!rec_dim3>, !cir.ptr<!u64i>, !cir.ptr<!cir.ptr<!rec_hipStream>>) -> !s32i
 // HIP-NEW: cir.get_global @_Z6kernelif : !cir.ptr<!cir.ptr<!cir.func<(!s32i, !cir.float)>>>
-// HIP-NEW: cir.call @hipLaunchKernel({{.*}}) : (!cir.ptr<!void> {{.*}}, !rec_dim3, !rec_dim3, !cir.ptr<!cir.ptr<!void>>{{.*}}, !u64i{{.*}}, !cir.ptr<!rec_hipStream>{{.*}}) -> (!u32i {llvm.noundef})
+// HIP-NEW: cir.call @hipLaunchKernel({{.*}}) : (!cir.ptr<!void>{{.*}}, !u64i{{.*}}, !u32i{{.*}}, !u64i{{.*}}, !u32i{{.*}}, !cir.ptr<!cir.ptr<!void>>{{.*}}, !u64i{{.*}}, !cir.ptr<!rec_hipStream>{{.*}}) -> (!u32i {llvm.noundef})
 // HIP-PTH: cir.call @hipLaunchKernel_spt
 
 __global__ void kernel(int x, float y) {}

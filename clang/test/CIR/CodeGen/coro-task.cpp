@@ -871,7 +871,8 @@ folly::coro::Task<int __complex__> complex_co_await() noexcept {
 // CIR:       cir.await(user, ready : {
 // CIR:       }, suspend : {
 // CIR:       }, resume : {
-// CIR:         %[[RESUME_VAL:.*]] = cir.call @_ZN5folly4coro4TaskICiE12await_resumeEv(%[[COMPLEX_ADDR]]) : (!cir.ptr<!rec_folly3A3Acoro3A3ATask3C_Complex_int3E> {llvm.align = 1 : i64, llvm.dereferenceable = 1 : i64, llvm.nonnull, llvm.noundef}) -> (!cir.complex<!s32i> {llvm.noundef})
+// CIR:         cir.call @_ZN5folly4coro4TaskICiE12await_resumeEv(%[[COMPLEX_ADDR]]) : (!cir.ptr<!rec_folly3A3Acoro3A3ATask3C_Complex_int3E> {llvm.align = 1 : i64, llvm.dereferenceable = 1 : i64, llvm.nonnull, llvm.noundef}) -> (!u64i {llvm.noundef})
+// CIR:         %[[RESUME_VAL:.*]] = cir.load {{.*}} : !cir.ptr<!cir.complex<!s32i>>, !cir.complex<!s32i>
 // CIR:         cir.store %[[RESUME_VAL]], %[[RESUME_VAL_ADDR]] : !cir.complex<!s32i>, !cir.ptr<!cir.complex<!s32i>>
 // CIR:       },)
 // CIR:       %[[V:.*]] = cir.load %[[RESUME_VAL_ADDR]] : !cir.ptr<!cir.complex<!s32i>>, !cir.complex<!s32i>
