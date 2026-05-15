@@ -1229,11 +1229,11 @@ void imag_on_scalar_with_type_promotion() {
 
 // LLVM: %[[A_ADDR:.*]] = alloca half, i64 1, align 2
 // LLVM: %[[B_ADDR:.*]] = alloca half, i64 1, align 2
-// LLVM: store half 0xH0000, ptr %[[B_ADDR]], align 2
+// LLVM: store half 0.000000e+00, ptr %[[B_ADDR]], align 2
 
 // OGCG: %[[A_ADDR:.*]] = alloca half, align 2
 // OGCG: %[[B_ADDR:.*]] = alloca half, align 2
-// OGCG: store half 0xH0000, ptr %[[B_ADDR]], align 2
+// OGCG: store half 0.000000e+00, ptr %[[B_ADDR]], align 2
 
 void imag_on_const_scalar() {
   float a;
@@ -1499,7 +1499,7 @@ void calling_function_with_default_arg() {
 // CIR: cir.call @_Z33function_with_complex_default_argCf(%[[VEC_ARG]]) : (!cir.vector<2 x !cir.float> {{.*}}) -> ()
 
 // LLVM: %[[DEFAULT_ARG_ADDR:.*]] = alloca { float, float }, i64 1, align 4
-// LLVM: store { float, float } { float 1.000000e+00, float 0x40019999A0000000 }, ptr %[[DEFAULT_ARG_ADDR]], align 4
+// LLVM: store { float, float } { float 1.000000e+00, float 2.200000e+00 }, ptr %[[DEFAULT_ARG_ADDR]], align 4
 // LLVM: %[[TMP_DEFAULT_ARG:.*]] = load { float, float }, ptr %[[DEFAULT_ARG_ADDR]], align 4
 // LLVM: %[[VEC_COERCE:.*]] = alloca { float, float }, i64 1, align 8
 // LLVM: store { float, float } %[[TMP_DEFAULT_ARG]], ptr %[[VEC_COERCE]], align 4
@@ -1510,7 +1510,7 @@ void calling_function_with_default_arg() {
 // OGCG: %[[DEFAULT_ARG_REAL_PTR:.*]] = getelementptr inbounds nuw { float, float }, ptr %[[DEFAULT_ARG_ADDR]], i32 0, i32 0
 // OGCG: %[[DEFAULT_ARG_IMAG_PTR:.*]] = getelementptr inbounds nuw { float, float }, ptr %[[DEFAULT_ARG_ADDR]], i32 0, i32 1
 // OGCG: store float 1.000000e+00, ptr %[[DEFAULT_ARG_REAL_PTR]], align 4
-// OGCG: store float 0x40019999A0000000, ptr %[[DEFAULT_ARG_IMAG_PTR]], align 4
+// OGCG: store float 2.200000e+00, ptr %[[DEFAULT_ARG_IMAG_PTR]], align 4
 // OGCG: %[[TMP_DEFAULT_ARG:.*]] = load <2 x float>, ptr %[[DEFAULT_ARG_ADDR]], align 4
 // OGCG: call void @_Z33function_with_complex_default_argCf(<2 x float> {{.*}} %[[TMP_DEFAULT_ARG]])
 

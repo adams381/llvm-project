@@ -4,6 +4,7 @@ add_llvm_component_library(LLVMABI
   ABITypeMapper.cpp
   FunctionInfo.cpp
   TargetInfo.cpp
+  IRTypeMapper.cpp
   Types.cpp
   Targets/BPF.cpp
   Targets/X86.cpp
