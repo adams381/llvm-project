@@ -112,10 +112,10 @@ FunctionClassification mlir::abi::test::classify(ArrayRef<Type> argTypes,
                                                  Type returnType,
                                                  const DataLayout &dl) {
   FunctionClassification fc;
-  fc.returnInfo = classifyOne(returnType, dl);
-  fc.argInfos.reserve(argTypes.size());
+  fc.ReturnInfo = classifyOne(returnType, dl);
+  fc.ArgInfos.reserve(argTypes.size());
   for (Type t : argTypes)
-    fc.argInfos.push_back(classifyOne(t, dl));
+    fc.ArgInfos.push_back(classifyOne(t, dl));
   return fc;
 }
 
@@ -163,7 +163,7 @@ parseOne(DictionaryAttr argDict, function_ref<InFlightDiagnostic()> emitError) {
       coerced = t.getValue();
     auto c = ArgClassification::getDirect(coerced);
     if (auto cf = argDict.getAs<BoolAttr>("can_flatten"))
-      c.canFlatten = cf.getValue();
+      c.CanFlatten = cf.getValue();
     return c;
   }
 
@@ -202,7 +202,7 @@ parseOne(DictionaryAttr argDict, function_ref<InFlightDiagnostic()> emitError) {
 
   if (kind == "expand") {
     ArgClassification c;
-    c.kind = ArgKind::Expand;
+    c.Kind = ArgKind::Expand;
     return c;
   }
 
@@ -241,9 +241,9 @@ std::optional<FunctionClassification> mlir::abi::test::parseClassificationAttr(
   std::optional<ArgClassification> ret = parseOne(returnDict, emitError);
   if (!ret)
     return std::nullopt;
-  fc.returnInfo = *ret;
+  fc.ReturnInfo = *ret;
 
-  fc.argInfos.reserve(argsArr.size());
+  fc.ArgInfos.reserve(argsArr.size());
   for (Attribute a : argsArr) {
     auto d = dyn_cast<DictionaryAttr>(a);
     if (!d) {
@@ -253,7 +253,7 @@ std::optional<FunctionClassification> mlir::abi::test::parseClassificationAttr(
     std::optional<ArgClassification> ac = parseOne(d, emitError);
     if (!ac)
       return std::nullopt;
-    fc.argInfos.push_back(*ac);
+    fc.ArgInfos.push_back(*ac);
   }
 
   return fc;

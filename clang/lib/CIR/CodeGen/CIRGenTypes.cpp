@@ -737,6 +737,38 @@ cir::ABIArgInfo CIRGenTypes::classifyCIRReturnType(CanQualType retTy) {
   if (layout.getFieldCount() < 2)
     return cir::ABIArgInfo::getDirect(fullTy);
 
+  // Guard: the low eightbyte must be genuinely NoClass under x86-64 SysV,
+  // meaning it carries no real data.  Only C++ class types qualify: an
+  // empty class (isEmpty()), or a class whose base classes and fields are
+  // all recursively empty (e.g. a CRTP expression node that contains only
+  // other empty nodes).  Polymorphic classes and classes with virtual base
+  // classes are excluded because both imply implicit data (vtable pointer
+  // or virtual-base offset).
+  // Without this guard the coerced-return path misfires on structs that
+  // have real data in both eightbytes (e.g. {double, int64_t}), which
+  // x86-64 SysV passes in two registers.
+  auto isRecursivelyEmpty = [](const CXXRecordDecl *rDecl, auto &self) -> bool {
+    if (rDecl->isEmpty())
+      return true;
+    if (rDecl->isPolymorphic() || rDecl->getNumVBases() != 0)
+      return false;
+    for (const CXXBaseSpecifier &base : rDecl->bases()) {
+      const auto *baseRD = base.getType()->getAsCXXRecordDecl();
+      if (!baseRD || !self(baseRD, self))
+        return false;
+    }
+    for (const FieldDecl *f : rDecl->fields()) {
+      const auto *fRD = f->getType()->getAsCXXRecordDecl();
+      if (!fRD || !self(fRD, self))
+        return false;
+    }
+    return true;
+  };
+  QualType loTy = rd->field_begin()->getType();
+  const auto *loRD = loTy->getAsCXXRecordDecl();
+  if (!loRD || !isRecursivelyEmpty(loRD, isRecursivelyEmpty))
+    return cir::ABIArgInfo::getDirect(fullTy);
+
   if (layout.getFieldOffset(1) !=
       static_cast<uint64_t>(astContext.toBits(CharUnits::fromQuantity(8))))
     return cir::ABIArgInfo::getDirect(fullTy);
