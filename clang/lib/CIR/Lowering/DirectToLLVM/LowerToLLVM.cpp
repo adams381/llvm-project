@@ -1832,7 +1832,13 @@ mlir::LogicalResult CIRToLLVMRotateOpLowering::matchAndRewrite(
   return mlir::LogicalResult::success();
 }
 
+static mlir::ArrayAttr
+convertParamAttrTypes(mlir::ArrayAttr paramAttrs,
+                      const mlir::TypeConverter &typeConverter,
+                      mlir::MLIRContext *ctx);
+
 static void lowerCallAttributes(cir::CIRCallOpInterface op,
+                                const mlir::TypeConverter *converter,
                                 SmallVectorImpl<mlir::NamedAttribute> &result) {
   for (mlir::NamedAttribute attr : op->getAttrs()) {
     if (attr.getName() == CIRDialect::getCalleeAttrName() ||
@@ -1842,6 +1848,18 @@ static void lowerCallAttributes(cir::CIRCallOpInterface op,
         attr.getName() == CIRDialect::getNoReturnAttrName() ||
         attr.getName() == CIRDialect::getMustTailAttrName())
       continue;
+
+    // Argument/result attribute dictionaries can carry CIR types (sret /
+    // byval pointee types from calling-convention lowering); convert those
+    // to LLVM-dialect types before they reach the llvm.call.
+    if (converter &&
+        (attr.getName() == "arg_attrs" || attr.getName() == "res_attrs")) {
+      auto arr = mlir::dyn_cast<mlir::ArrayAttr>(attr.getValue());
+      result.emplace_back(
+          attr.getName(),
+          convertParamAttrTypes(arr, *converter, op->getContext()));
+      continue;
+    }
 
     assert(!cir::MissingFeatures::opFuncExtraAttrs());
     result.push_back(attr);
@@ -1873,7 +1891,7 @@ rewriteCallOrInvoke(mlir::Operation *op, mlir::ValueRange callOperands,
                            memoryEffects, noUnwind, willReturn, noReturn);
 
   SmallVector<mlir::NamedAttribute, 4> attributes;
-  lowerCallAttributes(call, attributes);
+  lowerCallAttributes(call, converter, attributes);
 
   mlir::LLVM::LLVMFunctionType llvmFnTy;
 
@@ -2324,6 +2342,41 @@ mlir::LogicalResult CIRToLLVMAbsOpLowering::matchAndRewrite(
   return mlir::success();
 }
 
+/// Convert the CIR types embedded in parameter/result attribute
+/// dictionaries (e.g. the pointee type of `llvm.sret` / `llvm.byval`) to
+/// their LLVM-dialect equivalents.  The calling-convention lowering pass
+/// attaches these type-carrying attributes with CIR types; without this
+/// conversion the final MLIR-to-LLVM-IR translation would see a CIR type in
+/// an `llvm.func` attribute and abort with "unknown LLVM dialect type".
+static mlir::ArrayAttr
+convertParamAttrTypes(mlir::ArrayAttr paramAttrs,
+                      const mlir::TypeConverter &typeConverter,
+                      mlir::MLIRContext *ctx) {
+  if (!paramAttrs)
+    return paramAttrs;
+  SmallVector<mlir::Attribute> converted;
+  converted.reserve(paramAttrs.size());
+  for (mlir::Attribute entry : paramAttrs) {
+    auto dict = mlir::dyn_cast<mlir::DictionaryAttr>(entry);
+    if (!dict) {
+      converted.push_back(entry);
+      continue;
+    }
+    SmallVector<mlir::NamedAttribute> named;
+    for (mlir::NamedAttribute na : dict) {
+      auto tyAttr = mlir::dyn_cast<mlir::TypeAttr>(na.getValue());
+      mlir::Type conv =
+          tyAttr ? typeConverter.convertType(tyAttr.getValue()) : mlir::Type();
+      if (conv)
+        named.emplace_back(na.getName(), mlir::TypeAttr::get(conv));
+      else
+        named.push_back(na);
+    }
+    converted.push_back(mlir::DictionaryAttr::get(ctx, named));
+  }
+  return mlir::ArrayAttr::get(ctx, converted);
+}
+
 /// Convert the `cir.func` attributes to `llvm.func` attributes.
 /// Only retain those attributes that are not constructed by
 /// `LLVMFuncOp::build`. If `filterArgAttrs` is set, also filter out
@@ -2345,6 +2398,18 @@ void CIRToLLVMFuncOpLowering::lowerFuncAttributes(
          (attr.getName() == func.getArgAttrsAttrName() ||
           attr.getName() == func.getResAttrsAttrName())))
       continue;
+
+    // Argument/result attribute dictionaries can carry CIR types (sret /
+    // byval pointee types from calling-convention lowering); convert those
+    // to LLVM-dialect types before they reach the llvm.func.
+    if (attr.getName() == func.getArgAttrsAttrName() ||
+        attr.getName() == func.getResAttrsAttrName()) {
+      auto arr = mlir::dyn_cast<mlir::ArrayAttr>(attr.getValue());
+      result.emplace_back(
+          attr.getName(),
+          convertParamAttrTypes(arr, *getTypeConverter(), func.getContext()));
+      continue;
+    }
 
     assert(!cir::MissingFeatures::opFuncExtraAttrs());
     result.push_back(attr);

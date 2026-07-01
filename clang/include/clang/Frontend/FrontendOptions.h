@@ -154,11 +154,7 @@ enum ActionKind {
 class InputKind {
 public:
   /// The input file format.
-  enum Format {
-    Source,
-    ModuleMap,
-    Precompiled
-  };
+  enum Format { Source, ModuleMap, Precompiled };
 
   // If we are building a header unit, what kind it is; this affects whether
   // we look for the file in the user or system include search paths before
@@ -422,6 +418,10 @@ public:
   LLVM_PREFERRED_TYPE(bool)
   unsigned ClangIRDisableCIRVerifier : 1;
 
+  /// Enable the CIR calling-convention lowering pass (x86_64 only).
+  LLVM_PREFERRED_TYPE(bool)
+  unsigned ClangIREnableCallConvLowering : 1;
+
   /// Enable Clang IR (CIR) idiom recognizer
   LLVM_PREFERRED_TYPE(bool)
   unsigned ClangIREnableIdiomRecognizer : 1;
@@ -567,9 +567,9 @@ public:
         EmitSymbolGraphSymbolLabelsForTesting(false),
         EmitPrettySymbolGraphs(false), GenReducedBMI(false),
         UseClangIRPipeline(false), ClangIRDisablePasses(false),
-        ClangIRDisableCIRVerifier(false), ClangIREnableIdiomRecognizer(false),
-        ClangIRLibOptEnabled(false), TimeTraceGranularity(500),
-        TimeTraceVerbose(false) {}
+        ClangIRDisableCIRVerifier(false), ClangIREnableCallConvLowering(false),
+        ClangIREnableIdiomRecognizer(false), ClangIRLibOptEnabled(false),
+        TimeTraceGranularity(500), TimeTraceVerbose(false) {}
 
   /// getInputKindForExtension - Return the appropriate input kind for a file
   /// extension. For example, "c" would return Language::C.

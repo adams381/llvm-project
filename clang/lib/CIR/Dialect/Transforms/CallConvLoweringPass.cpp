@@ -34,6 +34,7 @@
 #include "TargetLowering/CIRABIRewriteContext.h"
 
 #include "mlir/ABI/ABIRewriteContext.h"
+#include "mlir/ABI/ABITypeMapper.h"
 #include "mlir/ABI/Targets/Test/TestTarget.h"
 #include "mlir/Dialect/DLTI/DLTI.h"
 #include "mlir/IR/Builders.h"
@@ -43,6 +44,10 @@
 #include "mlir/Pass/Pass.h"
 #include "clang/CIR/Dialect/IR/CIRDialect.h"
 #include "clang/CIR/Dialect/Passes.h"
+#include "llvm/ABI/FunctionInfo.h"
+#include "llvm/ABI/TargetInfo.h"
+#include "llvm/ABI/Types.h"
+#include "llvm/IR/CallingConv.h"
 
 using namespace mlir;
 using namespace mlir::abi;
@@ -54,6 +59,419 @@ namespace mlir {
 } // namespace mlir
 
 namespace {
+
+//===----------------------------------------------------------------------===//
+// x86_64 System V classifier bridge
+//
+// The LLVM ABI Lowering Library (llvm::abi) computes the SysV x86_64
+// classification for a signature.  These helpers map CIR types to
+// llvm::abi::Type, run the classifier, and convert the result back into the
+// dialect-agnostic mlir::abi::FunctionClassification that CIRABIRewriteContext
+// consumes.
+//===----------------------------------------------------------------------===//
+
+/// ABI metadata for a named record, read from the module's
+/// `cir.record_layouts` dictionary.  Anonymous records (synthesized by
+/// CXXABILowering) have no entry and default to can-pass-in-registers; named
+/// records with no entry default to cannot-pass (safe: forces Indirect).
+struct RecordABIInfo {
+  bool canPassInRegs = true;
+  uint64_t recordAlignInBytes = 0;
+};
+
+static RecordABIInfo getRecordABIInfo(ModuleOp module, cir::RecordType recTy) {
+  RecordABIInfo info;
+  mlir::StringAttr name = recTy.getName();
+  if (!name)
+    return info;
+  auto dict = module->getAttrOfType<DictionaryAttr>(
+      cir::CIRDialect::getRecordLayoutsAttrName());
+  auto layout =
+      dict ? dict.getAs<cir::RecordLayoutAttr>(name) : cir::RecordLayoutAttr();
+  if (!layout) {
+    info.canPassInRegs = false;
+    return info;
+  }
+  info.canPassInRegs =
+      layout.getArgPassingKind() == cir::ArgPassingKind::CanPassInRegs;
+  info.recordAlignInBytes = layout.getRecordAlign();
+  return info;
+}
+
+/// Proxy for the AST notion of an empty record (C++ empty class / empty base):
+/// a record whose members are only i8 padding arrays or (recursively) empty
+/// records.  CIRGen materializes empty classes as a single padding byte, so
+/// this catches the common cases the SysV ABI ignores.
+static bool recordIsEmptyForABI(cir::RecordType recTy) {
+  for (mlir::Type m : recTy.getMembers()) {
+    if (auto arr = dyn_cast<cir::ArrayType>(m))
+      if (auto elt = dyn_cast<cir::IntType>(arr.getElementType()))
+        if (elt.getWidth() == 8)
+          continue;
+    if (auto rec = dyn_cast<cir::RecordType>(m))
+      if (recordIsEmptyForABI(rec))
+        continue;
+    return false;
+  }
+  return true;
+}
+
+/// llvm::Align requires a power of two; DataLayout can report non-power-of-two
+/// alignments for unusual types (e.g. `_BitInt(31)`).
+static llvm::Align safeAlign(uint64_t a) {
+  return llvm::Align(llvm::PowerOf2Ceil(std::max<uint64_t>(a, 1)));
+}
+
+/// Convert an llvm::abi::Type coercion type back to a CIR type.
+static mlir::Type abiTypeToCIR(const llvm::abi::Type *ty, MLIRContext *ctx) {
+  if (!ty)
+    return nullptr;
+  if (ty->isVoid())
+    return cir::VoidType::get(ctx);
+  if (auto *intTy = llvm::dyn_cast<llvm::abi::IntegerType>(ty))
+    return cir::IntType::get(ctx, intTy->getSizeInBits().getFixedValue(),
+                             intTy->isSigned());
+  if (auto *fltTy = llvm::dyn_cast<llvm::abi::FloatType>(ty)) {
+    const llvm::fltSemantics *sem = fltTy->getSemantics();
+    if (sem == &llvm::APFloat::IEEEhalf())
+      return cir::FP16Type::get(ctx);
+    if (sem == &llvm::APFloat::BFloat())
+      return cir::BF16Type::get(ctx);
+    if (sem == &llvm::APFloat::IEEEsingle())
+      return cir::SingleType::get(ctx);
+    if (sem == &llvm::APFloat::IEEEdouble())
+      return cir::DoubleType::get(ctx);
+    if (sem == &llvm::APFloat::x87DoubleExtended())
+      return cir::FP80Type::get(ctx);
+    if (sem == &llvm::APFloat::IEEEquad())
+      return cir::FP128Type::get(ctx);
+  }
+  if (auto *vecTy = llvm::dyn_cast<llvm::abi::VectorType>(ty)) {
+    mlir::Type elemCIR = abiTypeToCIR(vecTy->getElementType(), ctx);
+    if (!elemCIR)
+      return nullptr;
+    return cir::VectorType::get(elemCIR,
+                                vecTy->getNumElements().getFixedValue());
+  }
+  if (llvm::isa<llvm::abi::PointerType>(ty))
+    return cir::PointerType::get(cir::VoidType::get(ctx));
+  if (auto *recTy = llvm::dyn_cast<llvm::abi::RecordType>(ty)) {
+    SmallVector<mlir::Type> fieldTypes;
+    for (const auto &field : recTy->getFields()) {
+      mlir::Type fieldCIR = abiTypeToCIR(field.FieldType, ctx);
+      if (!fieldCIR)
+        return nullptr;
+      fieldTypes.push_back(fieldCIR);
+    }
+    return cir::StructType::get(ctx, fieldTypes, /*packed=*/false,
+                                /*padded=*/false, /*is_class=*/false);
+  }
+  uint64_t bits = ty->getSizeInBits().getFixedValue();
+  if (bits > 0)
+    return cir::IntType::get(ctx, bits, /*isSigned=*/false);
+  return nullptr;
+}
+
+/// Map a CIR type to an llvm::abi::Type with CIR-aware knowledge of
+/// signedness, field layout, and pointer semantics.
+static const llvm::abi::Type *
+mapCIRType(mlir::Type type, mlir::abi::ABITypeMapper &typeMapper,
+           const DataLayout &dl, bool recordCoercionEnabled, ModuleOp module) {
+  llvm::abi::TypeBuilder &tb = typeMapper.getTypeBuilder();
+
+  if (auto intTy = dyn_cast<cir::IntType>(type))
+    return tb.getIntegerType(intTy.getWidth(),
+                             safeAlign(dl.getTypeABIAlignment(type)),
+                             intTy.isSigned());
+  if (isa<cir::PointerType>(type))
+    return tb.getPointerType(dl.getTypeSizeInBits(type),
+                             safeAlign(dl.getTypeABIAlignment(type)),
+                             /*AddressSpace=*/0);
+  if (isa<cir::BoolType>(type))
+    return tb.getIntegerType(dl.getTypeSizeInBits(type),
+                             safeAlign(dl.getTypeABIAlignment(type)),
+                             /*Signed=*/false);
+  if (isa<cir::VoidType>(type))
+    return tb.getVoidType();
+  if (isa<cir::SingleType>(type))
+    return tb.getFloatType(llvm::APFloat::IEEEsingle(),
+                           safeAlign(dl.getTypeABIAlignment(type)));
+  if (isa<cir::DoubleType>(type))
+    return tb.getFloatType(llvm::APFloat::IEEEdouble(),
+                           safeAlign(dl.getTypeABIAlignment(type)));
+  if (isa<cir::FP16Type>(type))
+    return tb.getFloatType(llvm::APFloat::IEEEhalf(),
+                           safeAlign(dl.getTypeABIAlignment(type)));
+  if (isa<cir::BF16Type>(type))
+    return tb.getFloatType(llvm::APFloat::BFloat(),
+                           safeAlign(dl.getTypeABIAlignment(type)));
+  if (isa<cir::FP80Type>(type))
+    return tb.getFloatType(llvm::APFloat::x87DoubleExtended(),
+                           safeAlign(dl.getTypeABIAlignment(type)));
+  if (isa<cir::FP128Type>(type))
+    return tb.getFloatType(llvm::APFloat::IEEEquad(),
+                           safeAlign(dl.getTypeABIAlignment(type)));
+  if (auto ldTy = dyn_cast<cir::LongDoubleType>(type))
+    return mapCIRType(ldTy.getUnderlying(), typeMapper, dl,
+                      recordCoercionEnabled, module);
+  if (auto arrTy = dyn_cast<cir::ArrayType>(type)) {
+    const llvm::abi::Type *elemAbi = mapCIRType(
+        arrTy.getElementType(), typeMapper, dl, recordCoercionEnabled, module);
+    return tb.getArrayType(elemAbi, arrTy.getSize(),
+                           dl.getTypeSizeInBits(type).getFixedValue());
+  }
+  if (auto complexTy = dyn_cast<cir::ComplexType>(type)) {
+    const llvm::abi::Type *elemAbi =
+        mapCIRType(complexTy.getElementType(), typeMapper, dl,
+                   recordCoercionEnabled, module);
+    return tb.getComplexType(elemAbi, safeAlign(dl.getTypeABIAlignment(type)));
+  }
+  if (auto vecTy = dyn_cast<cir::VectorType>(type)) {
+    const llvm::abi::Type *elemAbi = mapCIRType(
+        vecTy.getElementType(), typeMapper, dl, recordCoercionEnabled, module);
+    llvm::ElementCount ec = llvm::ElementCount::getFixed(vecTy.getSize());
+    uint64_t sizeBits = dl.getTypeSizeInBits(type).getFixedValue();
+    return tb.getVectorType(elemAbi, ec, safeAlign(sizeBits / 8));
+  }
+  if (isa<cir::DataMemberType>(type))
+    return tb.getIntegerType(64, llvm::Align(8), /*Signed=*/false);
+  if (isa<cir::MethodType>(type)) {
+    auto i64 = tb.getIntegerType(64, llvm::Align(8), /*Signed=*/false);
+    SmallVector<llvm::abi::FieldInfo> fields;
+    fields.push_back(llvm::abi::FieldInfo(i64, 0));
+    fields.push_back(llvm::abi::FieldInfo(i64, 64));
+    return tb.getRecordType(fields, llvm::TypeSize::getFixed(128),
+                            llvm::Align(8));
+  }
+  if (auto recTy = dyn_cast<cir::RecordType>(type)) {
+    if (!recTy.isComplete())
+      return tb.getIntegerType(64, llvm::Align(8), /*Signed=*/false);
+    SmallVector<llvm::abi::FieldInfo> fields;
+    bool isUnion = recTy.isUnion();
+    bool isPacked = recTy.getPacked();
+    auto members = recTy.getMembers();
+    // Drop a trailing alignment-only i8 padding array so it does not inflate
+    // eightbyte classification: OGCG classifies over data fields only.
+    bool excludeTrailingPad = false;
+    if (recTy.getPadded() && !isUnion && members.size() > 1 &&
+        isa<cir::ArrayType>(members.back())) {
+      uint64_t withoutPad = 0;
+      for (unsigned i = 0; i < members.size() - 1; ++i)
+        withoutPad += dl.getTypeSizeInBits(members[i]).getFixedValue();
+      uint64_t withPad =
+          withoutPad + dl.getTypeSizeInBits(members.back()).getFixedValue();
+      excludeTrailingPad = (withoutPad + 63) / 64 < (withPad + 63) / 64;
+    }
+    auto endIt = excludeTrailingPad ? members.end() - 1 : members.end();
+    uint64_t offsetBits = 0;
+    for (auto it = members.begin(); it != endIt; ++it) {
+      mlir::Type fieldTy = *it;
+      // Skip empty base / empty record members.
+      if (auto memberRec = dyn_cast<cir::RecordType>(fieldTy))
+        if (recordIsEmptyForABI(memberRec) &&
+            memberRec.getMembers().size() <= 1) {
+          offsetBits += dl.getTypeSizeInBits(fieldTy).getFixedValue();
+          continue;
+        }
+      // Skip a leading i8 padding array on a padded record.
+      if (auto arrTy = dyn_cast<cir::ArrayType>(fieldTy))
+        if (auto elt = dyn_cast<cir::IntType>(arrTy.getElementType());
+            elt && elt.getWidth() == 8 && recTy.getPadded() &&
+            it == members.begin()) {
+          offsetBits += dl.getTypeSizeInBits(fieldTy).getFixedValue();
+          continue;
+        }
+      const llvm::abi::Type *mappedField =
+          mapCIRType(fieldTy, typeMapper, dl, recordCoercionEnabled, module);
+      uint64_t fieldSize = dl.getTypeSizeInBits(fieldTy).getFixedValue();
+      if (!isUnion && !isPacked)
+        offsetBits =
+            llvm::alignTo(offsetBits, dl.getTypeABIAlignment(fieldTy) * 8);
+      fields.push_back(
+          llvm::abi::FieldInfo(mappedField, isUnion ? 0 : offsetBits));
+      if (!isUnion)
+        offsetBits += fieldSize;
+    }
+    RecordABIInfo recABI = getRecordABIInfo(module, recTy);
+    uint64_t sizeBits = dl.getTypeSizeInBits(type).getFixedValue();
+    if (excludeTrailingPad)
+      sizeBits -= dl.getTypeSizeInBits(members.back()).getFixedValue();
+    llvm::TypeSize size = llvm::TypeSize::getFixed(sizeBits);
+    uint64_t rawAlign = recABI.recordAlignInBytes
+                            ? recABI.recordAlignInBytes
+                            : dl.getTypeABIAlignment(type);
+    bool isAnonymous = !recTy.getName();
+    bool canPass = recABI.canPassInRegs || recordCoercionEnabled || isAnonymous;
+    llvm::abi::RecordFlags flags = llvm::abi::RecordFlags::None;
+    if (canPass)
+      flags = flags | llvm::abi::RecordFlags::CanPassInRegisters;
+    llvm::abi::StructPacking packing = isPacked
+                                           ? llvm::abi::StructPacking::Packed
+                                           : llvm::abi::StructPacking::Default;
+    if (isUnion)
+      return tb.getUnionType(fields, size, safeAlign(rawAlign), packing, flags);
+    return tb.getRecordType(fields, size, safeAlign(rawAlign), packing,
+                            /*BaseClasses=*/{}, /*VirtualBaseClasses=*/{},
+                            flags);
+  }
+  return typeMapper.map(type);
+}
+
+/// Convert an llvm::abi::ArgInfo classification into the dialect-agnostic
+/// ArgClassification consumed by CIRABIRewriteContext.
+static ArgClassification convertABIArgInfo(const llvm::abi::ArgInfo &info,
+                                           MLIRContext *ctx, mlir::Type origTy,
+                                           bool recordCoercionEnabled,
+                                           ModuleOp module) {
+  // Empty trivially-copyable records are neither passed nor returned.
+  if (origTy)
+    if (auto recTy = dyn_cast<cir::RecordType>(origTy))
+      if (recordIsEmptyForABI(recTy) &&
+          getRecordABIInfo(module, recTy).canPassInRegs)
+        return ArgClassification::getIgnore();
+
+  // The ABI library keeps `_BitInt(N)` as an opaque iN; classic Clang splits a
+  // non-power-of-2 `_BitInt` with 64 < N < 128 into a `{i64, i64}` coerce.
+  if (origTy)
+    if (auto intTy = dyn_cast<cir::IntType>(origTy))
+      if (intTy.getIsBitInt() && intTy.getWidth() > 64 &&
+          intTy.getWidth() < 128 && info.isDirect()) {
+        auto u64 = cir::IntType::get(ctx, 64, /*isSigned=*/false);
+        auto coerced =
+            cir::StructType::get(ctx, {u64, u64}, /*packed=*/false,
+                                 /*padded=*/false, /*is_class=*/false);
+        return ArgClassification::getDirect(coerced);
+      }
+
+  if (info.isDirect()) {
+    mlir::Type coerced = abiTypeToCIR(info.getCoerceToType(), ctx);
+    if (coerced && origTy) {
+      if (coerced == origTy)
+        coerced = nullptr;
+      else if (!isa<cir::RecordType, cir::ComplexType, cir::VectorType,
+                    cir::MethodType, cir::DataMemberType>(origTy)) {
+        if (!isa<cir::RecordType>(coerced))
+          coerced = nullptr;
+      } else if (!recordCoercionEnabled && isa<cir::RecordType>(origTy)) {
+        auto recTy = cast<cir::RecordType>(origTy);
+        bool canPass =
+            !recTy.getName() || getRecordABIInfo(module, recTy).canPassInRegs;
+        if (!canPass)
+          coerced = nullptr;
+      } else if (auto coercedInt = dyn_cast<cir::IntType>(coerced))
+        if (auto origInt = dyn_cast<cir::IntType>(origTy))
+          if (coercedInt.getWidth() == origInt.getWidth())
+            coerced = nullptr;
+      if (coerced)
+        if (auto recTy = dyn_cast<cir::RecordType>(origTy))
+          if (recTy.getPadded() && recTy.getMembers().size() == 1 &&
+              recTy.getMembers()[0] == coerced)
+            coerced = nullptr;
+    }
+    return ArgClassification::getDirect(coerced);
+  }
+  if (info.isExtend()) {
+    mlir::Type coerced = abiTypeToCIR(info.getCoerceToType(), ctx);
+    if (origTy && isa<cir::BoolType>(origTy))
+      return ArgClassification::getExtend(nullptr, info.isSignExt());
+    if (origTy && !isa<cir::IntType>(origTy))
+      return ArgClassification::getDirect(nullptr);
+    return ArgClassification::getExtend(coerced, info.isSignExt());
+  }
+  if (info.isIndirect()) {
+    if (!recordCoercionEnabled)
+      if (!origTy || !isa<cir::RecordType, cir::VectorType, cir::ComplexType,
+                          cir::IntType>(origTy))
+        return ArgClassification::getDirect(nullptr);
+    return ArgClassification::getIndirect(info.getIndirectAlign(),
+                                          info.getIndirectByVal());
+  }
+  // Ignore.
+  if (!recordCoercionEnabled && origTy && isa<cir::RecordType>(origTy))
+    return ArgClassification::getDirect(nullptr);
+  return ArgClassification::getIgnore();
+}
+
+/// `_BitInt(N > 128)` is passed/returned indirectly on x86_64 (does not fit in
+/// the two integer-class registers).
+static bool isBitIntIndirect(mlir::Type ty) {
+  auto intTy = dyn_cast_or_null<cir::IntType>(ty);
+  return intTy && intTy.getIsBitInt() && intTy.getWidth() > 128;
+}
+
+/// Widen an undersized union coercion to the union's true sizeof, matching
+/// classic Clang (the ABI library picks the best-aligned member, which can be
+/// narrower than the union's data).
+static void fixupUnionCoercion(ArgClassification &ac, mlir::Type origTy,
+                               const DataLayout &dl, MLIRContext *ctx) {
+  if (ac.kind != ArgKind::Direct || !ac.coercedType || !origTy)
+    return;
+  auto recTy = dyn_cast<cir::RecordType>(origTy);
+  if (!recTy || !recTy.isUnion())
+    return;
+  auto coercedInt = dyn_cast<cir::IntType>(ac.coercedType);
+  if (!coercedInt)
+    return;
+  auto members = recTy.getMembers();
+  auto endIt =
+      recTy.getPadded() && !members.empty() ? members.end() - 1 : members.end();
+  uint64_t maxMemberBits = 0;
+  uint64_t maxAlignBytes = 1;
+  for (auto it = members.begin(); it != endIt; ++it) {
+    maxMemberBits =
+        std::max(maxMemberBits, dl.getTypeSizeInBits(*it).getFixedValue());
+    if (!recTy.getPacked())
+      maxAlignBytes = std::max(maxAlignBytes, dl.getTypeABIAlignment(*it));
+  }
+  uint64_t unionBits = llvm::alignTo(maxMemberBits, maxAlignBytes * 8);
+  if (coercedInt.getWidth() < unionBits && unionBits <= 64)
+    ac.coercedType = cir::IntType::get(ctx, unionBits, coercedInt.isSigned());
+}
+
+/// Classify a cir.func for x86_64 SysV using the LLVM ABI library.
+static FunctionClassification
+classifyX86_64(cir::FuncOp func, const DataLayout &dl,
+               mlir::abi::ABITypeMapper &typeMapper,
+               const llvm::abi::TargetInfo &targetInfo, ModuleOp module) {
+  FunctionClassification fc;
+  MLIRContext *ctx = func->getContext();
+  const bool recordCoercionEnabled = false;
+
+  cir::FuncType fnTy = func.getFunctionType();
+  mlir::Type retCIR = fnTy.getReturnType();
+  bool voidRet = !retCIR || isa<cir::VoidType>(retCIR);
+  const llvm::abi::Type *retAbi =
+      voidRet
+          ? typeMapper.getTypeBuilder().getVoidType()
+          : mapCIRType(retCIR, typeMapper, dl, recordCoercionEnabled, module);
+
+  SmallVector<const llvm::abi::Type *> argAbi;
+  for (mlir::Type a : fnTy.getInputs())
+    argAbi.push_back(
+        mapCIRType(a, typeMapper, dl, recordCoercionEnabled, module));
+
+  std::unique_ptr<llvm::abi::FunctionInfo> fi =
+      llvm::abi::FunctionInfo::create(llvm::CallingConv::C, retAbi, argAbi);
+  targetInfo.computeInfo(*fi);
+
+  mlir::Type origRet = voidRet ? mlir::Type() : retCIR;
+  fc.returnInfo = convertABIArgInfo(fi->getReturnInfo(), ctx, origRet,
+                                    recordCoercionEnabled, module);
+  if (!voidRet)
+    fixupUnionCoercion(fc.returnInfo, origRet, dl, ctx);
+
+  auto inputs = fnTy.getInputs();
+  for (unsigned i = 0, e = fi->arg_size(); i < e; ++i) {
+    mlir::Type origArg = i < inputs.size() ? inputs[i] : mlir::Type();
+    ArgClassification ac = convertABIArgInfo(
+        fi->getArgInfo(i).Info, ctx, origArg, recordCoercionEnabled, module);
+    if (isBitIntIndirect(origArg))
+      ac = ArgClassification::getIndirect(llvm::Align(8), /*byVal=*/true);
+    fixupUnionCoercion(ac, origArg, dl, ctx);
+    fc.argInfos.push_back(ac);
+  }
+  return fc;
+}
 
 bool needsRewrite(const FunctionClassification &fc) {
   if ((fc.returnInfo.kind != ArgKind::Direct) || fc.returnInfo.coercedType)
@@ -95,7 +513,10 @@ classifyFunction(cir::FuncOp func, const DataLayout &dl, StringRef target,
   if (target == "test")
     return mlir::abi::test::classify(argTypes, returnType, dl);
 
-  func.emitOpError() << "unknown target '" << target << "' (supported: test)";
+  // Note: the "x86_64" target is handled directly in runOnOperation (it needs
+  // a shared ABITypeMapper and TargetInfo), so it never reaches here.
+  func.emitOpError() << "unknown target '" << target
+                     << "' (supported: test, x86_64)";
   return std::nullopt;
 }
 
@@ -140,13 +561,34 @@ void CallConvLoweringPass::runOnOperation() {
   CIRABIRewriteContext rewriteCtx(moduleOp, dl);
   SymbolTable symbolTable(moduleOp);
 
+  // For the x86_64 target, build the LLVM ABI library classifier once and
+  // reuse it (and its type mapper) across every function.
+  std::optional<mlir::abi::ABITypeMapper> x86TypeMapper;
+  std::unique_ptr<llvm::abi::TargetInfo> x86Target;
+  if (target == "x86_64") {
+    x86TypeMapper.emplace(dl);
+    auto avx =
+        static_cast<llvm::abi::X86AVXABILevel>(x86AvxAbiLevel.getValue());
+    x86Target = llvm::abi::createX86_64TargetInfo(
+        x86TypeMapper->getTypeBuilder(), avx, /*Has64BitPointers=*/true,
+        llvm::abi::ABICompatInfo());
+  }
+
   // Classify every cir.func up front.  No IR mutation happens here, so
   // later walks can consult any function's classification regardless of
   // visitation order.
   llvm::MapVector<cir::FuncOp, FunctionClassification> classifications;
   bool anyFailed = false;
   moduleOp.walk([&](cir::FuncOp f) {
-    auto fc = classifyFunction(f, dl, target, classificationAttr);
+    // Coroutine functions have a synthesized ABI that the classifier must not
+    // rewrite.
+    if (x86Target && f->hasAttr("coroutine"))
+      return;
+    std::optional<FunctionClassification> fc;
+    if (x86Target)
+      fc = classifyX86_64(f, dl, *x86TypeMapper, *x86Target, moduleOp);
+    else
+      fc = classifyFunction(f, dl, target, classificationAttr);
     if (!fc) {
       anyFailed = true;
       return;
@@ -225,4 +667,13 @@ void CallConvLoweringPass::runOnOperation() {
 
 std::unique_ptr<Pass> mlir::createCallConvLoweringPass() {
   return std::make_unique<CallConvLoweringPass>();
+}
+
+std::unique_ptr<Pass>
+mlir::createCallConvLoweringPass(llvm::StringRef target,
+                                 unsigned x86AvxAbiLevel) {
+  CallConvLoweringOptions options;
+  options.target = target.str();
+  options.x86AvxAbiLevel = x86AvxAbiLevel;
+  return std::make_unique<CallConvLoweringPass>(options);
 }

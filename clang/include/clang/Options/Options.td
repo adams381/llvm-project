@@ -3409,6 +3409,13 @@ def clangir_disable_verifier : Flag<["-"], "clangir-disable-verifier">,
   HelpText<"ClangIR: Disable MLIR module verifier">,
   MarshallingInfoFlag<FrontendOpts<"ClangIRDisableCIRVerifier">>;
 
+defm clangir_call_conv_lowering : BoolFOption<"clangir-call-conv-lowering",
+  FrontendOpts<"ClangIREnableCallConvLowering">, DefaultFalse,
+  PosFlag<SetTrue, [], [ClangOption, CC1Option], "Enable">,
+  NegFlag<SetFalse, [], [ClangOption], "Disable">,
+  BothFlags<[], [ClangOption],
+            " the ClangIR calling-convention lowering pass (x86_64)">>;
+
 def clangir_enable_idiom_recognizer : Flag<["-"], "clangir-enable-idiom-recognizer">,
   Visibility<[ClangOption, CC1Option]>,
   HelpText<"ClangIR: Enable Idiom Recognizer pass">,
