@@ -698,6 +698,35 @@ void CallConvLoweringPass::runOnOperation() {
       return;
     }
   }
+
+  // Fix up cir.get_global ops that take the address of a function whose
+  // signature was rewritten.  The result pointee must match the new function
+  // type (a verifier requirement), so update it and bitcast the address back
+  // to the original pointer type for the existing uses.  This is the minimal
+  // function-pointer cascade; propagating a rewritten function type through
+  // composite types (record fields, arrays, global initializers) is left to a
+  // follow-up.
+  SmallVector<cir::GetGlobalOp> getGlobals;
+  moduleOp.walk([&](cir::GetGlobalOp gg) { getGlobals.push_back(gg); });
+  for (cir::GetGlobalOp gg : getGlobals) {
+    auto oldPtrTy = dyn_cast<cir::PointerType>(gg.getType());
+    if (!oldPtrTy)
+      continue;
+    auto oldFuncTy = dyn_cast<cir::FuncType>(oldPtrTy.getPointee());
+    if (!oldFuncTy)
+      continue;
+    auto callee = symbolTable.lookup<cir::FuncOp>(gg.getName());
+    if (!callee)
+      continue;
+    cir::FuncType newFuncTy = callee.getFunctionType();
+    if (newFuncTy == oldFuncTy)
+      continue;
+    gg.getResult().setType(cir::PointerType::get(newFuncTy));
+    builder.setInsertionPointAfter(gg);
+    auto bitcast = cir::CastOp::create(builder, gg.getLoc(), oldPtrTy,
+                                       cir::CastKind::bitcast, gg.getResult());
+    gg.getResult().replaceAllUsesExcept(bitcast.getResult(), bitcast);
+  }
 }
 
 } // namespace
