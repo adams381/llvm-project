@@ -1,0 +1,22 @@
+// RUN: cir-opt %s -cir-call-conv-lowering="target=test" | FileCheck %s
+
+!s32i = !cir.int<s, 32>
+
+module attributes {
+  dlti.dl_spec = #dlti.dl_spec<#dlti.dl_entry<i32, dense<32>: vector<2xi64>>>
+} {
+
+  // An indirect call is classified from the function-pointer's pointee type
+  // and rewritten in place; it must no longer be rejected as NYI.  With
+  // all-scalar arguments there is no coercion, so the call passes through.
+  cir.func @caller(%fp: !cir.ptr<!cir.func<(!s32i, !s32i) -> !s32i>>,
+                   %arg0: !s32i, %arg1: !s32i) -> !s32i {
+    %0 = cir.call %fp(%arg0, %arg1)
+        : (!cir.ptr<!cir.func<(!s32i, !s32i) -> !s32i>>, !s32i, !s32i) -> !s32i
+    cir.return %0 : !s32i
+  }
+
+}
+
+// CHECK: cir.func @caller
+// CHECK: cir.call %{{.+}}(%{{.+}}, %{{.+}})
