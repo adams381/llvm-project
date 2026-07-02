@@ -631,7 +631,28 @@ void CallConvLoweringPass::runOnOperation() {
       return;
     }
     for (Operation *callOp : callers.lookup(func)) {
-      if (failed(rewriteCtx.rewriteCallSite(callOp, fc, builder))) {
+      // A variadic call has more operands than the callee has fixed
+      // parameters.  Re-classify from the call's actual operand types so each
+      // variadic argument (structs included) is coerced or passed byval per
+      // the ABI, then rewrite with that complete classification.
+      const FunctionClassification *callFc = &fc;
+      FunctionClassification variadicFc;
+      if (auto c = dyn_cast<cir::CallOp>(callOp);
+          c && c.getArgOperands().size() > fc.argInfos.size()) {
+        SmallVector<mlir::Type> argTypes =
+            llvm::to_vector(c.getArgOperands().getTypes());
+        mlir::Type retTy = c.getNumResults() ? c.getResult().getType()
+                                             : cir::VoidType::get(ctx);
+        if (x86Target)
+          variadicFc = classifyX86_64Sig(retTy, argTypes, ctx, dl,
+                                         *x86TypeMapper, *x86Target, moduleOp);
+        else if (target == "test")
+          variadicFc = mlir::abi::test::classify(argTypes, retTy, dl);
+        else
+          variadicFc = fc;
+        callFc = &variadicFc;
+      }
+      if (failed(rewriteCtx.rewriteCallSite(callOp, *callFc, builder))) {
         signalPassFailure();
         return;
       }
@@ -655,6 +676,10 @@ void CallConvLoweringPass::runOnOperation() {
     auto funcTy = dyn_cast<cir::FuncType>(ptrTy.getPointee());
     if (!funcTy)
       continue;
+    // Classify from the pointee's fixed inputs.  A variadic indirect call is
+    // left to rewriteCallSite's NYI: rebuilding the callee pointer for a
+    // variadic signature would need to preserve the varargs marker, which is
+    // not yet handled.
     std::optional<FunctionClassification> fc;
     if (x86Target)
       fc = classifyX86_64Sig(funcTy.getReturnType(), funcTy.getInputs(), ctx,
