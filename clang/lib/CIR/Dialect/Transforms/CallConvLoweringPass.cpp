@@ -98,19 +98,18 @@ static RecordABIInfo getRecordABIInfo(ModuleOp module, cir::RecordType recTy) {
   return info;
 }
 
-/// Proxy for the AST notion of an empty record (C++ empty class / empty base):
-/// a record whose members are only i8 padding arrays or (recursively) empty
-/// records.  CIRGen materializes empty classes as a single padding byte, so
-/// this catches the common cases the SysV ABI ignores.
+/// Whether a record carries no data for ABI purposes: it has no members, or
+/// all of its members are themselves empty records.  Any scalar or array
+/// member counts as data.  A padding byte cannot be recognized by shape alone
+/// -- CIRGen materializes an empty class/base as a `[1 x i8]` member, but a
+/// real `char c[1]` field has the same shape -- so this deliberately does not
+/// treat `[1 x i8]` as padding: misclassifying real data as empty silently
+/// drops the argument.
 static bool recordIsEmptyForABI(cir::RecordType recTy) {
   for (mlir::Type m : recTy.getMembers()) {
-    if (auto arr = dyn_cast<cir::ArrayType>(m))
-      if (auto elt = dyn_cast<cir::IntType>(arr.getElementType()))
-        if (elt.getWidth() == 8)
-          continue;
-    if (auto rec = dyn_cast<cir::RecordType>(m))
-      if (recordIsEmptyForABI(rec))
-        continue;
+    auto rec = dyn_cast<cir::RecordType>(m);
+    if (rec && recordIsEmptyForABI(rec))
+      continue;
     return false;
   }
   return true;

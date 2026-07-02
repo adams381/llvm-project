@@ -194,6 +194,16 @@ mlir::ArrayAttr updateArgAttrs(mlir::MLIRContext *ctx,
                                mlir::ArrayAttr existingArgAttrs,
                                const FunctionClassification &fc) {
   mlir::Builder builder(ctx);
+  // Set an ABI attribute the classifier is authoritative for, replacing any
+  // entry CIRGen already placed under the same name.  Re-adding a name that is
+  // already present would make DictionaryAttr::get abort on a duplicate.
+  auto setAttr = [&](SmallVectorImpl<mlir::NamedAttribute> &attrs,
+                     StringRef name, mlir::Attribute value) {
+    llvm::erase_if(attrs, [&](const mlir::NamedAttribute &na) {
+      return na.getName().getValue() == name;
+    });
+    attrs.push_back(builder.getNamedAttr(name, value));
+  };
   SmallVector<mlir::Attribute> newArgAttrs;
   newArgAttrs.reserve(fc.argInfos.size());
   for (auto [oldIdx, ac] : llvm::enumerate(fc.argInfos)) {
@@ -215,6 +225,13 @@ mlir::ArrayAttr updateArgAttrs(mlir::MLIRContext *ctx,
     } else if (ac.kind == ArgKind::Extend) {
       StringRef attrName = ac.signExtend ? "llvm.signext" : "llvm.zeroext";
       SmallVector<mlir::NamedAttribute> attrs(existing.begin(), existing.end());
+      // The classifier decides sign- vs zero-extension, so drop any extension
+      // attribute CIRGen already placed (either name) before adding ours;
+      // otherwise a differing CIRGen choice would leave both on the arg.
+      llvm::erase_if(attrs, [](const mlir::NamedAttribute &na) {
+        StringRef n = na.getName().getValue();
+        return n == "llvm.signext" || n == "llvm.zeroext";
+      });
       attrs.push_back(builder.getNamedAttr(attrName, builder.getUnitAttr()));
       newArgAttrs.push_back(builder.getDictionaryAttr(attrs));
     } else if (ac.kind == ArgKind::Indirect) {
@@ -237,15 +254,12 @@ mlir::ArrayAttr updateArgAttrs(mlir::MLIRContext *ctx,
       mlir::Type pointeeTy = origArgTypes[oldIdx];
       StringRef ownershipAttr = ac.byVal ? "llvm.byval" : "llvm.byref";
       SmallVector<mlir::NamedAttribute> attrs(existing.begin(), existing.end());
-      attrs.push_back(builder.getNamedAttr(
-          "llvm.align", builder.getI64IntegerAttr(ac.indirectAlign.value())));
-      attrs.push_back(
-          builder.getNamedAttr(ownershipAttr, mlir::TypeAttr::get(pointeeTy)));
+      setAttr(attrs, "llvm.align",
+              builder.getI64IntegerAttr(ac.indirectAlign.value()));
+      setAttr(attrs, ownershipAttr, mlir::TypeAttr::get(pointeeTy));
       if (ac.byVal) {
-        attrs.push_back(
-            builder.getNamedAttr("llvm.noalias", builder.getUnitAttr()));
-        attrs.push_back(
-            builder.getNamedAttr("llvm.noundef", builder.getUnitAttr()));
+        setAttr(attrs, "llvm.noalias", builder.getUnitAttr());
+        setAttr(attrs, "llvm.noundef", builder.getUnitAttr());
       }
       newArgAttrs.push_back(builder.getDictionaryAttr(attrs));
     } else {
@@ -288,9 +302,10 @@ mlir::ArrayAttr updateResAttrs(mlir::MLIRContext *ctx,
 /// nor a later load ever runs past it: the coerced ABI type can be larger
 /// than the original (e.g. a 12-byte aggregate passed as `{i64, i64}`), so
 /// accessing the destination through a source-sized slot would over-read.
-/// Alignment is max(srcAlign, dstAlign) to satisfy both accesses.  The slot
-/// is written through a source-typed view and returned as a destination-typed
-/// view.
+/// Alignment is the larger of the two types' ABI alignments, rounded up to a
+/// power of two (an odd-width coerced integer can report a non-power-of-two
+/// alignment that is illegal on an alloca).  The slot is written through a
+/// source-typed view and returned as a destination-typed view.
 ///
 /// The temporary alloca is placed at the start of the enclosing function's
 /// entry block so that it composes correctly with the HoistAllocas pass
@@ -311,7 +326,11 @@ emitCoercionToMemory(mlir::OpBuilder &builder, mlir::Location loc,
 
   uint64_t srcAlign = dl.getTypeABIAlignment(srcTy);
   uint64_t dstAlign = dl.getTypeABIAlignment(dstTy);
-  uint64_t allocaAlign = std::max(srcAlign, dstAlign);
+  // Round up to a power of two: a coerced odd-width integer (e.g. i24 from a
+  // union) can report a non-power-of-two ABI alignment, which is illegal on an
+  // alloca and aborts the final LLVM IR translation.
+  uint64_t allocaAlign =
+      llvm::PowerOf2Ceil(std::max<uint64_t>(std::max(srcAlign, dstAlign), 1));
   mlir::Type slotTy =
       dl.getTypeSize(srcTy) >= dl.getTypeSize(dstTy) ? srcTy : dstTy;
 
