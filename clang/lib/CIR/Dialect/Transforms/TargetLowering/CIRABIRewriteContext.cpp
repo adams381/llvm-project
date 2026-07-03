@@ -308,8 +308,11 @@ mlir::ArrayAttr updateResAttrs(mlir::MLIRContext *ctx,
 /// source-typed view and returned as a destination-typed view.
 ///
 /// The temporary alloca is placed at the start of the enclosing function's
-/// entry block so that it composes correctly with the HoistAllocas pass
-/// regardless of pipeline ordering.
+/// entry block so that it composes correctly with the HoistAllocas pass.
+/// A call in a cir.global initializer region has no enclosing function yet --
+/// LoweringPrepare moves such initializers into a __cxx_global_var_init
+/// function after this pass -- so in that case the slot is created inline and
+/// HoistAllocas relocates it once the initializer becomes a function.
 ///
 /// Any operations the helper creates are appended to \p createdOps so the
 /// caller can pass them to replaceAllUsesExcept and avoid clobbering the
@@ -341,8 +344,12 @@ emitCoercionToMemory(mlir::OpBuilder &builder, mlir::Location loc,
   cir::AllocaOp alloca;
   {
     mlir::OpBuilder::InsertionGuard guard(builder);
-    mlir::Block &entry = funcOp->getRegion(0).front();
-    builder.setInsertionPointToStart(&entry);
+    // Hoist to the entry block when there is an enclosing function; otherwise
+    // (a call in a cir.global initializer region) create the slot inline and
+    // let HoistAllocas move it after LoweringPrepare relocates the initializer
+    // into a function.
+    if (funcOp && !funcOp->getRegion(0).empty())
+      builder.setInsertionPointToStart(&funcOp->getRegion(0).front());
     alloca = cir::AllocaOp::create(builder, loc, slotPtrTy,
                                    builder.getStringAttr("coerce"),
                                    builder.getI64IntegerAttr(allocaAlign));
