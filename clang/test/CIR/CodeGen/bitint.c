@@ -56,13 +56,13 @@ void take_unsigned_bitint(unsigned _BitInt(64) x) {}
 // OGCG: define {{.*}} void @take_unsigned_bitint(i64 {{.*}})
 
 void take_bitint_254(signed _BitInt(254) x) {}
-// CIR: cir.func {{.*}} @take_bitint_254(%arg0: !cir.int<s, 254, bitint>
-// LLVM: define {{.*}} void @take_bitint_254(i254 {{.*}})
+// CIR: cir.func {{.*}} @take_bitint_254(%arg0: !cir.ptr<!cir.int<s, 254, bitint>> {llvm.align = 8 : i64, llvm.byval = !cir.int<s, 254, bitint>, llvm.noalias, llvm.noundef}
+// LLVM: define {{.*}} void @take_bitint_254(ptr noalias noundef byval(i254) align 8 {{.*}})
 // OGCG: define {{.*}} void @take_bitint_254(ptr noundef byval(i256) align 8 {{.*}})
 
 void take_bitint_257(signed _BitInt(257) x) {}
-// CIR: cir.func {{.*}} @take_bitint_257(%arg0: !cir.int<s, 257, bitint>
-// LLVM: define {{.*}} void @take_bitint_257(i257 {{.*}})
+// CIR: cir.func {{.*}} @take_bitint_257(%arg0: !cir.ptr<!cir.int<s, 257, bitint>> {llvm.align = 8 : i64, llvm.byval = !cir.int<s, 257, bitint>, llvm.noalias, llvm.noundef}
+// LLVM: define {{.*}} void @take_bitint_257(ptr noalias noundef byval(i257) align 8 {{.*}})
 // OGCG: define {{.*}} void @take_bitint_257(ptr noundef byval([40 x i8]) align 8 {{.*}})
 
 // Regular __int128 should NOT have the bitint flag.

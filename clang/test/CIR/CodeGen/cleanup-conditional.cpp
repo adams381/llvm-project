@@ -821,7 +821,10 @@ _Complex float test_complex_cond_cleanup(bool b, _Complex float x) {
 // CIR:       %[[SET_TRUE:.*]] = cir.const #true
 // CIR:       cir.store %[[SET_TRUE]], %[[ACTIVE]] : !cir.bool, !cir.ptr<!cir.bool>
 // CIR:       %[[CALL:.*]] = cir.call @_ZN5CplxD3getEv(%[[TMP]])
-// CIR:       cir.yield %[[CALL]] : !cir.complex<!cir.float>
+// CIR:       cir.store %[[CALL]], %[[COERCE:.*]] : !cir.vector<2 x !cir.float>, !cir.ptr<!cir.vector<2 x !cir.float>>
+// CIR:       %[[COERCE_PTR:.*]] = cir.cast bitcast %[[COERCE]] : !cir.ptr<!cir.vector<2 x !cir.float>> -> !cir.ptr<!cir.complex<!cir.float>>
+// CIR:       %[[CPLX:.*]] = cir.load %[[COERCE_PTR]] : !cir.ptr<!cir.complex<!cir.float>>, !cir.complex<!cir.float>
+// CIR:       cir.yield %[[CPLX]] : !cir.complex<!cir.float>
 // CIR:     }, false {
 // CIR:       %[[XV:.*]] = cir.load {{.*}} : !cir.ptr<!cir.complex<!cir.float>>, !cir.complex<!cir.float>
 // CIR:       cir.yield %[[XV]] : !cir.complex<!cir.float>
@@ -835,20 +838,22 @@ _Complex float test_complex_cond_cleanup(bool b, _Complex float x) {
 // CIR:     cir.yield
 // CIR:   }
 
-// LLVM-LABEL: define dso_local {{.*}} { float, float } @_Z25test_complex_cond_cleanupbCf(
+// LLVM-LABEL: define dso_local {{.*}} <2 x float> @_Z25test_complex_cond_cleanupbCf(
 // LLVM:         %[[TMP:.*]] = alloca %struct.CplxD
 // LLVM:         %[[ACTIVE:.*]] = alloca i8
 // LLVM:         br i1 %{{.*}}, label %[[TRUE_BR:.*]], label %[[FALSE_BR:.*]]
 // LLVM:       [[TRUE_BR]]:
 // LLVM:         call void @_ZN5CplxDC1Ev(ptr {{.*}} %[[TMP]])
 // LLVM:         store i8 1, ptr %[[ACTIVE]]
-// LLVM:         %[[CALL:.*]] = call {{.*}} { float, float } @_ZN5CplxD3getEv(ptr {{.*}} %[[TMP]])
+// LLVM:         %[[CALL:.*]] = call {{.*}} <2 x float> @_ZN5CplxD3getEv(ptr {{.*}} %[[TMP]])
+// LLVM:         store <2 x float> %[[CALL]], ptr %[[COERCE:.*]], align
+// LLVM:         %[[TRUE_VAL:.*]] = load { float, float }, ptr %[[COERCE]], align
 // LLVM:         br label %[[MERGE:.*]]
 // LLVM:       [[FALSE_BR]]:
 // LLVM:         %[[XV:.*]] = load { float, float }, ptr %{{.*}}
 // LLVM:         br label %[[MERGE]]
 // LLVM:       [[MERGE]]:
-// LLVM:         %{{.*}} = phi { float, float } [ %[[XV]], %[[FALSE_BR]] ], [ %[[CALL]], %[[TRUE_BR]] ]
+// LLVM:         %{{.*}} = phi { float, float } [ %[[XV]], %[[FALSE_BR]] ], [ %[[TRUE_VAL]], %[[TRUE_BR]] ]
 // LLVM:         %[[ACT:.*]] = load i8, ptr %[[ACTIVE]]
 // LLVM:         %[[ACT_B:.*]] = trunc i8 %[[ACT]] to i1
 // LLVM:         br i1 %[[ACT_B]], label %[[DTOR:.*]], label %[[SKIP:.*]]

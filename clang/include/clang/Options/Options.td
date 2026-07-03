@@ -3410,9 +3410,9 @@ def clangir_disable_verifier : Flag<["-"], "clangir-disable-verifier">,
   MarshallingInfoFlag<FrontendOpts<"ClangIRDisableCIRVerifier">>;
 
 defm clangir_call_conv_lowering : BoolFOption<"clangir-call-conv-lowering",
-  FrontendOpts<"ClangIREnableCallConvLowering">, DefaultFalse,
+  FrontendOpts<"ClangIREnableCallConvLowering">, DefaultTrue,
   PosFlag<SetTrue, [], [ClangOption, CC1Option], "Enable">,
-  NegFlag<SetFalse, [], [ClangOption], "Disable">,
+  NegFlag<SetFalse, [], [ClangOption, CC1Option], "Disable">,
   BothFlags<[], [ClangOption],
             " the ClangIR calling-convention lowering pass (x86_64)">>;
 

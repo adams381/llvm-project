@@ -39,8 +39,7 @@ Wrapper makeWrapper() {
     : Wrapper::empty();
 }
 
-// CIR: cir.func {{.*}} @_Z11makeWrapperv() -> !rec_Wrapper
-// CIR:   %[[RETVAL:.*]] = cir.alloca "__retval" {{.*}} : !cir.ptr<!rec_Wrapper>
+// CIR: cir.func {{.*}} @_Z11makeWrapperv(%[[RETVAL:.*]]: !cir.ptr<!rec_Wrapper> {{.*}}sret{{.*}})
 // CIR:   %[[CLEANUP_COND:.*]] = cir.alloca "cleanup.cond" {{.*}} : !cir.ptr<!cir.bool>
 // CIR:   %[[AGG_TMP0:.*]] = cir.alloca "agg.tmp0" {{.*}} : !cir.ptr<!rec_std3A3Aunique_ptr3CBase3E>
 // CIR:   cir.cleanup.scope {
@@ -53,10 +52,10 @@ Wrapper makeWrapper() {
 // CIR:       %[[TRUE:.*]] = cir.const #true
 // CIR:       cir.store %[[TRUE]], %[[CLEANUP_COND]]
 // CIR:       %[[AGG_TMP0_LOAD:.*]] = cir.load{{.*}} %[[AGG_TMP0]]
-// CIR:       cir.call @_ZN7WrapperC1ESt10unique_ptrI4BaseE(%[[RETVAL]], %[[AGG_TMP0_LOAD]])
+// CIR:       cir.store %[[AGG_TMP0_LOAD]], %[[BYREF:.*]] : !rec_std3A3Aunique_ptr3CBase3E, !cir.ptr<!rec_std3A3Aunique_ptr3CBase3E>
+// CIR:       cir.call @_ZN7WrapperC1ESt10unique_ptrI4BaseE(%[[RETVAL]], %[[BYREF]])
 // CIR:     } else {
-// CIR:       %[[EMPTY:.*]] = cir.call @_ZN7Wrapper5emptyEv()
-// CIR:       cir.store{{.*}} %[[EMPTY]], %[[RETVAL]] : !rec_Wrapper, !cir.ptr<!rec_Wrapper>
+// CIR:       cir.call @_ZN7Wrapper5emptyEv(%[[RETVAL]])
 // CIR:     }
 // CIR:     cir.yield
 // CIR:   } cleanup normal {
@@ -66,11 +65,10 @@ Wrapper makeWrapper() {
 // CIR:     }
 // CIR:     cir.yield
 // CIR:   }
-// CIR:   %[[RET:.*]] = cir.load %[[RETVAL]]
-// CIR:   cir.return %[[RET]] : !rec_Wrapper
+// CIR:   cir.return
 
-// LLVM: define {{.*}} %struct.Wrapper @_Z11makeWrapperv()
-// LLVM:   %[[RETVAL:.*]] = alloca %struct.Wrapper
+// LLVM: define {{.*}} void @_Z11makeWrapperv(ptr {{.*}} sret(%struct.Wrapper) {{.*}} %[[RETVAL:.*]])
+// LLVM:   %[[BYREF:.*]] = alloca %"struct.std::unique_ptr<Base>"
 // LLVM:   %[[CLEANUP_COND:.*]] = alloca i8
 // LLVM:   %[[AGG_TMP0:.*]] = alloca %"struct.std::unique_ptr<Base>"
 // LLVM:   br label %[[INIT:.*]]
@@ -81,11 +79,11 @@ Wrapper makeWrapper() {
 // LLVM:   call void @_ZNSt10unique_ptrI4BaseEC1EPS0_(ptr {{.*}} %[[AGG_TMP0]], ptr {{.*}} %[[SOURCE]])
 // LLVM:   store i8 1, ptr %[[CLEANUP_COND]]
 // LLVM:   %[[AGG_TMP0_LOAD:.*]] = load %"struct.std::unique_ptr<Base>", ptr %[[AGG_TMP0]]
-// LLVM:   call void @_ZN7WrapperC1ESt10unique_ptrI4BaseE(ptr {{.*}} %[[RETVAL]], %"struct.std::unique_ptr<Base>" %[[AGG_TMP0_LOAD]])
+// LLVM:   store %"struct.std::unique_ptr<Base>" %[[AGG_TMP0_LOAD]], ptr %[[BYREF]]
+// LLVM:   call void @_ZN7WrapperC1ESt10unique_ptrI4BaseE(ptr {{.*}} %[[RETVAL]], ptr byref{{.*}} %[[BYREF]])
 // LLVM:   br label %[[CONSTRUCT_CONTINUE:.*]]
 // LLVM: [[CONSTRUCT_FALSE]]:
-// LLVM:   %[[EMPTY:.*]] = call %struct.Wrapper @_ZN7Wrapper5emptyEv()
-// LLVM:   store %struct.Wrapper %[[EMPTY]], ptr %[[RETVAL]]
+// LLVM:   call void @_ZN7Wrapper5emptyEv(ptr {{.*}} sret(%struct.Wrapper) {{.*}} %[[RETVAL]])
 // LLVM:   br label %[[CONSTRUCT_DONE:.*]]
 // LLVM: [[CONSTRUCT_DONE]]:
 // LLVM:   %[[CLEANUP_FLAG:.*]] = load i8, ptr %[[CLEANUP_COND]]
@@ -95,8 +93,7 @@ Wrapper makeWrapper() {
 // LLVM:   call void @_ZNSt10unique_ptrI4BaseED1Ev(ptr {{.*}} %[[AGG_TMP0]])
 // LLVM:   br label %[[DONE:.*]]
 // LLVM: [[DONE]]:
-// LLVM:   %[[RET:.*]] = load %struct.Wrapper, ptr %[[RETVAL]]
-// LLVM:   ret %struct.Wrapper %[[RET]]
+// LLVM:   ret void
   
 // OGCG: define {{.*}} void @_Z11makeWrapperv(ptr{{.*}} sret(%struct.Wrapper) {{.*}} %[[RETVAL:.*]])
 // OGCG:   %[[RESULT_PTR:.*]] = alloca ptr
@@ -165,8 +162,7 @@ void APFixedPoint::add(int x) const {
 // CIR:             %[[TRUE:.*]] = cir.const #true
 // CIR:             cir.store %[[TRUE]], %[[CLEANUP_COND_TRUE]]
 // CIR:           } else {
-// CIR:             %[[CALL_RES:.*]] = cir.call @_ZN5APInt8uadd_satEv(%[[THISVAL]])
-// CIR:             cir.store{{.*}} %[[CALL_RES]], %[[AGG_TMP]]
+// CIR:             cir.call @_ZN5APInt8uadd_satEv(%[[AGG_TMP]], %[[THISVAL]])
 // CIR:             %[[TRUE:.*]] = cir.const #true
 // CIR:             cir.store %[[TRUE]], %[[CLEANUP_COND_FALSE]]
 // CIR:           }
@@ -200,8 +196,7 @@ void APFixedPoint::add(int x) const {
 // LLVM: [[COND_TRUE]]:
 // LLVM:   store i8 1, ptr %[[CLEANUP_COND_TRUE]]
 // LLVM: [[COND_FALSE]]:
-// LLVM:   %[[CALL_RES:.*]] = call %struct.APInt @_ZN5APInt8uadd_satEv(ptr {{.*}} %[[THISVAL]])
-// LLVM:   store %struct.APInt %[[CALL_RES]], ptr %[[AGG_TMP]]
+// LLVM:   call void @_ZN5APInt8uadd_satEv(ptr {{.*}} sret(%struct.APInt) {{.*}} %[[AGG_TMP]], ptr {{.*}} %[[THISVAL]])
 // LLVM:   store i8 1, ptr %[[CLEANUP_COND_FALSE]]
 // LLVM:   %[[FF:.*]] = load i8, ptr %[[CLEANUP_COND_FALSE]]
 // LLVM:   %[[FF_B:.*]] = trunc i8 %[[FF]] to i1
@@ -293,7 +288,8 @@ void makeEntry() {
 // CIR:         %[[TRUE:.*]] = cir.const #true
 // CIR:         cir.store %[[TRUE]], %[[CLEANUP_COND]]
 // CIR:         %[[PATH_LOAD:.*]] = cir.load{{.*}} %[[AGG_TMP0]]
-// CIR:         cir.call @_ZN5EntryC1E4Path(%[[ENSURED_F]], %[[PATH_LOAD]])
+// CIR:         cir.store %[[PATH_LOAD]], %[[BYREF:.*]] : !rec_Path, !cir.ptr<!rec_Path>
+// CIR:         cir.call @_ZN5EntryC1E4Path(%[[ENSURED_F]], %[[BYREF]])
 // CIR:       }
 // CIR:       cir.yield
 // CIR:     } cleanup normal {
@@ -326,7 +322,8 @@ void makeEntry() {
 // LLVM: [[FALSE_BB]]:
 // LLVM:   store i8 1, ptr %[[CLEANUP_COND]]
 // LLVM:   %[[PATH_LOAD:.*]] = load %struct.Path, ptr %[[AGG_TMP0]]
-// LLVM:   call void @_ZN5EntryC1E4Path(ptr {{.*}} %[[ENSURED_F]], %struct.Path %[[PATH_LOAD]])
+// LLVM:   store %struct.Path %[[PATH_LOAD]], ptr %[[BYREF:.*]], align
+// LLVM:   call void @_ZN5EntryC1E4Path(ptr {{.*}} %[[ENSURED_F]], ptr byref{{.*}} %[[BYREF]])
 // LLVM:   br label %[[COND_END]]
 // LLVM: [[COND_END]]:
 // LLVM:   br label %[[AFTER_INNER:.*]]

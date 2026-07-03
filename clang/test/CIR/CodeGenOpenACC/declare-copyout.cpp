@@ -11,7 +11,8 @@ struct Struct {
   static const int StaticMemInt;
 
   void MemFunc1(HasSideEffects ArgHSE, int ArgInt, HasSideEffects *ArgHSEPtr) {
-    // CHECK: cir.func {{.*}}MemFunc1{{.*}}(%{{.*}}: !cir.ptr<!rec_Struct>{{.*}}, %[[ARG_HSE:.*]]: !rec_HasSideEffects{{.*}}, %[[ARG_INT:.*]]: !s32i {{.*}}, %[[ARG_HSE_PTR:.*]]: !cir.ptr<!rec_HasSideEffects>{{.*}})
+    // CHECK: cir.func {{.*}}MemFunc1{{.*}}(%{{.*}}: !cir.ptr<!rec_Struct>{{.*}}, %[[ARG_HSE:.*]]: !cir.ptr<!rec_HasSideEffects>{{.*}}, %[[ARG_INT:.*]]: !s32i {{.*}}, %[[ARG_HSE_PTR:.*]]: !cir.ptr<!rec_HasSideEffects>{{.*}})
+    // CHECK-NEXT: cir.load %[[ARG_HSE]]
     // CHECK-NEXT: cir.alloca{{.*}}"this"
     // CHECK-NEXT: %[[ARG_HSE_ALLOCA:.*]] = cir.alloca "ArgHSE" {{.*}} : !cir.ptr<!rec_HasSideEffects>
     // CHECK-NEXT: %[[ARG_INT_ALLOCA:.*]] = cir.alloca "ArgInt" {{.*}} : !cir.ptr<!s32i>
@@ -75,7 +76,8 @@ void use() {
 }
 
 void Struct::MemFunc2(HasSideEffects ArgHSE, int ArgInt, HasSideEffects *ArgHSEPtr) {
-    // CHECK: cir.func {{.*}}MemFunc2{{.*}}(%{{.*}}: !cir.ptr<!rec_Struct>{{.*}}, %[[ARG_HSE:.*]]: !rec_HasSideEffects{{.*}}, %[[ARG_INT:.*]]: !s32i {{.*}}, %[[ARG_HSE_PTR:.*]]: !cir.ptr<!rec_HasSideEffects>{{.*}})
+    // CHECK: cir.func {{.*}}MemFunc2{{.*}}(%{{.*}}: !cir.ptr<!rec_Struct>{{.*}}, %[[ARG_HSE:.*]]: !cir.ptr<!rec_HasSideEffects>{{.*}}, %[[ARG_INT:.*]]: !s32i {{.*}}, %[[ARG_HSE_PTR:.*]]: !cir.ptr<!rec_HasSideEffects>{{.*}})
+    // CHECK-NEXT: cir.load %[[ARG_HSE]]
     // CHECK-NEXT: cir.alloca{{.*}}"this"
     // CHECK-NEXT: %[[ARG_HSE_ALLOCA:.*]] = cir.alloca "ArgHSE" {{.*}} : !cir.ptr<!rec_HasSideEffects>
     // CHECK-NEXT: %[[ARG_INT_ALLOCA:.*]] = cir.alloca "ArgInt" {{.*}} : !cir.ptr<!s32i>
@@ -146,7 +148,8 @@ void Struct::MemFunc2(HasSideEffects ArgHSE, int ArgInt, HasSideEffects *ArgHSEP
 extern "C" void do_thing();
 
 extern "C" void NormalFunc(HasSideEffects ArgHSE, int ArgInt, HasSideEffects *ArgHSEPtr) {
-    // CHECK: cir.func {{.*}}NormalFunc(%[[ARG_HSE:.*]]: !rec_HasSideEffects{{.*}}, %[[ARG_INT:.*]]: !s32i {{.*}}, %[[ARG_HSE_PTR:.*]]: !cir.ptr<!rec_HasSideEffects>{{.*}})
+    // CHECK: cir.func {{.*}}NormalFunc(%[[ARG_HSE:.*]]: !cir.ptr<!rec_HasSideEffects>{{.*}}, %[[ARG_INT:.*]]: !s32i {{.*}}, %[[ARG_HSE_PTR:.*]]: !cir.ptr<!rec_HasSideEffects>{{.*}})
+    // CHECK-NEXT: cir.load %[[ARG_HSE]]
     // CHECK-NEXT: %[[ARG_HSE_ALLOCA:.*]] = cir.alloca "ArgHSE" {{.*}} : !cir.ptr<!rec_HasSideEffects>
     // CHECK-NEXT: %[[ARG_INT_ALLOCA:.*]] = cir.alloca "ArgInt" {{.*}} : !cir.ptr<!s32i>
     // CHECK-NEXT: %[[ARG_HSE_PTR_ALLOCA:.*]] = cir.alloca "ArgHSEPtr" {{.*}} : !cir.ptr<!cir.ptr<!rec_HasSideEffects>>

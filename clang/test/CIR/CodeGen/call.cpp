@@ -82,11 +82,16 @@ void f11() {
 }
 
 // CIR-LABEL: cir.func{{.*}} @_Z3f11v()
-// CIR:         %[[#s:]] = cir.call @_Z3f10v() : () -> !rec_S
+// CIR:         %[[#ret:]] = cir.call @_Z3f10v() : () -> !u64i
+// CIR-NEXT:    cir.store %[[#ret]], %[[#coerce:]] : !u64i, !cir.ptr<!u64i>
+// CIR-NEXT:    %[[#cast:]] = cir.cast bitcast %[[#coerce]] : !cir.ptr<!u64i> -> !cir.ptr<!rec_S>
+// CIR-NEXT:    %[[#s:]] = cir.load %[[#cast]] : !cir.ptr<!rec_S>, !rec_S
 // CIR-NEXT:    cir.store align(4) %[[#s]], %{{.+}} : !rec_S, !cir.ptr<!rec_S>
 
 // LLVM-LABEL: define{{.*}} void @_Z3f11v(){{.*}}
-// LLVM:         %[[#s:]] = call %struct.S @_Z3f10v()
+// LLVM:         %[[#ret:]] = call i64 @_Z3f10v()
+// LLVM-NEXT:    store i64 %[[#ret]], ptr %[[#coerce:]], align 8
+// LLVM-NEXT:    %[[#s:]] = load %struct.S, ptr %[[#coerce]], align 4
 // LLVM-NEXT:    store %struct.S %[[#s]], ptr %{{.+}}, align 4
 
 void f12() {
@@ -95,13 +100,18 @@ void f12() {
 
 // CIR-LABEL: cir.func{{.*}} @_Z3f12v()
 // CIR:         %[[#slot:]] = cir.alloca "agg.tmp0" {{.*}} : !cir.ptr<!rec_S>
-// CIR-NEXT:    %[[#ret:]] = cir.call @_Z3f10v() : () -> !rec_S
-// CIR-NEXT:    cir.store align(4) %[[#ret]], %[[#slot]] : !rec_S, !cir.ptr<!rec_S>
+// CIR-NEXT:    %[[#ret:]] = cir.call @_Z3f10v() : () -> !u64i
+// CIR-NEXT:    cir.store %[[#ret]], %[[#coerce:]] : !u64i, !cir.ptr<!u64i>
+// CIR-NEXT:    %[[#cast:]] = cir.cast bitcast %[[#coerce]] : !cir.ptr<!u64i> -> !cir.ptr<!rec_S>
+// CIR-NEXT:    %[[#s:]] = cir.load %[[#cast]] : !cir.ptr<!rec_S>, !rec_S
+// CIR-NEXT:    cir.store align(4) %[[#s]], %[[#slot]] : !rec_S, !cir.ptr<!rec_S>
 
 // LLVM-LABEL: define{{.*}} void @_Z3f12v(){{.*}} {
 // LLVM:         %[[#slot:]] = alloca %struct.S, i64 1, align 4
-// LLVM-NEXT:    %[[#ret:]] = call %struct.S @_Z3f10v()
-// LLVM-NEXT:    store %struct.S %[[#ret]], ptr %[[#slot]], align 4
+// LLVM-NEXT:    %[[#ret:]] = call i64 @_Z3f10v()
+// LLVM-NEXT:    store i64 %[[#ret]], ptr %[[#coerce:]], align 8
+// LLVM-NEXT:    %[[#s:]] = load %struct.S, ptr %[[#coerce]], align 4
+// LLVM-NEXT:    store %struct.S %[[#s]], ptr %[[#slot]], align 4
 
 void f13() noexcept;
 void f14() {

@@ -42,7 +42,7 @@ void use(int x, unsigned int y, float f, ConvertsToScalar cts) {
   // CHECK-NEXT: %[[X_LOAD:.*]] = cir.load {{.*}}%[[X_ALLOC]] : !cir.ptr<!s32i>, !s32i
   // CHECK-NEXT: %[[Y_LOAD:.*]] = cir.load {{.*}}%[[Y_ALLOC]] : !cir.ptr<!u32i>, !u32i
   // CHECK-NEXT: %[[F_LOAD:.*]] = cir.load {{.*}}%[[F_ALLOC]] : !cir.ptr<!cir.float>, !cir.float
-  // CHECK-NEXT: %[[COND_CALL:.*]] = cir.call @condition(%[[X_LOAD]], %[[Y_LOAD]], %[[F_LOAD]]) : (!s32i {{.*}}, !u32i {{.*}}, !cir.float {{.*}}) -> !cir.bool
+  // CHECK-NEXT: %[[COND_CALL:.*]] = cir.call @condition(%[[X_LOAD]], %[[Y_LOAD]], %[[F_LOAD]]) : (!s32i {{.*}}, !u32i {{.*}}, !cir.float {{.*}}) -> (!cir.bool {{.*}})
   // CHECK-NEXT: %[[COND_CAST:.*]] = builtin.unrealized_conversion_cast %[[COND_CALL]] : !cir.bool to i1
   // CHECK-NEXT: acc.atomic.write if(%[[COND_CAST]]) %[[F_ALLOC]] = %[[THING_CAST]] : !cir.ptr<!cir.float>, !cir.float
 #pragma acc atomic write if (condition(x, y, f))

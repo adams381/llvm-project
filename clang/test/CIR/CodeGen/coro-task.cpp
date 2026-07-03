@@ -139,7 +139,7 @@ co_invoke_fn co_invoke;
 // CIR-NEXT: cir.global external @_ZN5folly4coro9co_invokeE = #cir.zero : !rec_folly3A3Acoro3A3Aco_invoke_fn
 
 // CIR: cir.func builtin private @__builtin_coro_id(!u32i, !cir.ptr<!void>, !cir.ptr<!void>, !cir.ptr<!void>) -> !u32i
-// CIR:  cir.func builtin private @__builtin_coro_alloc(!u32i) -> !cir.bool
+// CIR:  cir.func builtin private @__builtin_coro_alloc(!u32i) -> (!cir.bool {llvm.zeroext})
 // CIR:  cir.func builtin private @__builtin_coro_size() -> !u64i
 // CIR:  cir.func builtin private @__builtin_coro_begin(!u32i, !cir.ptr<!void>) -> !cir.ptr<!void>
 
@@ -172,7 +172,7 @@ VoidTask silly_task() {
 // Perform allocation calling operator 'new' depending on __builtin_coro_alloc and
 // call __builtin_coro_begin for the final coroutine frame address.
 
-// CIR: %[[ShouldAlloc:.*]] = cir.call @__builtin_coro_alloc(%[[CoroId]]) : (!u32i) -> !cir.bool
+// CIR: %[[ShouldAlloc:.*]] = cir.call @__builtin_coro_alloc(%[[CoroId]]) : (!u32i) -> (!cir.bool {llvm.zeroext})
 // CIR: cir.store{{.*}} %[[NullPtr]], %[[SavedFrameAddr]] : !cir.ptr<!void>, !cir.ptr<!cir.ptr<!void>>
 // CIR: cir.if %[[ShouldAlloc]] {
 // CIR:   %[[CoroSize:.*]] = cir.call @__builtin_coro_size() : () -> (!u64i {llvm.noundef})
@@ -867,8 +867,11 @@ folly::coro::Task<int __complex__> complex_co_await() noexcept {
 // CIR:       cir.await(user, ready : {
 // CIR:       }, suspend : {
 // CIR:       }, resume : {
-// CIR:         %[[RESUME_VAL:.*]] = cir.call @_ZN5folly4coro4TaskICiE12await_resumeEv(%[[COMPLEX_ADDR]]) : (!cir.ptr<!rec_folly3A3Acoro3A3ATask3C_Complex_int3E> {llvm.align = 1 : i64, llvm.dereferenceable = 1 : i64, llvm.nonnull, llvm.noundef}) -> (!cir.complex<!s32i> {llvm.noundef})
-// CIR:         cir.store %[[RESUME_VAL]], %[[RESUME_VAL_ADDR]] : !cir.complex<!s32i>, !cir.ptr<!cir.complex<!s32i>>
+// CIR:         %[[RESUME_VAL:.*]] = cir.call @_ZN5folly4coro4TaskICiE12await_resumeEv(%[[COMPLEX_ADDR]]) : (!cir.ptr<!rec_folly3A3Acoro3A3ATask3C_Complex_int3E> {llvm.align = 1 : i64, llvm.dereferenceable = 1 : i64, llvm.nonnull, llvm.noundef}) -> (!u64i {llvm.noundef})
+// CIR:         cir.store %[[RESUME_VAL]], %[[COERCE:.*]] : !u64i, !cir.ptr<!u64i>
+// CIR:         %[[COERCE_PTR:.*]] = cir.cast bitcast %[[COERCE]] : !cir.ptr<!u64i> -> !cir.ptr<!cir.complex<!s32i>>
+// CIR:         %[[RESUME_CPLX:.*]] = cir.load %[[COERCE_PTR]] : !cir.ptr<!cir.complex<!s32i>>, !cir.complex<!s32i>
+// CIR:         cir.store %[[RESUME_CPLX]], %[[RESUME_VAL_ADDR]] : !cir.complex<!s32i>, !cir.ptr<!cir.complex<!s32i>>
 // CIR:       },)
 // CIR:       %[[V:.*]] = cir.load %[[RESUME_VAL_ADDR]] : !cir.ptr<!cir.complex<!s32i>>, !cir.complex<!s32i>
 // CIR:       cir.yield

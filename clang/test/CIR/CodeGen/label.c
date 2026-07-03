@@ -190,10 +190,10 @@ void foo() {
 // LLVM:2:
 // LLVM:  br label %3
 // LLVM:3:
-// LLVM:  [[CALL:%.*]] = call %struct.S @get()
-// LLVM:  store %struct.S [[CALL]], ptr [[ALLOC]], align 1
+// LLVM:  call void @get()
+// LLVM:  call void @llvm.memcpy.p0.p0.i64(ptr align 1 [[ALLOC]], ptr align 1 @__const.foo.agg.tmp0, i64 0, i1 false)
 // LLVM:  [[LOAD:%.*]] = load %struct.S, ptr [[ALLOC]], align 1
-// LLVM:  call void @bar(%struct.S [[LOAD]])
+// LLVM:  call void @bar()
 
 // OGCG: define dso_local void @foo()
 // OGCG:   %agg.tmp = alloca %struct.S, align 1

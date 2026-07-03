@@ -567,7 +567,7 @@ public:
         EmitSymbolGraphSymbolLabelsForTesting(false),
         EmitPrettySymbolGraphs(false), GenReducedBMI(false),
         UseClangIRPipeline(false), ClangIRDisablePasses(false),
-        ClangIRDisableCIRVerifier(false), ClangIREnableCallConvLowering(false),
+        ClangIRDisableCIRVerifier(false), ClangIREnableCallConvLowering(true),
         ClangIREnableIdiomRecognizer(false), ClangIRLibOptEnabled(false),
         TimeTraceGranularity(500), TimeTraceVerbose(false) {}
 

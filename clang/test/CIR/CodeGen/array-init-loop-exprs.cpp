@@ -87,7 +87,7 @@ struct HasNonTrivialArray {
 
 // LLVM-LABEL: define {{.*}}@_ZN18HasNonTrivialArrayC1ERKS_(
 // LLVM: call void @_ZN18HasNonTrivialArrayC2ERKS_(
-// LLVM-LABEL: define dso_local %struct.HasNonTrivialArray @make_copy(
+// LLVM-LABEL: define dso_local void @make_copy(ptr {{.*}} sret(%struct.HasNonTrivialArray)
 // LLVM: call void @_ZN18HasNonTrivialArrayC1ERKS_(
 
 // OGCG-LABEL: define {{.*}}@make_copy(

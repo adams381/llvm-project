@@ -18,8 +18,7 @@ typedef union vec3 {
 // In C mode, this does do zero padding.
 vec3 ret_vec3() {
   // CIR-LABEL: ret_vec3
-  // CIR: %[[RET_ALLOCA:.*]] = cir.alloca "__retval" {{.*}} : !cir.ptr<!rec_vec3>
-  // CIR: %[[GET_ANON:.*]] = cir.get_member %[[RET_ALLOCA]][0] {name = ""}
+  // CIR: %[[GET_ANON:.*]] = cir.get_member %arg0[0] {name = ""}
   // CIR: %[[GET_X:.*]] = cir.get_member %[[GET_ANON]][0] {name = "x"}
   // CIR: %[[FIVE:.*]] = cir.const #cir.fp<5.{{.*}}> : !cir.double
   // CIR: cir.store{{.*}} %[[FIVE]], %[[GET_X]]
@@ -31,8 +30,7 @@ vec3 ret_vec3() {
   // CIR: cir.store{{.*}} %[[ZERO]], %[[GET_Z]]
 
   // LLVM-LABEL: ret_vec3
-  // OGCG-SAME: ptr{{.*}}sret(%union.vec3){{.*}}%[[RET_ALLOCA:.*]])
-  // LLVMCIR: %[[RET_ALLOCA:.*]] = alloca %union.vec3
+  // LLVM-SAME: ptr{{.*}}sret(%union.vec3){{.*}}%[[RET_ALLOCA:.*]])
   // LLVM: %[[GET_X:.*]] = getelementptr {{.*}}, ptr %[[RET_ALLOCA]], i32 0, i32 0
   // LLVM: store double 5{{.*}}, ptr %[[GET_X]]
   // LLVM: %[[GET_Y:.*]] = getelementptr {{.*}}, ptr %[[RET_ALLOCA]], i32 0, i32 1
@@ -62,5 +60,5 @@ struct outer ret_outer() {
 
   // LLVM-LABEL: ret_outer
   // LLVM: %[[RET_ALLOCA:.*]] = alloca %struct.outer
-  // LLVM: call void @llvm.memcpy.p0.p0.i64(ptr {{.*}}%[[RET_ALLOCA]], ptr {{.*}}@__const.ret_outer.{{.*}}, i64 16, i1 false)
+  // LLVM: call void @llvm.memcpy.p0.p0.i64(ptr {{.*}}, ptr {{.*}}@__const.ret_outer.{{.*}}, i64 16, i1 false)
 }

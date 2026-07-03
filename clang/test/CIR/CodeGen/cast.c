@@ -29,6 +29,7 @@ union Union toUnionAssign() {
   // LLVM-LABEL: toUnionAssign()
   //
   // CIR: %[[RET_ALLOCA:.*]] = cir.alloca "__retval" {{.*}} : !cir.ptr<!rec_Union>
+  // LLVM: %[[COERCE:.*]] = alloca %union.Union
   // LLVM: %[[RET_ALLOCA:.*]] = alloca %union.Union
   union Union u;
   u = (union Union)42;
@@ -38,7 +39,12 @@ union Union toUnionAssign() {
   // LLVM: store i32 42, ptr %[[RET_ALLOCA]]
   return u;
   // CIR: %[[LOAD:.*]] = cir.load %[[RET_ALLOCA]] : !cir.ptr<!rec_Union>, !rec_Union
-  // CIR: cir.return %[[LOAD]]
+  // CIR: cir.store %[[LOAD]], %[[COERCE:.*]] : !rec_Union, !cir.ptr<!rec_Union>
+  // CIR: %[[COERCE_CAST:.*]] = cir.cast bitcast %[[COERCE]] : !cir.ptr<!rec_Union> -> !cir.ptr<!s32i>
+  // CIR: %[[COERCED:.*]] = cir.load %[[COERCE_CAST]] : !cir.ptr<!s32i>, !s32i
+  // CIR: cir.return %[[COERCED]]
   // LLVM: %[[LOAD:.*]] = load %union.Union, ptr %[[RET_ALLOCA]]
-  // LLVM: ret %union.Union %[[LOAD]]
+  // LLVM: store %union.Union %[[LOAD]], ptr %[[COERCE]]
+  // LLVM: %[[COERCED:.*]] = load i32, ptr %[[COERCE]]
+  // LLVM: ret i32 %[[COERCED]]
 }

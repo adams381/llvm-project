@@ -63,12 +63,24 @@ float _Complex pack_indexing_complex() {
 // CIR:   %[[TMP_COMPLEX_0:.*]] = cir.load {{.*}} %[[COMPLEX_0]] : !cir.ptr<!cir.complex<!cir.float>>, !cir.complex<!cir.float>
 // CIR:   cir.store {{.*}} %[[CONST_COMPLEX_1]], %[[COMPLEX_1]] : !cir.complex<!cir.float>, !cir.ptr<!cir.complex<!cir.float>>
 // CIR:   %[[TMP_COMPLEX_1:.*]] = cir.load {{.*}} %[[COMPLEX_1]] : !cir.ptr<!cir.complex<!cir.float>>, !cir.complex<!cir.float>
-// CIR:   %[[RESULT:.*]] = cir.call @_Z13pack_indexingIJCfS0_EEDaDpT_(%[[TMP_COMPLEX_0]], %[[TMP_COMPLEX_1]]) : (!cir.complex<!cir.float> {llvm.noundef}, !cir.complex<!cir.float> {llvm.noundef}) -> (!cir.complex<!cir.float> {llvm.noundef})
-// CIR:   cir.store {{.*}} %[[RESULT]], %[[RET_VAL]] : !cir.complex<!cir.float>, !cir.ptr<!cir.complex<!cir.float>>
+// CIR:   cir.store %[[TMP_COMPLEX_0]], %[[ARG0_COERCE:.*]] : !cir.complex<!cir.float>, !cir.ptr<!cir.complex<!cir.float>>
+// CIR:   %[[ARG0_VEC_PTR:.*]] = cir.cast bitcast %[[ARG0_COERCE]] : !cir.ptr<!cir.complex<!cir.float>> -> !cir.ptr<!cir.vector<2 x !cir.float>>
+// CIR:   %[[ARG0_VEC:.*]] = cir.load %[[ARG0_VEC_PTR]] : !cir.ptr<!cir.vector<2 x !cir.float>>, !cir.vector<2 x !cir.float>
+// CIR:   cir.store %[[TMP_COMPLEX_1]], %[[ARG1_COERCE:.*]] : !cir.complex<!cir.float>, !cir.ptr<!cir.complex<!cir.float>>
+// CIR:   %[[ARG1_VEC_PTR:.*]] = cir.cast bitcast %[[ARG1_COERCE]] : !cir.ptr<!cir.complex<!cir.float>> -> !cir.ptr<!cir.vector<2 x !cir.float>>
+// CIR:   %[[ARG1_VEC:.*]] = cir.load %[[ARG1_VEC_PTR]] : !cir.ptr<!cir.vector<2 x !cir.float>>, !cir.vector<2 x !cir.float>
+// CIR:   %[[RESULT:.*]] = cir.call @_Z13pack_indexingIJCfS0_EEDaDpT_(%[[ARG0_VEC]], %[[ARG1_VEC]]) : (!cir.vector<2 x !cir.float> {llvm.noundef}, !cir.vector<2 x !cir.float> {llvm.noundef}) -> (!cir.vector<2 x !cir.float> {llvm.noundef})
+// CIR:   cir.store %[[RESULT]], %[[RESULT_COERCE:.*]] : !cir.vector<2 x !cir.float>, !cir.ptr<!cir.vector<2 x !cir.float>>
+// CIR:   %[[RESULT_COMPLEX_PTR:.*]] = cir.cast bitcast %[[RESULT_COERCE]] : !cir.ptr<!cir.vector<2 x !cir.float>> -> !cir.ptr<!cir.complex<!cir.float>>
+// CIR:   %[[RESULT_COMPLEX:.*]] = cir.load %[[RESULT_COMPLEX_PTR]] : !cir.ptr<!cir.complex<!cir.float>>, !cir.complex<!cir.float>
+// CIR:   cir.store {{.*}} %[[RESULT_COMPLEX]], %[[RET_VAL]] : !cir.complex<!cir.float>, !cir.ptr<!cir.complex<!cir.float>>
 // CIR:   %[[TMP_RET:.*]] = cir.load %[[RET_VAL]] : !cir.ptr<!cir.complex<!cir.float>>, !cir.complex<!cir.float>
-// CIR:   cir.return %[[TMP_RET]] : !cir.complex<!cir.float>
+// CIR:   cir.store %[[TMP_RET]], %[[RET_COERCE:.*]] : !cir.complex<!cir.float>, !cir.ptr<!cir.complex<!cir.float>>
+// CIR:   %[[RET_VEC_PTR:.*]] = cir.cast bitcast %[[RET_COERCE]] : !cir.ptr<!cir.complex<!cir.float>> -> !cir.ptr<!cir.vector<2 x !cir.float>>
+// CIR:   %[[RET_VEC:.*]] = cir.load %[[RET_VEC_PTR]] : !cir.ptr<!cir.vector<2 x !cir.float>>, !cir.vector<2 x !cir.float>
+// CIR:   cir.return %[[RET_VEC]] : !cir.vector<2 x !cir.float>
 
-// LLVM: define {{.*}} { float, float } @_Z21pack_indexing_complexv()
+// LLVM: define {{.*}} <2 x float> @_Z21pack_indexing_complexv()
 // LLVM:   %[[RET_VAL:.*]] = alloca { float, float }, i64 1, align 4
 // LLVM:   %[[COMPLEX_0:.*]] = alloca { float, float }, i64 1, align 4
 // LLVM:   %[[COMPLEX_1:.*]] = alloca { float, float }, i64 1, align 4
@@ -76,10 +88,18 @@ float _Complex pack_indexing_complex() {
 // LLVM:   %[[TMP_COMPLEX_0:.*]] = load { float, float }, ptr %[[COMPLEX_0]], align 4
 // LLVM:   store { float, float } { float 3.000000e+00, float 4.000000e+00 }, ptr %[[COMPLEX_1]], align 4
 // LLVM:   %[[TMP_COMPLEX_1:.*]] = load { float, float }, ptr %[[COMPLEX_1]], align 4
-// LLVM:   %[[RESULT:.*]] = call noundef { float, float } @_Z13pack_indexingIJCfS0_EEDaDpT_({ float, float } {{.*}} %[[TMP_COMPLEX_0]], { float, float } {{.*}} %[[TMP_COMPLEX_1]])
-// LLVM:   store { float, float } %[[RESULT]], ptr %[[RET_VAL]], align 4
+// LLVM:   store { float, float } %[[TMP_COMPLEX_0]], ptr %[[ARG0_COERCE:.*]], align 4
+// LLVM:   %[[ARG0_VEC:.*]] = load <2 x float>, ptr %[[ARG0_COERCE]], align 8
+// LLVM:   store { float, float } %[[TMP_COMPLEX_1]], ptr %[[ARG1_COERCE:.*]], align 4
+// LLVM:   %[[ARG1_VEC:.*]] = load <2 x float>, ptr %[[ARG1_COERCE]], align 8
+// LLVM:   %[[RESULT:.*]] = call noundef <2 x float> @_Z13pack_indexingIJCfS0_EEDaDpT_(<2 x float> noundef %[[ARG0_VEC]], <2 x float> noundef %[[ARG1_VEC]])
+// LLVM:   store <2 x float> %[[RESULT]], ptr %[[RESULT_COERCE:.*]], align 8
+// LLVM:   %[[RESULT_STRUCT:.*]] = load { float, float }, ptr %[[RESULT_COERCE]], align 4
+// LLVM:   store { float, float } %[[RESULT_STRUCT]], ptr %[[RET_VAL]], align 4
 // LLVM:   %[[TMP_RET:.*]] = load { float, float }, ptr %[[RET_VAL]], align 4
-// LLVM:   ret { float, float } %[[TMP_RET]]
+// LLVM:   store { float, float } %[[TMP_RET]], ptr %[[RET_COERCE:.*]], align 4
+// LLVM:   %[[RET_VEC:.*]] = load <2 x float>, ptr %[[RET_COERCE]], align 8
+// LLVM:   ret <2 x float> %[[RET_VEC]]
 
 // TODO(CIR): the difference between the CIR LLVM and OGCG is because the lack of calling convention lowering,
 // Test will be updated when that is implemented

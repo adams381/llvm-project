@@ -45,7 +45,13 @@ void init_vec_using_initalizer_list() {
 // CIR: %[[SIZE_PTR:.*]] = cir.get_member %[[AGG_ADDR]][1] {name = "size"} : !cir.ptr<!rec_std3A3Ainitializer_list3Cint3E> -> !cir.ptr<!u64i>
 // CIR: cir.store {{.*}} %[[CONST_U64_3]], %[[SIZE_PTR]] : !u64i, !cir.ptr<!u64i>
 // CIR: %[[TMP_AGG:.*]] = cir.load {{.*}} %[[AGG_ADDR]] : !cir.ptr<!rec_std3A3Ainitializer_list3Cint3E>, !rec_std3A3Ainitializer_list3Cint3E
-// CIR: cir.call @_ZN6VectorC1ESt16initializer_listIiE(%[[VEC_ADDR]], %[[TMP_AGG]]) : (!cir.ptr<!rec_Vector> {llvm.align = 1 : i64, llvm.dereferenceable = 1 : i64, llvm.nonnull, llvm.noundef}, !rec_std3A3Ainitializer_list3Cint3E) -> ()
+// CIR: cir.store %[[TMP_AGG]], %[[COERCE:.*]] : !rec_std3A3Ainitializer_list3Cint3E, !cir.ptr<!rec_std3A3Ainitializer_list3Cint3E>
+// CIR: %[[COERCE_CAST:.*]] = cir.cast bitcast %[[COERCE]] : !cir.ptr<!rec_std3A3Ainitializer_list3Cint3E> -> !cir.ptr<!rec_anon_struct>
+// CIR: %[[COERCE_DATA_PTR:.*]] = cir.get_member %[[COERCE_CAST]][0] {name = ""} : !cir.ptr<!rec_anon_struct> -> !cir.ptr<!cir.ptr<!void>>
+// CIR: %[[COERCE_DATA:.*]] = cir.load %[[COERCE_DATA_PTR]] : !cir.ptr<!cir.ptr<!void>>, !cir.ptr<!void>
+// CIR: %[[COERCE_SIZE_PTR:.*]] = cir.get_member %[[COERCE_CAST]][1] {name = ""} : !cir.ptr<!rec_anon_struct> -> !cir.ptr<!u64i>
+// CIR: %[[COERCE_SIZE:.*]] = cir.load %[[COERCE_SIZE_PTR]] : !cir.ptr<!u64i>, !u64i
+// CIR: cir.call @_ZN6VectorC1ESt16initializer_listIiE(%[[VEC_ADDR]], %[[COERCE_DATA]], %[[COERCE_SIZE]]) : (!cir.ptr<!rec_Vector> {llvm.align = 1 : i64, llvm.dereferenceable = 1 : i64, llvm.nonnull, llvm.noundef}, !cir.ptr<!void>, !u64i) -> ()
 // CIR: cir.cleanup.scope {
 // CIR:   cir.yield
 // CIR: } cleanup normal {
@@ -67,7 +73,12 @@ void init_vec_using_initalizer_list() {
 // LLVM:   %[[SIZE_PTR:.*]] = getelementptr inbounds nuw %"class.std::initializer_list<int>", ptr %[[AGG_ADDR]], i32 0, i32 1
 // LLVM:   store i64 3, ptr %[[SIZE_PTR]], align 8
 // LLVM:   %[[TMP_AGG:.*]] = load %"class.std::initializer_list<int>", ptr %[[AGG_ADDR]], align 8
-// LLVM:   call void @_ZN6VectorC1ESt16initializer_listIiE(ptr noundef nonnull align 1 dereferenceable(1) %[[VEC_ADDR]], %"class.std::initializer_list<int>" %[[TMP_AGG]])
+// LLVM:   store %"class.std::initializer_list<int>" %[[TMP_AGG]], ptr %[[COERCE:.*]], align 8
+// LLVM:   %[[DATA_GEP:.*]] = getelementptr inbounds nuw { ptr, i64 }, ptr %[[COERCE]], i32 0, i32 0
+// LLVM:   %[[COERCE_DATA:.*]] = load ptr, ptr %[[DATA_GEP]], align 8
+// LLVM:   %[[SIZE_GEP:.*]] = getelementptr inbounds nuw { ptr, i64 }, ptr %[[COERCE]], i32 0, i32 1
+// LLVM:   %[[COERCE_SIZE:.*]] = load i64, ptr %[[SIZE_GEP]], align 8
+// LLVM:   call void @_ZN6VectorC1ESt16initializer_listIiE(ptr noundef nonnull align 1 dereferenceable(1) %[[VEC_ADDR]], ptr %[[COERCE_DATA]], i64 %[[COERCE_SIZE]])
 // LLVM:   br label %[[SCOPE_CONT:.*]]
 // LLVM: [[SCOPE_CONT]]:
 // LLVM:   br label %[[CLEANUP_START:.*]]

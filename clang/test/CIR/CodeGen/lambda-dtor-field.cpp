@@ -80,7 +80,7 @@ void capture_two(S a, S b) {
 // LLVM:   call void @_ZN1SD1Ev(ptr {{.*}} %[[FA_D]])
 // LLVM:   ret void
 
-// LLVM-LABEL: define dso_local void @_Z11capture_two1SS_(%struct.S {{.*}}, %struct.S {{.*}}) #{{.*}} personality ptr @__gxx_personality_v0 {
+// LLVM-LABEL: define dso_local void @_Z11capture_two1SS_(ptr {{.*}}, ptr {{.*}}) #{{.*}} personality ptr @__gxx_personality_v0 {
 // LLVM:   %[[A_ALLOCA:.*]] = alloca %struct.S
 // LLVM:   %[[B_ALLOCA:.*]] = alloca %struct.S
 // LLVM:   %[[LAM2:.*]] = alloca %[[LAM_TY_2]]

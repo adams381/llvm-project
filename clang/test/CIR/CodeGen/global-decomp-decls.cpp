@@ -33,15 +33,21 @@ const auto & [t11, t12, t13] = getT<Type>();
 // CIR: cir.func internal private @__cxx_global_var_init{{.*}}() {
 // CIR:   %[[SB:.*]] = cir.get_global @_ZDC3t113t123t13E : !cir.ptr<!cir.ptr<!rec_Type>>
 // CIR:   %[[SB_REF:.*]] = cir.get_global @_ZGRDC3t113t123t13E_ : !cir.ptr<!rec_Type>
-// CIR:   %[[GETTCALL:.*]] = cir.call @_Z4getTI4TypeEDav() : () -> !rec_Type
-// CIR:   cir.store align(4) %[[GETTCALL]], %[[SB_REF]] : !rec_Type, !cir.ptr<!rec_Type>
+// CIR:   %[[GETTCALL:.*]] = cir.call @_Z4getTI4TypeEDav() : () -> !rec_anon_struct
+// CIR:   %[[COERCE:.*]] = cir.alloca "coerce" {{.*}} : !cir.ptr<!rec_anon_struct>
+// CIR:   cir.store %[[GETTCALL]], %[[COERCE]] : !rec_anon_struct, !cir.ptr<!rec_anon_struct>
+// CIR:   %[[CAST:.*]] = cir.cast bitcast %[[COERCE]] : !cir.ptr<!rec_anon_struct> -> !cir.ptr<!rec_Type>
+// CIR:   %[[LOADED:.*]] = cir.load %[[CAST]] : !cir.ptr<!rec_Type>, !rec_Type
+// CIR:   cir.store align(4) %[[LOADED]], %[[SB_REF]] : !rec_Type, !cir.ptr<!rec_Type>
 // CIR:   cir.store align(8) %[[SB_REF]], %[[SB]] : !cir.ptr<!rec_Type>, !cir.ptr<!cir.ptr<!rec_Type>>
 
 // LLVM: define internal void @__cxx_global_var_init{{.*}}()
-// LLVMCIR:   %[[GETTCALL:.*]] = call %struct.Type @_Z4getTI4TypeEDav()
-// OGCG:      %[[GETTCALL:.*]] = call { i64, i32 } @_Z4getTI4TypeEDav()
-// LLVMCIR:   store %struct.Type %[[GETTCALL]], ptr @_ZGRDC3t113t123t13E_, align 4
-// OGCG:      store { i64, i32 } %call, ptr %[[COERCED_PTR:.*]],
+// LLVM:   %[[GETTCALL:.*]] = call { i64, i32 } @_Z4getTI4TypeEDav()
+// LLVMCIR:   %[[COERCE:.*]] = alloca { i64, i32 }
+// LLVMCIR:   store { i64, i32 } %[[GETTCALL]], ptr %[[COERCE]]
+// LLVMCIR:   %[[LOADED:.*]] = load %struct.Type, ptr %[[COERCE]]
+// LLVMCIR:   store %struct.Type %[[LOADED]], ptr @_ZGRDC3t113t123t13E_, align 4
+// OGCG:      store { i64, i32 } %[[GETTCALL]], ptr %[[COERCED_PTR:.*]],
 // OGCG:      call void @llvm.memcpy.p0.p0.i64(ptr align 4 @_ZGRDC3t113t123t13E_, ptr align 8 %[[COERCED_PTR]], i64 12, i1 false)
 // LLVM:   store ptr @_ZGRDC3t113t123t13E_, ptr @_ZDC3t113t123t13E, align 8
 

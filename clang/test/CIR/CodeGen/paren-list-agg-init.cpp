@@ -158,10 +158,17 @@ constexpr int arr4[](1);
 constexpr int arr5[2](2);
 
 // LLVM: define dso_local {{.*}} @{{.*foo1.*}}
-// LLVM: [[RETVAL:%.*]] = alloca [[STRUCT_A]]
-// LLVM-NEXT: call void @llvm.memcpy.p0.p0.i64(ptr align 8 [[RETVAL]], ptr align 8 [[A1]], i64 16, i1 false)
-// LLVM-NEXT: [[TMP_0:%.*]] = load {{.*}}, ptr [[RETVAL]], align 8
-// LLVM-NEXT: ret {{.*}}[[TMP_0]]
+// LLVMCIR: [[COERCE:%.*]] = alloca [[STRUCT_A]]
+// LLVMCIR-NEXT: [[RETVAL:%.*]] = alloca [[STRUCT_A]]
+// LLVMCIR-NEXT: call void @llvm.memcpy.p0.p0.i64(ptr align 8 [[RETVAL]], ptr align 8 [[A1]], i64 16, i1 false)
+// LLVMCIR-NEXT: [[TMP_0:%.*]] = load [[STRUCT_A]], ptr [[RETVAL]], align 8
+// LLVMCIR-NEXT: store [[STRUCT_A]] [[TMP_0]], ptr [[COERCE]], align 8
+// LLVMCIR-NEXT: [[TMP_1:%.*]] = load { i8, double }, ptr [[COERCE]], align 8
+// LLVMCIR-NEXT: ret { i8, double } [[TMP_1]]
+// OGCG: [[RETVAL:%.*]] = alloca [[STRUCT_A]]
+// OGCG-NEXT: call void @llvm.memcpy.p0.p0.i64(ptr align 8 [[RETVAL]], ptr align 8 [[A1]], i64 16, i1 false)
+// OGCG-NEXT: [[TMP_0:%.*]] = load { i8, double }, ptr [[RETVAL]], align 8
+// OGCG-NEXT: ret { i8, double } [[TMP_0]]
 // CIR-LABEL: cir.func {{.*}}@_Z4foo1v()
 // CIR: %[[A_ALLOCA:.*]] = cir.alloca "__retval" align(8) : !cir.ptr<![[STRUCT_A]]>
 // CIR: %[[GET_A1:.*]] = cir.get_global @_ZL2a1 : !cir.ptr<![[STRUCT_A]]>
@@ -172,20 +179,18 @@ A foo1() {
 
 // LLVM: define dso_local {{.*}}@{{.*foo2.*}}
 // LLVM: call void @llvm.memcpy.p0.p0.i64(ptr align 8 {{.*}}, ptr align 8 [[B1]], i64 24, i1 false)
-// CIR: cir.func {{.*}}@_Z4foo2v()
-// CIR: %[[B_ALLOCA:.*]] = cir.alloca "__retval" align(8) : !cir.ptr<![[STRUCT_B]]>
+// CIR: cir.func {{.*}}@_Z4foo2v(%[[B_ARG:.*]]: !cir.ptr<![[STRUCT_B]]> {{.*}}sret{{.*}}
 // CIR: %[[GET_GLOB:.*]] = cir.get_global @_ZL2b1 : !cir.ptr<![[STRUCT_B]]>
-// CIR: cir.copy %[[GET_GLOB]] align(8) to %[[B_ALLOCA]] align(8) : !cir.ptr<![[STRUCT_B]]>
+// CIR: cir.copy %[[GET_GLOB]] align(8) to %[[B_ARG]] align(8) : !cir.ptr<![[STRUCT_B]]>
 B foo2() {
   return b1;
 }
 
 // LLVM: define dso_local {{.*}}@{{.*foo3.*}}
 // LLVM: call void @llvm.memcpy.p0.p0.i64(ptr align 8 {{.*}}, ptr align 8 [[C1]], i64 48, i1 false)
-// CIR: cir.func {{.*}}@_Z4foo3v()
-// CIR: %[[C_ALLOCA:.*]] = cir.alloca "__retval" align(8) : !cir.ptr<![[STRUCT_C]]>
+// CIR: cir.func {{.*}}@_Z4foo3v(%[[C_ARG:.*]]: !cir.ptr<![[STRUCT_C]]> {{.*}}sret{{.*}}
 // CIR: %[[GET_GLOB:.*]] = cir.get_global @_ZL2c1 : !cir.ptr<![[STRUCT_C]]>
-// CIR: cir.copy %[[GET_GLOB]] align(8) to %[[C_ALLOCA]] align(8) : !cir.ptr<![[STRUCT_C]]>
+// CIR: cir.copy %[[GET_GLOB]] align(8) to %[[C_ARG]] align(8) : !cir.ptr<![[STRUCT_C]]>
 C foo3() {
   return c1;
 }
@@ -244,8 +249,11 @@ void foo4() {
 }
 
 // LLVM: define dso_local {{.*}}@{{.*foo5.*}}
-// LLVM: [[RETVAL:%.*]] = alloca [[UNION_U]]
-// LLVM-NEXT: call void @llvm.memcpy.p0.p0.i64(ptr align 8 [[RETVAL]], ptr align 8 [[U1]], i64 16, i1 false)
+// LLVMCIR: [[COERCE:%.*]] = alloca [[UNION_U]]
+// LLVMCIR-NEXT: [[RETVAL:%.*]] = alloca [[UNION_U]]
+// LLVMCIR-NEXT: call void @llvm.memcpy.p0.p0.i64(ptr align 8 [[RETVAL]], ptr align 8 [[U1]], i64 16, i1 false)
+// OGCG: [[RETVAL:%.*]] = alloca [[UNION_U]]
+// OGCG-NEXT: call void @llvm.memcpy.p0.p0.i64(ptr align 8 [[RETVAL]], ptr align 8 [[U1]], i64 16, i1 false)
 // CIR-LABEL: cir.func no_inline dso_local @_Z4foo5v()
 // CIR:  %[[RET:.*]] = cir.alloca "__retval" align(8) : !cir.ptr<![[UNION_U]]>
 // CIR:  %[[GET_GLOB:.*]] = cir.get_global @_ZL2u1 : !cir.ptr<![[UNION_U]]>
@@ -256,9 +264,13 @@ U foo5() {
 
 
 // LLVM: define dso_local {{.*}}@{{.*foo6.*}}
-// LLVM-DAG:   [[RETVAL:%.*]] = alloca [[UNION_U]]
-// LLVM-DAG:   [[A:%.*]] = alloca [[STRUCT_A]]
-// LLVM:   call void @llvm.memcpy.p0.p0.i64(ptr align 8 [[RETVAL]], ptr align 8 [[A]], i64 16, i1 false)
+// LLVMCIR:   [[COERCE:%.*]] = alloca [[UNION_U]]
+// LLVMCIR:   [[A:%.*]] = alloca [[STRUCT_A]]
+// LLVMCIR:   [[RETVAL:%.*]] = alloca [[UNION_U]]
+// LLVMCIR:   call void @llvm.memcpy.p0.p0.i64(ptr align 8 [[RETVAL]], ptr align 8 [[A]], i64 16, i1 false)
+// OGCG-DAG:   [[RETVAL:%.*]] = alloca [[UNION_U]]
+// OGCG-DAG:   [[A:%.*]] = alloca [[STRUCT_A]]
+// OGCG:   call void @llvm.memcpy.p0.p0.i64(ptr align 8 [[RETVAL]], ptr align 8 [[A]], i64 16, i1 false)
 // CIR-LABEL: cir.func no_inline dso_local @_Z4foo61A(
 // CIR: %[[A_ALLOCA:.*]] = cir.alloca "a" align(8) init : !cir.ptr<![[STRUCT_A]]>
 // CIR: %[[RET_ALLOCA:.*]] = cir.alloca "__retval" align(8) : !cir.ptr<![[UNION_U]]>
@@ -318,10 +330,9 @@ void foo7() {
 
 // LLVM: dso_local {{.*}}@{{.*foo8.*}}(
 // LLVM: call void @llvm.memcpy.p0.p0.i64(ptr align 8 {{.*}}, ptr align 8 [[D1]], i64 56, i1 false)
-// CIR-LABEL: cir.func no_inline dso_local @_Z4foo8v() 
-// CIR: %[[RET_ALLOCA:.*]] = cir.alloca "__retval" align(8) : !cir.ptr<![[STRUCT_D]]>
+// CIR-LABEL: cir.func no_inline dso_local @_Z4foo8v(%arg0: !cir.ptr<{{.*}}sret
 // CIR: %[[GET_GLOB:.*]] = cir.get_global @_ZL2d1 : !cir.ptr<![[STRUCT_D]]>
-// CIR: cir.copy %[[GET_GLOB]] align(8) to %[[RET_ALLOCA]] align(8) : !cir.ptr<![[STRUCT_D]]>
+// CIR: cir.copy %[[GET_GLOB]] align(8) to %arg0 align(8) : !cir.ptr<![[STRUCT_D]]>
 D foo8() {
   return d1;
 }
@@ -453,10 +464,17 @@ void foo12(int a, int b) {
 }
 
 // LLVM: define {{.*}}@{{.*foo13.*}}
-// LLVM: [[RETVAL:%.*]] = alloca [[STRUCT_A]]
-// LLVM-NEXT: call void @llvm.memcpy.p0.p0.i64(ptr align 8 [[RETVAL]], ptr align 8 [[A2]], i64 16, i1 false)
-// LLVM-NEXT: [[TMP_0:%.*]] = load {{.*}}, ptr [[RETVAL]], align 8
-// LLVM-NEXT: ret {{.*}}[[TMP_0]]
+// LLVMCIR: [[COERCE:%.*]] = alloca [[STRUCT_A]]
+// LLVMCIR-NEXT: [[RETVAL:%.*]] = alloca [[STRUCT_A]]
+// LLVMCIR-NEXT: call void @llvm.memcpy.p0.p0.i64(ptr align 8 [[RETVAL]], ptr align 8 [[A2]], i64 16, i1 false)
+// LLVMCIR-NEXT: [[TMP_0:%.*]] = load [[STRUCT_A]], ptr [[RETVAL]], align 8
+// LLVMCIR-NEXT: store [[STRUCT_A]] [[TMP_0]], ptr [[COERCE]], align 8
+// LLVMCIR-NEXT: [[TMP_1:%.*]] = load { i8, double }, ptr [[COERCE]], align 8
+// LLVMCIR-NEXT: ret { i8, double } [[TMP_1]]
+// OGCG: [[RETVAL:%.*]] = alloca [[STRUCT_A]]
+// OGCG-NEXT: call void @llvm.memcpy.p0.p0.i64(ptr align 8 [[RETVAL]], ptr align 8 [[A2]], i64 16, i1 false)
+// OGCG-NEXT: [[TMP_0:%.*]] = load { i8, double }, ptr [[RETVAL]], align 8
+// OGCG-NEXT: ret { i8, double } [[TMP_0]]
 // CIR-LABEL: cir.func no_inline dso_local @_Z5foo13v()
 // CIR: %[[RET_ALLOCA:.*]] = cir.alloca "__retval" align(8) : !cir.ptr<![[STRUCT_A]]>
 // CIR; %[[GET_GLOB:.*]] = cir.get_global @_ZL2a2 : !cir.ptr<![[STRUCT_A]]>
