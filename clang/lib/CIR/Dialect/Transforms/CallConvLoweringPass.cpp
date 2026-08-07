@@ -69,8 +69,9 @@ namespace {
 // dialect-agnostic mlir::abi::FunctionClassification that CIRABIRewriteContext
 // consumes.  Integer (including `_BitInt` up to 128 bits) / pointer / bool /
 // f32 / f64 scalars and struct / union / array aggregates are handled.
-// `_Complex`, vectors, wider floats, packed or padded records, and a union no
-// member of which spans its declared size are reported NYI by
+// `_Complex`, vectors, wider floats, packed records, padded records the layout
+// metadata does not call empty, a union no member of which spans its declared
+// size, and a union with an empty member are reported NYI by
 // classifyX86_64Function so an unsupported signature fails the pass instead of
 // being misclassified.
 //===----------------------------------------------------------------------===//
@@ -84,6 +85,17 @@ static bool recordCanPassInRegs(ModuleOp modOp, cir::RecordType recTy) {
   if (!layout)
     return true;
   return layout.getArgPassingKind() == cir::ArgPassingKind::CanPassInRegs;
+}
+
+/// Whether a union member holds no data, either because it is an empty record
+/// or an array of them.  An array is stripped because the ABI library reduces
+/// a union to a single member and coerces from that member's bytes, and it
+/// cannot see that an array of empty records supplies none.
+static bool unionMemberIsEmpty(mlir::Type ty) {
+  while (auto arrTy = dyn_cast<cir::ArrayType>(ty))
+    ty = arrTy.getElementType();
+  auto recTy = dyn_cast<cir::RecordType>(ty);
+  return recTy && cir::allMembersNonData(recTy);
 }
 
 /// A record's declared alignment, which the ABI uses for the byval and sret
@@ -156,10 +168,17 @@ static bool isSupportedType(mlir::Type ty, const DataLayout &dl) {
         };
         if (!llvm::any_of(members, spansRecord))
           return false;
+        // Classic sizes a union's coercion from the bytes that hold data, so an
+        // empty member contributes none.  The library instead reduces the union
+        // to one member, picked by alignment and then by size, and coerces from
+        // that member: an empty one can win either comparison and widen the
+        // coercion past what classic emits.
+        if (llvm::any_of(members, unionMemberIsEmpty))
+          return false;
       }
-    } else if (recTy.getPadded()) {
-      // A struct's padding is a member the classifier would have to recognize
-      // as padding rather than data, which is not implemented.
+    } else if (recTy.getPadded() && !cir::allMembersNonData(recTy)) {
+      // Padding the classifier would have to tell apart from data is not
+      // implemented.  An empty record has no data to confuse it with.
       return false;
     }
     return llvm::all_of(recTy.getMembers(),
@@ -251,6 +270,16 @@ static const llvm::abi::Type *mapCIRType(mlir::Type type,
         llvm::TypeSize sizeBits = llvm::TypeSize::getFixed(
             dl.getTypeSizeInBits(type).getFixedValue());
         llvm::Align align = recordDeclaredAlign(modOp, recTy, dl);
+
+        // An empty record holds no user data, so map it with no fields and let
+        // the classifier reach Ignore on its own.  The size still decides
+        // between that and the memory class, which an empty class past two
+        // eightbytes lands in.
+        if (cir::allMembersNonData(recTy))
+          return tb.getRecordType(
+              /*Fields=*/{}, sizeBits, align, llvm::abi::StructPacking::Default,
+              /*BaseClasses=*/{}, /*VirtualBaseClasses=*/{}, flags);
+
         SmallVector<llvm::abi::FieldInfo> fields;
         fields.reserve(recTy.getMembers().size());
 
@@ -265,8 +294,8 @@ static const llvm::abi::Type *mapCIRType(mlir::Type type,
                                  llvm::abi::StructPacking::Default, flags);
         }
 
-        // isSupportedType rejects packed and padded structs, so every field
-        // here sits at its naturally-aligned offset.
+        // An accepted non-empty struct is never padded, so every field here
+        // sits at its naturally-aligned offset.
         uint64_t offsetBits = 0;
         for (mlir::Type fieldTy : recTy.getMembers()) {
           const llvm::abi::Type *mappedField =
@@ -307,7 +336,7 @@ static const llvm::abi::Type *mapCIRType(mlir::Type type,
 /// Indirect: an aggregate that does not fit in registers is passed via a
 /// pointer (sret for returns, byval for arguments).
 ///
-/// Ignore: a void return, or a zero-field record dropped from the signature.
+/// Ignore: a void return, or an empty record dropped from the signature.
 static std::optional<ArgClassification>
 convertABIArgInfo(const llvm::abi::ArgInfo &info, MLIRContext *ctx,
                   mlir::Type origTy) {

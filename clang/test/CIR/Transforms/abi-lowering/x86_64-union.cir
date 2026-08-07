@@ -33,7 +33,10 @@ module attributes {
       record_align = 32>,
     SOverAligned = #cir.record_layout<
       arg_passing_kind = can_pass_in_regs, has_trivial_dtor = true,
-      record_align = 32>},
+      record_align = 32>,
+    UEmpty = #cir.record_layout<
+      arg_passing_kind = can_pass_in_regs, has_trivial_dtor = true,
+      record_align = 1>},
   dlti.dl_spec = #dlti.dl_spec<
     #dlti.dl_entry<i8, dense<8>: vector<2xi64>>,
     #dlti.dl_entry<i16, dense<16>: vector<2xi64>>,
