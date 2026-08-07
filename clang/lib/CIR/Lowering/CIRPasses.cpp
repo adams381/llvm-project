@@ -28,6 +28,53 @@ static CallConvTarget getCallConvTarget(const llvm::Triple &triple) {
   return CallConvTarget::None;
 }
 
+/// The AVX level the x86_64 classifier uses to size a native vector, which
+/// decides whether a 256- or 512-bit vector is passed in registers or in
+/// memory.  Read from the target ABI name, as CodeGenModule does for the
+/// classic path.
+static llvm::abi::X86AVXABILevel getX86AVXABILevel(llvm::StringRef abi) {
+  if (abi == "avx512")
+    return llvm::abi::X86AVXABILevel::AVX512;
+  if (abi == "avx")
+    return llvm::abi::X86AVXABILevel::AVX;
+  return llvm::abi::X86AVXABILevel::None;
+}
+
+/// Whether `__attribute__((target(...)))` on a function may raise its AVX ABI
+/// level above the command line's.  PlayStation keeps every function at the
+/// global level, and so does any ABI older than the release that introduced
+/// the per-function rule.  Mirrors getEffectiveX86AVXABILevel in
+/// clang/lib/CodeGen/Targets/X86.cpp.
+static bool allowsX86TargetAttrAvx(const clang::ASTContext &astContext) {
+  return !astContext.getTargetInfo().getTriple().isPS() &&
+         astContext.getLangOpts().getClangABICompat() >
+             clang::LangOptions::ClangABI::Ver23;
+}
+
+/// The x86_64 ABI-compatibility flags the CallConvLowering bridge can reach,
+/// derived from the target and the requested ABI compatibility version as the
+/// predicates in clang/lib/CodeGen/Targets/X86.cpp do.
+/// ReturnCXXRecordGreaterThan128InMem is left at its default because it is read
+/// only while walking a C++ record's base classes, which this bridge does not
+/// build.
+static llvm::abi::ABICompatInfo
+getX86ABICompatInfo(const clang::ASTContext &astContext) {
+  const llvm::Triple &triple = astContext.getTargetInfo().getTriple();
+  const clang::LangOptions &langOpts = astContext.getLangOpts();
+  llvm::abi::ABICompatInfo compat;
+  compat.HonorsRevision98 = !triple.isOSDarwin();
+  compat.ClassifyIntegerMMXAsSSE =
+      !langOpts.isCompatibleWith(clang::LangOptions::ClangABI::Ver3_8) &&
+      !triple.isOSDarwin() && !triple.isPS() && !triple.isOSFreeBSD();
+  compat.PassInt128VectorsInMem =
+      !langOpts.isCompatibleWith(clang::LangOptions::ClangABI::Ver9) &&
+      (triple.isOSLinux() || triple.isOSNetBSD());
+  compat.Clang11Compat =
+      langOpts.isCompatibleWith(clang::LangOptions::ClangABI::Ver11) ||
+      triple.isPS();
+  return compat;
+}
+
 mlir::LogicalResult
 runCIRToCIRPasses(mlir::ModuleOp theModule, mlir::MLIRContext &mlirContext,
                   clang::ASTContext &astContext, bool enableVerifier,
@@ -66,11 +113,12 @@ runCIRToCIRPasses(mlir::ModuleOp theModule, mlir::MLIRContext &mlirContext,
     // so it must run after CXXABILowering has lowered C++ ABI types to plain
     // records the classifier can handle.  Only the x86_64 System V classifier
     // is implemented; other targets are left unchanged.
-    CallConvTarget target =
-        getCallConvTarget(astContext.getTargetInfo().getTriple());
+    const clang::TargetInfo &targetInfo = astContext.getTargetInfo();
+    CallConvTarget target = getCallConvTarget(targetInfo.getTriple());
     if (target != CallConvTarget::None)
       pm.addPass(mlir::createCallConvLoweringPass(
-          target, llvm::abi::X86AVXABILevel::None));
+          target, getX86AVXABILevel(targetInfo.getABI()),
+          allowsX86TargetAttrAvx(astContext), getX86ABICompatInfo(astContext)));
   }
 
   pm.addPass(mlir::createLoweringPreparePass(&astContext));

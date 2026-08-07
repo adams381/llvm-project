@@ -5,6 +5,11 @@
 // RUN: %clang_cc1 -triple x86_64-unknown-linux-gnu -emit-llvm %s -o %t.ll
 // RUN: FileCheck --check-prefixes=LLVM,LLVM-OGCG --input-file=%t.ll %s
 
+// Anonymous record aliases are numbered in the order they are printed, so
+// capture the one the x87 pair gets rather than naming it.
+// CIR-DAG: ![[X87PAIR:rec_anon_struct[0-9]*]] = !cir.struct<{!cir.f80, !cir.f80}>
+// CIR-DAG: ![[I64PAIR:rec_anon_struct[0-9]*]] = !cir.struct<{!u64i, !u64i}>
+
 typedef struct { int x; int y; } Pair2;
 typedef struct { long a; long b; } Pair16;
 typedef struct { long a, b, c, d; } Big;
@@ -163,3 +168,179 @@ void take_struct_over_aligned(SOverAligned s) { (void)s; }
 // CIR: cir.func {{.*}}@take_struct_over_aligned(%arg0: !cir.ptr<!rec_SOverAligned> {{.*}}llvm.align = 32 : i64{{.*}}llvm.byval = !rec_SOverAligned{{.*}})
 // LLVM-CIR: define dso_local void @take_struct_over_aligned(ptr noalias noundef byval(%struct.SOverAligned) align 32 %{{.+}})
 // LLVM-OGCG: define dso_local void @take_struct_over_aligned(ptr noundef byval(%struct.SOverAligned) align 32 %{{.+}})
+
+// A half occupies one SSE eightbyte.
+_Float16 sse_half(_Float16 h) { return h; }
+
+// CIR: cir.func {{.*}}@sse_half(%arg0: !cir.f16 {{.*}}) -> !cir.f16
+// LLVM: define dso_local half @sse_half(half noundef %{{.+}})
+
+// So does a bfloat.
+__bf16 sse_bfloat(__bf16 b) { return b; }
+
+// CIR: cir.func {{.*}}@sse_bfloat(%arg0: !cir.bf16 {{.*}}) -> !cir.bf16
+// LLVM: define dso_local bfloat @sse_bfloat(bfloat noundef %{{.+}})
+
+// __float128 spans an SSE/SSEUP pair, which is still one register pair.
+__float128 sse_quad(__float128 q) { return q; }
+
+// CIR: cir.func {{.*}}@sse_quad(%arg0: !cir.f128 {{.*}}) -> !cir.f128
+// LLVM: define dso_local fp128 @sse_quad(fp128 noundef %{{.+}})
+
+// x87 long double is the X87/X87UP pair, returned in st0.
+long double x87_long_double(long double l) { return l; }
+
+// CIR: cir.func {{.*}}@x87_long_double(%arg0: !cir.long_double<!cir.f80> {{.*}}) -> !cir.long_double<!cir.f80>
+// LLVM: define dso_local x86_fp80 @x87_long_double(x86_fp80 noundef %{{.+}})
+
+// Wrapping the long double in a struct merges the eightbytes to MEMORY, so
+// the argument becomes byval while the return still comes back in st0.
+typedef struct { long double l; } SLongDouble;
+SLongDouble ret_long_double_struct(SLongDouble s) { return s; }
+
+// CIR: cir.func {{.*}}@ret_long_double_struct(%arg0: !cir.ptr<!rec_SLongDouble> {{.*}}llvm.byval = !rec_SLongDouble{{.*}}) -> !cir.f80
+// LLVM-CIR: define dso_local x86_fp80 @ret_long_double_struct(ptr noalias noundef byval(%struct.SLongDouble) align 16 %{{.+}})
+// LLVM-OGCG: define dso_local x86_fp80 @ret_long_double_struct(ptr noundef byval(%struct.SLongDouble) align 16 %{{.+}})
+
+// A union holding a long double is accepted because the long double spans the
+// union's declared size.
+typedef union { long double l; int i; } ULongDouble;
+void take_union_long_double(ULongDouble u) { (void)u; }
+
+// CIR: cir.func {{.*}}@take_union_long_double(%arg0: !cir.ptr<!rec_ULongDouble> {{.*}}llvm.byval = !rec_ULongDouble{{.*}})
+// LLVM-CIR: define dso_local void @take_union_long_double(ptr noalias noundef byval(%union.ULongDouble) align 16 %{{.+}})
+// LLVM-OGCG: define dso_local void @take_union_long_double(ptr noundef byval(%union.ULongDouble) align 16 %{{.+}})
+
+// A _Complex of quads exceeds two eightbytes and goes to memory both ways, so
+// the sret and byval pointees here are a _Complex rather than a record.
+_Complex __float128 complex_quad(_Complex __float128 z) { return z; }
+
+// CIR: cir.func {{.*}}@complex_quad(%arg0: !cir.ptr<!cir.complex<!cir.f128>> {{.*}}llvm.sret = !cir.complex<!cir.f128>{{.*}}, %arg1: !cir.ptr<!cir.complex<!cir.f128>> {{.*}}llvm.byval = !cir.complex<!cir.f128>{{.*}})
+// LLVM-CIR: define dso_local void @complex_quad(ptr dead_on_unwind noalias writable sret({ fp128, fp128 }) align 16 %{{[^,)]+}}, ptr noalias noundef byval({ fp128, fp128 }) align 16 %{{[^,)]+}})
+// LLVM-OGCG: define dso_local void @complex_quad(ptr dead_on_unwind noalias writable sret({ fp128, fp128 }) align 16 %{{[^,)]+}}, ptr noundef byval({ fp128, fp128 }) align 16 %{{[^,)]+}})
+
+// Both halves of a _Complex float share one SSE eightbyte, so it coerces to
+// the two-element vector that eightbyte holds.
+_Complex float complex_float(_Complex float c) { return c; }
+
+// CIR: cir.func {{.*}}@complex_float(%arg0: !cir.vector<2 x !cir.float> {{.*}}) -> !cir.vector<2 x !cir.float>
+// LLVM: define dso_local <2 x float> @complex_float(<2 x float> noundef %{{.+}})
+
+// _Complex double needs two SSE eightbytes, so it flattens into a pair.
+// Flattening drops the parameter's noundef, which classic keeps on each half.
+_Complex double complex_double(_Complex double c) { return c; }
+
+// CIR: cir.func {{.*}}@complex_double(%arg0: !cir.double{{.*}}, %arg1: !cir.double{{.*}})
+// LLVM-CIR: define dso_local { double, double } @complex_double(double %{{.+}}, double %{{.+}})
+// LLVM-OGCG: define dso_local { double, double } @complex_double(double noundef %{{.+}}, double noundef %{{.+}})
+
+// A _Complex of integers packs both halves into one INTEGER eightbyte.
+_Complex int complex_int(_Complex int c) { return c; }
+
+// CIR: cir.func {{.*}}@complex_int(%arg0: !u64i {{.*}}) -> !u64i
+// LLVM: define dso_local i64 @complex_int(i64 noundef %{{.+}})
+
+// COMPLEX_X87 passes in memory and returns as the st0/st1 pair.
+_Complex long double complex_long_double(_Complex long double c) { return c; }
+
+// CIR: cir.func {{.*}}@complex_long_double(%arg0: !cir.ptr<!cir.complex<!cir.long_double<!cir.f80>>> {{.*}}llvm.byval = !cir.complex<!cir.long_double<!cir.f80>>{{.*}}) -> ![[X87PAIR]]
+// LLVM-CIR: define dso_local { x86_fp80, x86_fp80 } @complex_long_double(ptr noalias noundef byval({ x86_fp80, x86_fp80 }) align 16 %{{.+}})
+// LLVM-OGCG: define dso_local { x86_fp80, x86_fp80 } @complex_long_double(ptr noundef byval({ x86_fp80, x86_fp80 }) align 16 %{{.+}})
+
+// A 128-bit vector fills one xmm register and passes in its own type.
+typedef float v4f __attribute__((vector_size(16)));
+v4f vector128(v4f v) { return v; }
+
+// CIR: cir.func {{.*}}@vector128(%arg0: !cir.vector<4 x !cir.float> {{.*}}) -> !cir.vector<4 x !cir.float>
+// LLVM: define dso_local <4 x float> @vector128(<4 x float> noundef %{{.+}})
+
+// A 64-bit vector shares its eightbyte with nothing, so it coerces to the
+// scalar that eightbyte holds.
+typedef float v2f __attribute__((vector_size(8)));
+v2f vector64(v2f v) { return v; }
+
+// CIR: cir.func {{.*}}@vector64(%arg0: !cir.double {{.*}}) -> !cir.double
+// LLVM: define dso_local double @vector64(double noundef %{{.+}})
+
+// gcc passes a one-element vector of a 64-bit float in memory, and its byval
+// alignment is the vector's size rather than the next power of two above it.
+typedef double v1d __attribute__((vector_size(8)));
+void take_v1d(v1d v) { (void)v; }
+
+// CIR: cir.func {{.*}}@take_v1d(%arg0: !cir.ptr<!cir.vector<1 x !cir.double>> {{.*}}llvm.align = 8 : i64{{.*}}llvm.byval = !cir.vector<1 x !cir.double>{{.*}})
+// LLVM-CIR: define dso_local void @take_v1d(ptr noalias noundef byval(<1 x double>) align 8 %{{[^,)]+}})
+// LLVM-OGCG: define dso_local void @take_v1d(ptr noundef byval(<1 x double>) align 8 %{{[^,)]+}})
+
+// A _Complex of 16-bit floats fits one eightbyte, so it coerces to the
+// two-element vector of that format.
+_Complex _Float16 complex_half(_Complex _Float16 c) { return c; }
+
+// CIR: cir.func {{.*}}@complex_half(%arg0: !cir.vector<2 x !cir.f16> {{.*}}) -> !cir.vector<2 x !cir.f16>
+// LLVM: define dso_local <2 x half> @complex_half(<2 x half> noundef %{{[^,)]+}})
+
+// A _Complex of 64-bit integers spans two INTEGER eightbytes, so it flattens
+// into a register pair instead of coercing to one value.
+_Complex long long complex_longlong(_Complex long long c) { return c; }
+
+// CIR: cir.func {{.*}}@complex_longlong(%arg0: !u64i {{.*}}, %arg1: !u64i {{.*}}) -> ![[I64PAIR]]
+// LLVM-CIR: define dso_local { i64, i64 } @complex_longlong(i64 %{{[^,)]+}}, i64 %{{[^,)]+}})
+// LLVM-OGCG: define dso_local { i64, i64 } @complex_longlong(i64 noundef %{{[^,)]+}}, i64 noundef %{{[^,)]+}})
+
+// An all-float aggregate's SSE eightbyte coerces to a vector.
+typedef struct { float x, y; } TwoFloats;
+TwoFloats two_floats(TwoFloats s) { return s; }
+
+// CIR: cir.func {{.*}}@two_floats(%arg0: !cir.vector<2 x !cir.float> {{.*}}) -> !cir.vector<2 x !cir.float>
+// LLVM: define dso_local <2 x float> @two_floats(<2 x float> %{{[^,)]+}})
+
+// The same holds for an array of floats inside a struct.
+typedef struct { float a[2]; } FloatArray;
+void take_float_array(FloatArray s) { (void)s; }
+
+// CIR: cir.func {{.*}}@take_float_array(%arg0: !cir.vector<2 x !cir.float>{{.*}})
+// LLVM: define dso_local void @take_float_array(<2 x float> %{{[^,)]+}})
+
+// The vector the eightbyte coerces to names the element format, so these pin
+// which format each 16-bit float maps to.
+typedef struct { _Float16 a, b; } TwoHalves;
+void take_two_halves(TwoHalves s) { (void)s; }
+
+// CIR: cir.func {{.*}}@take_two_halves(%arg0: !cir.vector<2 x !cir.f16>{{.*}})
+// LLVM: define dso_local void @take_two_halves(<2 x half> %{{[^,)]+}})
+
+typedef struct { __bf16 a, b; } TwoBFloats;
+void take_two_bfloats(TwoBFloats s) { (void)s; }
+
+// CIR: cir.func {{.*}}@take_two_bfloats(%arg0: !cir.vector<2 x !cir.bf16>{{.*}})
+// LLVM: define dso_local void @take_two_bfloats(<2 x bfloat> %{{[^,)]+}})
+
+// A 16-bit float sharing its eightbyte with a wider float widens the vector to
+// the eightbyte rather than to the members.
+typedef struct { _Float16 h; float f; } HalfThenFloat;
+void take_half_then_float(HalfThenFloat s) { (void)s; }
+
+// CIR: cir.func {{.*}}@take_half_then_float(%arg0: !cir.vector<4 x !cir.f16>{{.*}})
+// LLVM: define dso_local void @take_half_then_float(<4 x half> %{{[^,)]+}})
+
+// An IEEE quad reaches a register, where an x87 long double of the same width
+// would go to memory.
+typedef struct { __float128 q; } WrapQuad;
+void take_wrap_quad(WrapQuad s) { (void)s; }
+
+// CIR: cir.func {{.*}}@take_wrap_quad(%arg0: !cir.f128{{.*}})
+// LLVM: define dso_local void @take_wrap_quad(fp128 %{{[^,)]+}})
+
+// Three floats span two eightbytes: a vector for the first pair, a scalar for
+// the remainder.
+typedef struct { float x, y, z; } ThreeFloats;
+void take_three_floats(ThreeFloats s) { (void)s; }
+
+// CIR: cir.func {{.*}}@take_three_floats(%arg0: !cir.vector<2 x !cir.float>{{.*}}, %arg1: !cir.float{{.*}})
+// LLVM: define dso_local void @take_three_floats(<2 x float> %{{.+}}, float %{{.+}})
+
+void call_complex_float(_Complex float c) { complex_float(c); }
+
+// CIR: cir.func {{.*}}@call_complex_float(%arg0: !cir.vector<2 x !cir.float>
+// CIR:   cir.call @complex_float(%{{.+}}) : (!cir.vector<2 x !cir.float> {llvm.noundef}) -> !cir.vector<2 x !cir.float>
+// LLVM: define dso_local void @call_complex_float(<2 x float> noundef %{{.+}})
+// LLVM:   call <2 x float> @complex_float(<2 x float> noundef %{{.+}})
