@@ -1126,8 +1126,15 @@ const Type *X86_64TargetInfo::getFPTypeAtOffset(const Type *Ty,
     return nullptr;
   }
 
-  // Handle struct types by checking each field
+  // Handle record types by descending into the field at this offset.  A union
+  // reduces to its storage member first: every member sits at offset 0, so
+  // descending into the first one that contains the offset can pick a member
+  // the coercion never reads.  Clang has no union to descend into, because its
+  // lowered record is already just the storage member.
   if (const RecordType *RT = dyn_cast<RecordType>(Ty)) {
+    if (RT->isUnion())
+      if (const Type *ReducedType = reduceUnionForX8664(RT, TB))
+        return getFPTypeAtOffset(ReducedType, Offset);
     if (const FieldInfo *Element = RT->getElementContainingOffset(Offset * 8)) {
       unsigned ElementOffsetBytes = Element->OffsetInBits / 8;
       return getFPTypeAtOffset(Element->FieldType, Offset - ElementOffsetBytes);
@@ -1162,16 +1169,6 @@ const Type *X86_64TargetInfo::getSSETypeAtOffset(const Type *ABIType,
                                                  unsigned ABIOffset,
                                                  const Type *SourceTy,
                                                  unsigned SourceOffset) const {
-
-  if (const auto *RTy = dyn_cast<RecordType>(ABIType)) {
-    if (RTy->isUnion()) {
-      const Type *ReducedType = reduceUnionForX8664(RTy, TB);
-      if (ReducedType) {
-        return getSSETypeAtOffset(ReducedType, ABIOffset, SourceTy,
-                                  SourceOffset);
-      }
-    }
-  }
 
   auto Is16bitFpTy = [](const Type *T) {
     return isFloatTypeWithSemantics(T, APFloat::IEEEhalf()) ||

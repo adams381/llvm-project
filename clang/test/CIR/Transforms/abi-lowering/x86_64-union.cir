@@ -44,6 +44,8 @@
 !rec_UEmptyUnnamedBits = !cir.union<"UEmptyUnnamedBits" {data !cir.array<!rec_E x 4>, empty !cir.bitfield<!cir.array<!u8i x 3>, [#cir.bitfield_decl<!s32i, 24, unnamed>]>}>
 !rec_SFloats = !cir.struct<"SFloats" {data !cir.float, data !cir.float}>
 !rec_UEmptyFloats = !cir.union<"UEmptyFloats" {data !rec_E, data !rec_SFloats}>
+!rec_UFloatsDouble = !cir.union<"UFloatsDouble" {data !rec_SFloats, data !cir.double}>
+!rec_SWithSSEUnion = !cir.struct<"SWithSSEUnion" {data !rec_UFloatsDouble, data !s32i}>
 !u32i = !cir.int<u, 32>
 !rec_UBitSpans = !cir.union<"UBitSpans" {bitfield !cir.bitfield<!u32i, [#cir.bitfield_decl<!s32i, 20>]>}>
 !rec_UBitPlusLong = !cir.union<"UBitPlusLong" {bitfield !cir.bitfield<!u32i, [#cir.bitfield_decl<!s32i, 20>]>, data !s64i}>
@@ -768,6 +770,15 @@ module attributes {
   // CHECK: cir.func{{.*}} @take_struct_with_union(%arg0: !u64i)
   // CHECK:   %[[CAST:.*]] = cir.cast bitcast %{{.*}} : !cir.ptr<!u64i> -> !cir.ptr<!rec_SWithUnion>
 
+  // The nested union's storage member is the double, not the float pair that
+  // happens to be declared first.  Reading the first member instead coerces
+  // the low eightbyte to <2 x float>.
+  cir.func @take_struct_with_sse_union(%arg0: !rec_SWithSSEUnion) {
+    cir.return
+  }
+
+  // CHECK: cir.func{{.*}} @take_struct_with_sse_union(%arg0: !cir.double, %arg1: !s32i)
+
   // A coerced union return round-trips through the coercion type.
   cir.func @ret_int_float(%arg0: !rec_UIntFloat) -> !rec_UIntFloat {
     %0 = cir.alloca "u" align(4) : !cir.ptr<!rec_UIntFloat>
@@ -905,6 +916,7 @@ module attributes {
 // LLVM: define void @take_no_regs(ptr nofreeobj noundef align 4 dereferenceable(4) %{{.+}})
 // LLVM: define void @take_bit_no_regs(ptr nofreeobj noundef align 4 dereferenceable(4) %{{[^,)]+}})
 // LLVM: define void @take_struct_with_union(i64 %{{.+}})
+// LLVM: define void @take_struct_with_sse_union(double %{{.+}}, i32 %{{.+}})
 // LLVM: define i32 @ret_int_float(i32 %{{.+}})
 // LLVM: define void @ret_big(ptr dead_on_unwind noalias writable sret(%union.UBig) align 1 %{{.+}}, ptr noundef byval(%union.UBig) align 8 %{{.+}})
 // LLVM: define void @call_int_float(i32 %{{.+}})

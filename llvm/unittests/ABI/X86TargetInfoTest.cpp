@@ -399,4 +399,56 @@ TEST_F(X86TargetInfoTest, UnionTailPaddingNarrowsInsideShortUnion) {
   expectInteger(Pair[1].FieldType, 8);
 }
 
+// A union nested inside a record reduces to its storage member before the SSE
+// eightbyte picks a type.  The float pair is not the storage member here, so
+// reading it would coerce to <2 x float> where the double is what occupies the
+// eightbyte.  Classic passes this as {double, i32}.
+TEST_F(X86TargetInfoTest, NestedUnionReducesBeforeSSEPick) {
+  std::unique_ptr<FunctionInfo> FI;
+  std::unique_ptr<TargetInfo> TI;
+  const ABIType *Floats = TB.getRecordType(
+      {FieldInfo(F32, 0), FieldInfo(F32, 32)}, llvm::TypeSize::getFixed(64),
+      llvm::Align(4), llvm::Align(4), StructPacking::Default, {}, {},
+      RecordFlags::CanPassInRegisters);
+  const ABIType *U =
+      unionOf({FieldInfo(Floats), FieldInfo(F64)}, 64, llvm::Align(8));
+  const ABIType *Outer = TB.getRecordType(
+      {FieldInfo(U, 0), FieldInfo(I32, 64)}, llvm::TypeSize::getFixed(128),
+      llvm::Align(8), llvm::Align(8), StructPacking::Default, {}, {},
+      RecordFlags::CanPassInRegisters);
+
+  const ArgInfo &Info = classifyArg(Outer, FI, TI);
+  ASSERT_TRUE(Info.isDirect());
+  const auto *Pair =
+      llvm::dyn_cast_or_null<llvm::abi::RecordType>(Info.getCoerceToType());
+  ASSERT_NE(Pair, nullptr);
+  ASSERT_EQ(Pair->getFields().size(), 2u);
+  const auto *LoFT =
+      llvm::dyn_cast<llvm::abi::FloatType>(Pair->getFields()[0].FieldType);
+  ASSERT_NE(LoFT, nullptr);
+  EXPECT_EQ(LoFT->getSemantics(), &llvm::APFloat::IEEEdouble());
+  const auto *HiIT =
+      llvm::dyn_cast<llvm::abi::IntegerType>(Pair->getFields()[1].FieldType);
+  ASSERT_NE(HiIT, nullptr);
+  EXPECT_EQ(HiIT->getSizeInBits().getFixedValue(), 32u);
+}
+
+// The same reduction when the record is a single eightbyte, so the coercion
+// is a bare double rather than a pair.
+TEST_F(X86TargetInfoTest, UnionInSingleEightbyteRecordReducesBeforeSSEPick) {
+  std::unique_ptr<FunctionInfo> FI;
+  std::unique_ptr<TargetInfo> TI;
+  const ABIType *Floats = TB.getRecordType(
+      {FieldInfo(F32, 0), FieldInfo(F32, 32)}, llvm::TypeSize::getFixed(64),
+      llvm::Align(4), llvm::Align(4), StructPacking::Default, {}, {},
+      RecordFlags::CanPassInRegisters);
+  const ABIType *U =
+      unionOf({FieldInfo(Floats), FieldInfo(F64)}, 64, llvm::Align(8));
+  const ABIType *Wrapper =
+      TB.getRecordType({FieldInfo(U, 0)}, llvm::TypeSize::getFixed(64),
+                       llvm::Align(8), llvm::Align(8), StructPacking::Default,
+                       {}, {}, RecordFlags::CanPassInRegisters);
+  expectDirectFloat(classifyArg(Wrapper, FI, TI), llvm::APFloat::IEEEdouble());
+}
+
 } // namespace
